@@ -231,6 +231,87 @@ def get_full_diff_with_untracked(cwd: Path) -> dict:
     }
 
 
+def get_graph_log(cwd: Path, limit: int = 100) -> dict:
+    """
+    Get commit graph data for metro-style visualization.
+
+    Returns:
+        Dict with commits (including parents and refs), branches, and HEAD info
+    """
+    try:
+        repo = get_repo(cwd)
+    except InvalidGitRepositoryError:
+        return {"commits": [], "branches": [], "head": None}
+
+    if not repo.head.is_valid():
+        return {"commits": [], "branches": [], "head": None}
+
+    # Build hash → ref names map
+    ref_map: dict[str, list[str]] = {}
+    for ref in repo.refs:
+        name = ref.name
+        # Clean up ref names
+        if name.startswith("refs/heads/"):
+            name = name[11:]
+        elif name.startswith("refs/remotes/"):
+            name = name[13:]
+        elif name.startswith("refs/tags/"):
+            name = name[10:]
+        try:
+            hexsha = ref.commit.hexsha
+        except Exception:
+            continue
+        ref_map.setdefault(hexsha, []).append(name)
+
+    # HEAD info
+    head_hash = repo.head.commit.hexsha
+    head_branch = None
+    if not repo.head.is_detached:
+        try:
+            head_branch = repo.active_branch.name
+        except TypeError:
+            pass
+
+    # Collect commits (--all walks all refs, not just HEAD)
+    commits = []
+    for commit in repo.iter_commits(rev="--all", max_count=limit, topo_order=True):
+        commits.append({
+            "hash": commit.hexsha,
+            "shortHash": commit.hexsha[:7],
+            "message": commit.summary,
+            "author": commit.author.name,
+            "relativeDate": commit.committed_datetime.strftime("%Y-%m-%d %H:%M"),
+            "parents": [p.hexsha for p in commit.parents],
+            "refs": ref_map.get(commit.hexsha, []),
+        })
+
+    # Branch list
+    branches = []
+    for branch in repo.branches:
+        branches.append({
+            "name": branch.name,
+            "hash": branch.commit.hexsha,
+            "current": not repo.head.is_detached and branch.name == head_branch,
+        })
+
+    # Working directory changes (for WIP node)
+    working_changes = None
+    if repo.is_dirty(untracked_files=True):
+        status = get_porcelain_status(cwd)
+        working_changes = {
+            "files": len(status),
+            "staged": sum(1 for f in status if f["status"] in ("added", "modified", "renamed", "deleted")),
+            "unstaged": sum(1 for f in status if f["status"] in ("untracked",)),
+        }
+
+    return {
+        "commits": commits,
+        "branches": branches,
+        "head": {"hash": head_hash, "branch": head_branch},
+        "workingChanges": working_changes,
+    }
+
+
 def get_commit_log(cwd: Path, limit: int = 20) -> list[dict]:
     """
     Get recent commit history.

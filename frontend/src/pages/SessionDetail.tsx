@@ -10,10 +10,11 @@ import TodoList from '../components/TodoList'
 import Scratchpad from '../components/Scratchpad'
 import PromptTemplates from '../components/PromptTemplates'
 import SharedFiles from '../components/SharedFiles'
+import GitGraph from '../components/graph/GitGraph'
 import { useIsDesktop } from '../hooks/useMediaQuery'
 
-type RightPanel = 'diff' | 'files' | 'todos' | 'prompts' | 'shared'
-type MobileTab = 'terminal' | 'diff' | 'files' | 'todos' | 'prompts' | 'shared'
+type RightPanel = 'diff' | 'files' | 'todos' | 'prompts' | 'shared' | 'graph'
+type MobileTab = 'terminal' | 'diff' | 'files' | 'todos' | 'prompts' | 'shared' | 'graph'
 
 type DiffData = {
   files: Array<{ path: string; diff: string }>
@@ -43,13 +44,14 @@ export default function SessionDetail() {
 
   const [rightPanel, setRightPanel] = useState<RightPanel>(() => {
     const saved = localStorage.getItem('lumbergh:rightPanel')
-    if (saved === 'diff' || saved === 'files' || saved === 'todos' || saved === 'prompts' || saved === 'shared') {
+    if (saved === 'diff' || saved === 'files' || saved === 'todos' || saved === 'prompts' || saved === 'shared' || saved === 'graph') {
       return saved
     }
     return 'diff'
   })
   const [sharedRefreshTrigger, setSharedRefreshTrigger] = useState(0)
   const [mobileTab, setMobileTab] = useState<MobileTab>('terminal')
+  const [graphSelectedCommit, setGraphSelectedCommit] = useState<string | null | undefined>(undefined)
   const [diffData, setDiffData] = useState<DiffData | null>(null)
   const [diffKey, setDiffKey] = useState(0)
   const focusFnRef = useRef<(() => void) | null>(null)
@@ -84,6 +86,15 @@ export default function SessionDetail() {
   const handleJumpToTodos = useCallback(() => {
     setRightPanel('todos')
     setMobileTab('todos')
+  }, [])
+
+  const handleGraphSelectCommit = useCallback((hash: string | null) => {
+    setGraphSelectedCommit(hash)
+    setDiffKey((k) => k + 1)
+    setRightPanel('diff')
+    setMobileTab('diff')
+    // Clear after a tick so the next manual diff tab switch doesn't reuse it
+    setTimeout(() => setGraphSelectedCommit(undefined), 0)
   }, [])
 
   const handleTodoSent = useCallback(async (text: string) => {
@@ -217,6 +228,7 @@ export default function SessionDetail() {
     { id: 'todos', label: 'Todo' },
     { id: 'prompts', label: 'Prompts' },
     { id: 'shared', label: 'Shared' },
+    { id: 'graph', label: 'Git' },
   ]
 
   const renderTerminal = () => (
@@ -301,6 +313,16 @@ export default function SessionDetail() {
         >
           Shared
         </button>
+        <button
+          onClick={() => setRightPanel('graph')}
+          className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+            rightPanel === 'graph'
+              ? 'bg-control-bg-hover text-text-primary'
+              : 'bg-control-bg text-text-tertiary hover:bg-control-bg-hover hover:text-text-secondary'
+          }`}
+        >
+          Git
+        </button>
       </div>
       {/* Panel content */}
       <div className="flex-1 min-h-0 overflow-hidden">
@@ -313,6 +335,7 @@ export default function SessionDetail() {
             onRefreshDiff={fetchDiffData}
             onJumpToTodos={handleJumpToTodos}
             onFocusTerminal={handleFocusTerminal}
+            initialCommit={graphSelectedCommit}
           />
         )}
         {rightPanel === 'files' && (
@@ -356,6 +379,9 @@ export default function SessionDetail() {
             onFocusTerminal={handleFocusTerminal}
             refreshTrigger={sharedRefreshTrigger}
           />
+        )}
+        {rightPanel === 'graph' && (
+          <GitGraph apiHost={apiHost} sessionName={name} onSelectCommit={handleGraphSelectCommit} />
         )}
       </div>
     </div>
@@ -435,6 +461,7 @@ export default function SessionDetail() {
                 onRefreshDiff={fetchDiffData}
                 onJumpToTodos={handleJumpToTodos}
                 onFocusTerminal={handleFocusTerminal}
+                initialCommit={graphSelectedCommit}
               />
             )}
             {mobileTab === 'files' && (
@@ -482,6 +509,9 @@ export default function SessionDetail() {
                 onFocusTerminal={handleFocusTerminal}
                 refreshTrigger={sharedRefreshTrigger}
               />
+            )}
+            {mobileTab === 'graph' && (
+              <GitGraph apiHost={apiHost} sessionName={name} onSelectCommit={handleGraphSelectCommit} />
             )}
           </div>
         </div>

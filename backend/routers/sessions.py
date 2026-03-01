@@ -35,6 +35,7 @@ from git_utils import (
     get_commit_log,
     get_current_branch,
     get_full_diff_with_untracked,
+    get_graph_log,
     get_porcelain_status,
     get_remote_status,
     git_pull_rebase,
@@ -601,6 +602,17 @@ async def session_git_diff_stats(name: str):
         return stats
 
     return {"files": 0, "additions": 0, "deletions": 0}
+
+
+@router.get("/{name}/git/graph")
+async def session_git_graph(name: str, limit: int = 100):
+    """Get commit graph data for metro-style visualization."""
+    workdir = get_session_workdir(name)
+
+    try:
+        return get_graph_log(workdir, limit)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{name}/git/log")

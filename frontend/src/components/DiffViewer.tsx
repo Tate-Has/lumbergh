@@ -10,6 +10,7 @@ interface Props {
   onRefreshDiff?: () => void
   onFocusTerminal?: () => void
   onJumpToTodos?: () => void
+  initialCommit?: string | null
 }
 
 interface RemoteStatus {
@@ -32,6 +33,7 @@ const DiffViewer = memo(function DiffViewer({
   onRefreshDiff,
   onFocusTerminal,
   onJumpToTodos,
+  initialCommit,
 }: Props) {
   // Build base URL for git endpoints
   const gitBaseUrl = sessionName
@@ -53,8 +55,12 @@ const DiffViewer = memo(function DiffViewer({
   const [isPushing, setIsPushing] = useState(false)
   const [isPulling, setIsPulling] = useState(false)
 
-  // Navigation state - default to working changes view
-  const [view, setView] = useState<ViewState>({ level: 'changes', commit: null })
+  // Navigation state - default to working changes view, or initial commit if provided
+  const [view, setView] = useState<ViewState>(
+    initialCommit !== undefined && initialCommit !== null
+      ? { level: 'changes', commit: initialCommit }
+      : { level: 'changes', commit: null }
+  )
 
   // Internal fetch for working changes (used when no external data provided)
   const fetchWorkingChangesInternal = useCallback(async () => {

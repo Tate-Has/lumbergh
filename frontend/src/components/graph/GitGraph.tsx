@@ -1,0 +1,353 @@
+import { useState, useEffect, useMemo, useRef } from 'react'
+import type { GraphData } from '../diff/types'
+import { computeGraphLayout, laneColor } from './graphLayout'
+
+const ROW_HEIGHT = 36
+const LANE_WIDTH = 16
+const NODE_RADIUS = 4
+const HEAD_RADIUS = 6
+const SVG_PADDING_LEFT = 8
+const WIP_COLOR = '#ffb74d' // orange for WIP
+
+interface Props {
+  apiHost: string
+  sessionName?: string
+  onSelectCommit?: (hash: string | null) => void
+}
+
+export default function GitGraph({ apiHost, sessionName, onSelectCommit }: Props) {
+  const [graphData, setGraphData] = useState<GraphData | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  const fetchGraph = async () => {
+    if (!sessionName) return
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch(`http://${apiHost}/api/sessions/${sessionName}/git/graph?limit=100`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data: GraphData = await res.json()
+      setGraphData(data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch graph')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchGraph()
+  }, [apiHost, sessionName])
+
+  const nodes = useMemo(() => {
+    if (!graphData) return []
+    return computeGraphLayout(graphData.commits, graphData.head?.hash ?? null)
+  }, [graphData])
+
+  const hasWip = graphData?.workingChanges != null
+  // When WIP row exists, all commit rows shift down by 1
+  const rowOffset = hasWip ? 1 : 0
+
+  const maxLane = useMemo(() => {
+    let max = 0
+    for (const n of nodes) {
+      if (n.lane > max) max = n.lane
+      for (const e of n.edges) {
+        if (e.toLane > max) max = e.toLane
+        if (e.fromLane > max) max = e.fromLane
+      }
+    }
+    return max
+  }, [nodes])
+
+  const svgWidth = SVG_PADDING_LEFT + (maxLane + 1) * LANE_WIDTH + 8
+  const totalRows = nodes.length + rowOffset
+
+  // Find the lane HEAD lives on (for highlighting the current branch lane)
+  const headLane = useMemo(() => {
+    const headNode = nodes.find((n) => n.isHead)
+    return headNode?.lane ?? 0
+  }, [nodes])
+
+  const renderWipSvg = () => {
+    if (!hasWip) return null
+    const cx = SVG_PADDING_LEFT + headLane * LANE_WIDTH + LANE_WIDTH / 2
+    const wipY = ROW_HEIGHT / 2
+    const headY = (0 + rowOffset) * ROW_HEIGHT + ROW_HEIGHT / 2
+
+    return (
+      <g>
+        {/* Dashed line from WIP down to HEAD */}
+        <line
+          x1={cx}
+          y1={wipY}
+          x2={cx}
+          y2={headY}
+          stroke={WIP_COLOR}
+          strokeWidth={2}
+          strokeDasharray="4 3"
+          strokeOpacity={0.7}
+        />
+        {/* WIP dot — dashed circle */}
+        <circle
+          cx={cx}
+          cy={wipY}
+          r={HEAD_RADIUS + 1}
+          fill="none"
+          stroke={WIP_COLOR}
+          strokeWidth={2}
+          strokeDasharray="3 2"
+        />
+        <circle
+          cx={cx}
+          cy={wipY}
+          r={3}
+          fill={WIP_COLOR}
+        />
+      </g>
+    )
+  }
+
+  const renderEdges = () => {
+    const lines: JSX.Element[] = []
+    for (const node of nodes) {
+      for (let ei = 0; ei < node.edges.length; ei++) {
+        const e = node.edges[ei]
+        const x1 = SVG_PADDING_LEFT + e.fromLane * LANE_WIDTH + LANE_WIDTH / 2
+        const y1 = (e.fromRow + rowOffset) * ROW_HEIGHT + ROW_HEIGHT / 2
+        const x2 = SVG_PADDING_LEFT + e.toLane * LANE_WIDTH + LANE_WIDTH / 2
+        const y2 = (e.toRow + rowOffset) * ROW_HEIGHT + ROW_HEIGHT / 2
+        const color = laneColor(e.fromLane)
+        const key = `${node.commit.shortHash}-${ei}`
+        const isCurrentBranchEdge = node.onCurrentBranch && e.fromLane === headLane && e.toLane === headLane
+        const opacity = isCurrentBranchEdge ? 1 : 0.4
+        const width = isCurrentBranchEdge ? 2.5 : 1.5
+
+        if (e.fromLane === e.toLane) {
+          lines.push(
+            <line
+              key={key}
+              x1={x1}
+              y1={y1}
+              x2={x2}
+              y2={y2}
+              stroke={color}
+              strokeWidth={width}
+              strokeOpacity={opacity}
+            />
+          )
+        } else {
+          const midY = (y1 + y2) / 2
+          lines.push(
+            <path
+              key={key}
+              d={`M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}`}
+              stroke={color}
+              strokeWidth={width}
+              strokeOpacity={opacity}
+              fill="none"
+            />
+          )
+        }
+      }
+    }
+    return lines
+  }
+
+  const renderNodes = () => {
+    return nodes.map((node, row) => {
+      const cx = SVG_PADDING_LEFT + node.lane * LANE_WIDTH + LANE_WIDTH / 2
+      const cy = (row + rowOffset) * ROW_HEIGHT + ROW_HEIGHT / 2
+      const color = laneColor(node.lane)
+
+      if (node.isHead) {
+        return (
+          <g key={node.commit.hash}>
+            {/* Pulsing glow */}
+            <circle cx={cx} cy={cy} r={12} fill={color} opacity={0.15}>
+              <animate attributeName="r" values="10;14;10" dur="2s" repeatCount="indefinite" />
+              <animate attributeName="opacity" values="0.18;0.08;0.18" dur="2s" repeatCount="indefinite" />
+            </circle>
+            {/* Outer ring */}
+            <circle cx={cx} cy={cy} r={HEAD_RADIUS + 3} fill="none" stroke={color} strokeWidth={2} opacity={0.6} />
+            {/* White inner ring for contrast */}
+            <circle cx={cx} cy={cy} r={HEAD_RADIUS + 1} fill="none" stroke="white" strokeWidth={1} opacity={0.3} />
+            {/* Solid dot */}
+            <circle cx={cx} cy={cy} r={HEAD_RADIUS} fill={color} />
+          </g>
+        )
+      }
+      return (
+        <circle
+          key={node.commit.hash}
+          cx={cx}
+          cy={cy}
+          r={node.onCurrentBranch ? NODE_RADIUS + 1 : NODE_RADIUS}
+          fill={color}
+          opacity={node.onCurrentBranch ? 1 : 0.4}
+        />
+      )
+    })
+  }
+
+  if (!sessionName) {
+    return (
+      <div className="flex items-center justify-center h-full text-text-muted">
+        No session selected
+      </div>
+    )
+  }
+
+  return (
+    <div className="h-full flex flex-col relative">
+      {/* Error */}
+      {error && (
+        <div className="px-3 py-2 text-sm text-red-400 bg-red-500/10">
+          {error}
+        </div>
+      )}
+
+      {/* Floating refresh button */}
+      <button
+        onClick={fetchGraph}
+        disabled={loading}
+        className="absolute top-2 right-2 z-10 p-1.5 rounded bg-bg-surface/80 hover:bg-control-bg-hover text-text-tertiary hover:text-text-secondary transition-colors disabled:opacity-50 backdrop-blur-sm"
+        title="Refresh graph"
+      >
+        <svg
+          className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+          />
+        </svg>
+      </button>
+
+      {/* Graph */}
+      <div ref={containerRef} className="flex-1 min-h-0 overflow-auto">
+        {nodes.length === 0 && !loading && !error ? (
+          <div className="flex items-center justify-center h-full text-text-muted text-sm">
+            No commits found
+          </div>
+        ) : (
+          <div className="relative" style={{ height: totalRows * ROW_HEIGHT }}>
+            {/* SVG layer for lines and dots */}
+            <svg
+              className="absolute top-0 left-0"
+              width={svgWidth}
+              height={totalRows * ROW_HEIGHT}
+              style={{ pointerEvents: 'none' }}
+            >
+              {renderWipSvg()}
+              {renderEdges()}
+              {renderNodes()}
+            </svg>
+
+            {/* WIP row */}
+            {hasWip && graphData?.workingChanges && (
+              <div
+                onClick={() => onSelectCommit?.(null)}
+                className="absolute left-0 right-0 flex items-center gap-2 px-1 bg-orange-500/[0.1] hover:bg-orange-500/[0.16] border-b border-orange-500/20 cursor-pointer"
+                style={{
+                  top: 0,
+                  height: ROW_HEIGHT,
+                  paddingLeft: svgWidth + 4,
+                }}
+              >
+                <span className="px-1.5 py-0.5 text-[10px] rounded font-semibold leading-none bg-orange-500/25 text-orange-300 ring-1 ring-orange-400/50 shrink-0">
+                  WIP
+                </span>
+                <span className="text-sm text-orange-200/90 truncate min-w-0">
+                  {graphData.workingChanges.files} uncommitted {graphData.workingChanges.files === 1 ? 'change' : 'changes'}
+                </span>
+              </div>
+            )}
+
+            {/* HTML rows for commit info */}
+            {nodes.map((node, row) => (
+              <div
+                key={node.commit.hash}
+                onClick={() => onSelectCommit?.(node.commit.hash)}
+                className={`absolute left-0 right-0 flex items-center gap-2 px-1 cursor-pointer group ${
+                  node.isHead
+                    ? 'bg-blue-500/[0.14] hover:bg-blue-500/[0.2]'
+                    : node.onCurrentBranch
+                      ? 'bg-blue-500/[0.06] hover:bg-blue-500/[0.12]'
+                      : 'hover:bg-bg-surface/50 opacity-60'
+                }`}
+                style={{
+                  top: (row + rowOffset) * ROW_HEIGHT,
+                  height: ROW_HEIGHT,
+                  paddingLeft: svgWidth + 4,
+                }}
+              >
+                {/* Ref badges */}
+                {node.commit.refs.length > 0 && (
+                  <div className="flex gap-1 shrink-0">
+                    {node.commit.refs.map((ref) => {
+                      const isCurrent = graphData?.head?.branch === ref
+                      return (
+                        <span
+                          key={ref}
+                          className={`px-1.5 py-0.5 text-[10px] rounded font-medium leading-none ${
+                            isCurrent
+                              ? 'bg-blue-500/25 text-blue-300 ring-1 ring-blue-400/50'
+                              : 'bg-bg-surface text-text-tertiary ring-1 ring-border-default'
+                          }`}
+                        >
+                          {ref}
+                        </span>
+                      )
+                    })}
+                  </div>
+                )}
+                {node.isHead && node.commit.refs.length === 0 && (
+                  <span className="px-1.5 py-0.5 text-[10px] rounded font-medium leading-none bg-yellow-500/20 text-yellow-300 ring-1 ring-yellow-500/40 shrink-0">
+                    HEAD
+                  </span>
+                )}
+                {/* Commit message */}
+                <span className={`text-sm truncate min-w-0 ${
+                  node.onCurrentBranch ? 'text-text-primary' : 'text-text-tertiary'
+                }`}>
+                  {node.commit.message}
+                </span>
+                {/* Author + date */}
+                <span className="ml-auto text-xs text-text-muted whitespace-nowrap shrink-0 hidden sm:inline">
+                  {node.commit.shortHash}
+                </span>
+                <span className="text-xs text-text-muted whitespace-nowrap shrink-0 hidden lg:inline">
+                  {node.commit.author}
+                </span>
+                <span className="text-xs text-text-muted whitespace-nowrap shrink-0">
+                  {node.commit.relativeDate}
+                </span>
+                {/* Overflow menu placeholder for future git actions */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    // TODO: context menu with git actions (checkout, create branch, cherry-pick, etc.)
+                  }}
+                  className="shrink-0 p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-control-bg-hover text-text-muted hover:text-text-secondary transition-opacity"
+                  title="Actions"
+                >
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                  </svg>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
