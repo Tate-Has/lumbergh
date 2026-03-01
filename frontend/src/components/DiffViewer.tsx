@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback, memo } from 'react'
+import { useState, useEffect, useCallback, useRef, memo } from 'react'
 import '@git-diff-view/react/styles/diff-view.css'
-import { FileList, FileDiff, CommitList, BranchSelector } from './diff'
-import type { DiffData, Commit, CommitDiff } from './diff'
+import { FileList, FileDiff, BranchSelector } from './diff'
+import type { DiffData, CommitDiff } from './diff'
 
 interface Props {
   apiHost: string
@@ -10,7 +10,8 @@ interface Props {
   onRefreshDiff?: () => void
   onFocusTerminal?: () => void
   onJumpToTodos?: () => void
-  initialCommit?: string | null
+  /** Controlled by parent (GitTab). null = working changes, string = commit hash */
+  selectedCommit?: string | null
 }
 
 interface RemoteStatus {
@@ -22,7 +23,6 @@ interface RemoteStatus {
 }
 
 type ViewState =
-  | { level: 'history' }
   | { level: 'changes'; commit: string | null }
   | { level: 'file'; commit: string | null; file: string }
 
@@ -33,7 +33,7 @@ const DiffViewer = memo(function DiffViewer({
   onRefreshDiff,
   onFocusTerminal,
   onJumpToTodos,
-  initialCommit,
+  selectedCommit: controlledCommit,
 }: Props) {
   // Build base URL for git endpoints
   const gitBaseUrl = sessionName
@@ -42,8 +42,6 @@ const DiffViewer = memo(function DiffViewer({
   // Working changes data - use external data if provided, otherwise fetch internally
   const [internalWorkingData, setInternalWorkingData] = useState<DiffData | null>(null)
   const workingData = externalDiffData !== undefined ? externalDiffData : internalWorkingData
-  // Commit history
-  const [commits, setCommits] = useState<Commit[]>([])
   // Selected commit diff data
   const [commitData, setCommitData] = useState<CommitDiff | null>(null)
 
@@ -55,12 +53,20 @@ const DiffViewer = memo(function DiffViewer({
   const [isPushing, setIsPushing] = useState(false)
   const [isPulling, setIsPulling] = useState(false)
 
-  // Navigation state - default to working changes view, or initial commit if provided
-  const [view, setView] = useState<ViewState>(
-    initialCommit !== undefined && initialCommit !== null
-      ? { level: 'changes', commit: initialCommit }
-      : { level: 'changes', commit: null }
-  )
+  // Navigation state — commit selection controlled by parent if provided
+  const isControlled = controlledCommit !== undefined
+  const activeCommit = isControlled ? controlledCommit : null
+  const prevCommitRef = useRef(activeCommit)
+
+  const [view, setView] = useState<ViewState>({ level: 'changes', commit: activeCommit })
+
+  // Sync view when parent changes selectedCommit
+  useEffect(() => {
+    if (isControlled && activeCommit !== prevCommitRef.current) {
+      prevCommitRef.current = activeCommit
+      setView({ level: 'changes', commit: activeCommit })
+    }
+  }, [isControlled, activeCommit])
 
   // Internal fetch for working changes (used when no external data provided)
   const fetchWorkingChangesInternal = useCallback(async () => {
@@ -78,13 +84,6 @@ const DiffViewer = memo(function DiffViewer({
       await fetchWorkingChangesInternal()
     }
   }, [onRefreshDiff, fetchWorkingChangesInternal])
-
-  const fetchCommits = useCallback(async () => {
-    const res = await fetch(`${gitBaseUrl}/log`)
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const json = await res.json()
-    setCommits(json.commits)
-  }, [gitBaseUrl])
 
   const fetchCommitDiff = useCallback(
     async (hash: string) => {
@@ -234,26 +233,7 @@ const DiffViewer = memo(function DiffViewer({
     }
   }, [hasNoChanges, view, fetchRemoteStatus])
 
-  // Fetch history and working changes when viewing history
-  const loadHistory = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      // Fetch commits and refresh working changes
-      await fetchCommits()
-      await refreshWorkingChanges()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to fetch history')
-    } finally {
-      setLoading(false)
-    }
-  }, [fetchCommits, refreshWorkingChanges])
-
   // Handle navigation
-  const handleSelectCommit = (hash: string | null) => {
-    setView({ level: 'changes', commit: hash })
-  }
-
   const handleSelectFile = (file: string) => {
     setView((prev) => {
       if (prev.level === 'changes') {
@@ -272,15 +252,8 @@ const DiffViewer = memo(function DiffViewer({
     })
   }
 
-  const handleNavigateToHistory = () => {
-    setView({ level: 'history' })
-    loadHistory()
-  }
-
   const handleRefresh = async () => {
-    if (view.level === 'history') {
-      await loadHistory()
-    } else if (view.level === 'changes' && view.commit) {
+    if (view.level === 'changes' && view.commit) {
       setLoading(true)
       try {
         await fetchCommitDiff(view.commit)
@@ -295,15 +268,11 @@ const DiffViewer = memo(function DiffViewer({
 
   // Get current data based on view
   const getCurrentData = (): DiffData | null => {
-    if (view.level === 'history') return null
-    if (view.level === 'changes' || view.level === 'file') {
-      if (view.commit) return commitData
-    }
+    if (view.commit) return commitData
     return workingData
   }
 
   const getCurrentCommitInfo = () => {
-    if (view.level === 'history') return null
     const commitHash = view.commit
     if (!commitHash) return null
     if (commitData && commitData.hash === commitHash) {
@@ -311,14 +280,6 @@ const DiffViewer = memo(function DiffViewer({
         hash: commitData.hash,
         shortHash: commitData.hash.slice(0, 7),
         message: commitData.message,
-      }
-    }
-    const commit = commits.find((c) => c.hash === commitHash)
-    if (commit) {
-      return {
-        hash: commit.hash,
-        shortHash: commit.shortHash,
-        message: commit.message,
       }
     }
     return null
@@ -342,7 +303,7 @@ const DiffViewer = memo(function DiffViewer({
   )
 
   // Loading state
-  if (loading && view.level !== 'history') {
+  if (loading) {
     return (
       <div className="flex items-center justify-center h-full text-text-muted">Loading diff...</div>
     )
@@ -363,20 +324,6 @@ const DiffViewer = memo(function DiffViewer({
     )
   }
 
-  // History view
-  if (view.level === 'history') {
-    return (
-      <CommitList
-        commits={commits}
-        workingChanges={workingData}
-        loading={loading}
-        onSelectCommit={handleSelectCommit}
-        onRefresh={loadHistory}
-        onSendToTerminal={sessionName ? handleSendToTerminal : undefined}
-      />
-    )
-  }
-
   const data = getCurrentData()
 
   // No data / empty state (only for working changes)
@@ -386,16 +333,9 @@ const DiffViewer = memo(function DiffViewer({
     if (isWorkingChanges) {
       return (
         <div className="h-full flex flex-col">
-          {/* Breadcrumb header */}
+          {/* Header */}
           <div className="flex items-center justify-between p-3 bg-bg-surface border-b border-border-default">
             <div className="flex items-center gap-2">
-              <button
-                onClick={handleNavigateToHistory}
-                className="text-sm text-blue-400 hover:text-blue-300"
-              >
-                History
-              </button>
-              <span className="text-text-muted">›</span>
               <span className="text-sm text-text-secondary">Working Changes</span>
               {sessionName && (
                 <BranchSelector gitBaseUrl={gitBaseUrl} onBranchChange={handleRefresh} />
@@ -576,7 +516,6 @@ const DiffViewer = memo(function DiffViewer({
       onSelectFile={handleSelectFile}
       onRefresh={handleRefresh}
       commit={getCurrentCommitInfo()}
-      onNavigateToHistory={handleNavigateToHistory}
       onSendToTerminal={sessionName ? handleSendToTerminal : undefined}
     />
   )

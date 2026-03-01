@@ -10,7 +10,6 @@ interface Props {
   onSelectFile: (path: string) => void
   onRefresh: () => void
   commit?: { hash: string; shortHash: string; message: string } | null
-  onNavigateToHistory?: () => void
   onSendToTerminal?: (text: string, sendEnter: boolean) => void
 }
 
@@ -21,7 +20,6 @@ const FileList = memo(function FileList({
   onSelectFile,
   onRefresh,
   commit,
-  onNavigateToHistory,
   onSendToTerminal,
 }: Props) {
   const [commitMessage, setCommitMessage] = useState('')
@@ -145,17 +143,6 @@ const FileList = memo(function FileList({
       {/* Breadcrumb header */}
       <div className="flex items-center justify-between p-3 bg-bg-surface border-b border-border-default">
         <div className="flex items-center gap-2 min-w-0 flex-1">
-          {onNavigateToHistory && (
-            <>
-              <button
-                onClick={onNavigateToHistory}
-                className="text-sm text-blue-400 hover:text-blue-300 shrink-0"
-              >
-                History
-              </button>
-              <span className="text-text-muted shrink-0">›</span>
-            </>
-          )}
           <span className="text-sm text-text-secondary truncate">
             {isWorkingChanges ? (
               'Working Changes'

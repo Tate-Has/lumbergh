@@ -1,6 +1,5 @@
 export { default as FileList } from './FileList'
 export { default as FileDiff } from './FileDiff'
-export { default as CommitList } from './CommitList'
 export { default as BranchSelector } from './BranchSelector'
 export * from './types'
 export * from './utils'

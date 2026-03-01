@@ -13,9 +13,10 @@ interface Props {
   apiHost: string
   sessionName?: string
   onSelectCommit?: (hash: string | null) => void
+  selectedCommit?: string | null
 }
 
-export default function GitGraph({ apiHost, sessionName, onSelectCommit }: Props) {
+export default function GitGraph({ apiHost, sessionName, onSelectCommit, selectedCommit }: Props) {
   const [graphData, setGraphData] = useState<GraphData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -255,7 +256,11 @@ export default function GitGraph({ apiHost, sessionName, onSelectCommit }: Props
             {hasWip && graphData?.workingChanges && (
               <div
                 onClick={() => onSelectCommit?.(null)}
-                className="absolute left-0 right-0 flex items-center gap-2 px-1 bg-orange-500/[0.1] hover:bg-orange-500/[0.16] border-b border-orange-500/20 cursor-pointer"
+                className={`absolute left-0 right-0 flex items-center gap-2 px-1 border-b border-orange-500/20 cursor-pointer ${
+                  selectedCommit === null
+                    ? 'bg-orange-500/[0.2] border-l-2 border-l-orange-400'
+                    : 'bg-orange-500/[0.1] hover:bg-orange-500/[0.16]'
+                }`}
                 style={{
                   top: 0,
                   height: ROW_HEIGHT,
@@ -272,16 +277,20 @@ export default function GitGraph({ apiHost, sessionName, onSelectCommit }: Props
             )}
 
             {/* HTML rows for commit info */}
-            {nodes.map((node, row) => (
+            {nodes.map((node, row) => {
+              const isSelected = selectedCommit === node.commit.hash
+              return (
               <div
                 key={node.commit.hash}
                 onClick={() => onSelectCommit?.(node.commit.hash)}
                 className={`absolute left-0 right-0 flex items-center gap-2 px-1 cursor-pointer group ${
-                  node.isHead
-                    ? 'bg-blue-500/[0.14] hover:bg-blue-500/[0.2]'
-                    : node.onCurrentBranch
-                      ? 'bg-blue-500/[0.06] hover:bg-blue-500/[0.12]'
-                      : 'hover:bg-bg-surface/50 opacity-60'
+                  isSelected
+                    ? 'bg-blue-500/[0.25] border-l-2 border-l-blue-400'
+                    : node.isHead
+                      ? 'bg-blue-500/[0.14] hover:bg-blue-500/[0.2]'
+                      : node.onCurrentBranch
+                        ? 'bg-blue-500/[0.06] hover:bg-blue-500/[0.12]'
+                        : 'hover:bg-bg-surface/50 opacity-60'
                 }`}
                 style={{
                   top: (row + rowOffset) * ROW_HEIGHT,
@@ -344,7 +353,8 @@ export default function GitGraph({ apiHost, sessionName, onSelectCommit }: Props
                   </svg>
                 </button>
               </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>

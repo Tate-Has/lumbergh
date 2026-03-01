@@ -2,7 +2,6 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getApiHost } from '../config'
 import Terminal from '../components/Terminal'
-import DiffViewer from '../components/DiffViewer'
 import FileBrowser from '../components/FileBrowser'
 import ResizablePanes from '../components/ResizablePanes'
 import VerticalResizablePanes from '../components/VerticalResizablePanes'
@@ -10,11 +9,11 @@ import TodoList from '../components/TodoList'
 import Scratchpad from '../components/Scratchpad'
 import PromptTemplates from '../components/PromptTemplates'
 import SharedFiles from '../components/SharedFiles'
-import GitGraph from '../components/graph/GitGraph'
+import GitTab from '../components/graph/GitTab'
 import { useIsDesktop } from '../hooks/useMediaQuery'
 
-type RightPanel = 'diff' | 'files' | 'todos' | 'prompts' | 'shared' | 'graph'
-type MobileTab = 'terminal' | 'diff' | 'files' | 'todos' | 'prompts' | 'shared' | 'graph'
+type RightPanel = 'git' | 'files' | 'todos' | 'prompts' | 'shared'
+type MobileTab = 'terminal' | 'git' | 'files' | 'todos' | 'prompts' | 'shared'
 
 type DiffData = {
   files: Array<{ path: string; diff: string }>
@@ -44,16 +43,16 @@ export default function SessionDetail() {
 
   const [rightPanel, setRightPanel] = useState<RightPanel>(() => {
     const saved = localStorage.getItem('lumbergh:rightPanel')
-    if (saved === 'diff' || saved === 'files' || saved === 'todos' || saved === 'prompts' || saved === 'shared' || saved === 'graph') {
+    if (saved === 'git' || saved === 'files' || saved === 'todos' || saved === 'prompts' || saved === 'shared') {
       return saved
     }
-    return 'diff'
+    // Migrate old 'diff' or 'graph' to 'git'
+    if (saved === 'diff' || saved === 'graph') return 'git'
+    return 'git'
   })
   const [sharedRefreshTrigger, setSharedRefreshTrigger] = useState(0)
   const [mobileTab, setMobileTab] = useState<MobileTab>('terminal')
-  const [graphSelectedCommit, setGraphSelectedCommit] = useState<string | null | undefined>(undefined)
   const [diffData, setDiffData] = useState<DiffData | null>(null)
-  const [diffKey, setDiffKey] = useState(0)
   const focusFnRef = useRef<(() => void) | null>(null)
 
   const apiHost = getApiHost()
@@ -86,15 +85,6 @@ export default function SessionDetail() {
   const handleJumpToTodos = useCallback(() => {
     setRightPanel('todos')
     setMobileTab('todos')
-  }, [])
-
-  const handleGraphSelectCommit = useCallback((hash: string | null) => {
-    setGraphSelectedCommit(hash)
-    setDiffKey((k) => k + 1)
-    setRightPanel('diff')
-    setMobileTab('diff')
-    // Clear after a tick so the next manual diff tab switch doesn't reuse it
-    setTimeout(() => setGraphSelectedCommit(undefined), 0)
   }, [])
 
   const handleTodoSent = useCallback(async (text: string) => {
@@ -144,8 +134,8 @@ export default function SessionDetail() {
     deletions: number
   } | null>(null)
 
-  // Is the diff tab currently visible?
-  const isDiffVisible = isDesktop ? rightPanel === 'diff' : mobileTab === 'diff'
+  // Is the git tab currently visible? (need to poll full diff data when visible)
+  const isDiffVisible = isDesktop ? rightPanel === 'git' : mobileTab === 'git'
 
   // Poll lightweight diff-stats every 10s (for badge counts)
   useEffect(() => {
@@ -223,12 +213,11 @@ export default function SessionDetail() {
 
   const mobileTabs: { id: MobileTab; label: string }[] = [
     { id: 'terminal', label: 'Terminal' },
-    { id: 'diff', label: 'Diff' },
+    { id: 'git', label: 'Git' },
     { id: 'files', label: 'Files' },
     { id: 'todos', label: 'Todo' },
     { id: 'prompts', label: 'Prompts' },
     { id: 'shared', label: 'Shared' },
-    { id: 'graph', label: 'Git' },
   ]
 
   const renderTerminal = () => (
@@ -255,17 +244,14 @@ export default function SessionDetail() {
       {/* Panel switcher */}
       <div className="flex gap-1 p-2 bg-bg-surface border-b border-border-default">
         <button
-          onClick={() => {
-            setRightPanel('diff')
-            setDiffKey((k) => k + 1)
-          }}
+          onClick={() => setRightPanel('git')}
           className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-            rightPanel === 'diff'
+            rightPanel === 'git'
               ? 'bg-control-bg-hover text-text-primary'
               : 'bg-control-bg text-text-tertiary hover:bg-control-bg-hover hover:text-text-secondary'
           }`}
         >
-          Diff
+          Git
           {diffStats && diffStats.files > 0 && (
             <span className="ml-2 text-xs">
               ({diffStats.files})<span className="text-green-400 ml-1">+{diffStats.additions}</span>
@@ -313,29 +299,17 @@ export default function SessionDetail() {
         >
           Shared
         </button>
-        <button
-          onClick={() => setRightPanel('graph')}
-          className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-            rightPanel === 'graph'
-              ? 'bg-control-bg-hover text-text-primary'
-              : 'bg-control-bg text-text-tertiary hover:bg-control-bg-hover hover:text-text-secondary'
-          }`}
-        >
-          Git
-        </button>
       </div>
       {/* Panel content */}
       <div className="flex-1 min-h-0 overflow-hidden">
-        {rightPanel === 'diff' && (
-          <DiffViewer
-            key={diffKey}
+        {rightPanel === 'git' && (
+          <GitTab
             apiHost={apiHost}
             sessionName={name}
             diffData={diffData}
             onRefreshDiff={fetchDiffData}
             onJumpToTodos={handleJumpToTodos}
             onFocusTerminal={handleFocusTerminal}
-            initialCommit={graphSelectedCommit}
           />
         )}
         {rightPanel === 'files' && (
@@ -380,9 +354,6 @@ export default function SessionDetail() {
             refreshTrigger={sharedRefreshTrigger}
           />
         )}
-        {rightPanel === 'graph' && (
-          <GitGraph apiHost={apiHost} sessionName={name} onSelectCommit={handleGraphSelectCommit} />
-        )}
       </div>
     </div>
   )
@@ -425,10 +396,7 @@ export default function SessionDetail() {
             {mobileTabs.map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => {
-                  setMobileTab(tab.id)
-                  if (tab.id === 'diff') setDiffKey((k) => k + 1)
-                }}
+                onClick={() => setMobileTab(tab.id)}
                 className={`shrink-0 px-4 py-1.5 rounded text-sm font-medium transition-colors ${
                   mobileTab === tab.id
                     ? 'bg-control-bg-hover text-text-primary'
@@ -436,7 +404,7 @@ export default function SessionDetail() {
                 }`}
               >
                 {tab.label}
-                {tab.id === 'diff' && diffStats && diffStats.files > 0 && (
+                {tab.id === 'git' && diffStats && diffStats.files > 0 && (
                   <span className="ml-1 text-xs">
                     ({diffStats.files})
                     <span className="text-green-400 ml-1">+{diffStats.additions}</span>
@@ -452,16 +420,14 @@ export default function SessionDetail() {
             <div className={`h-full ${mobileTab === 'terminal' ? '' : 'hidden'}`}>
               {renderTerminal()}
             </div>
-            {mobileTab === 'diff' && (
-              <DiffViewer
-                key={diffKey}
+            {mobileTab === 'git' && (
+              <GitTab
                 apiHost={apiHost}
                 sessionName={name}
                 diffData={diffData}
                 onRefreshDiff={fetchDiffData}
                 onJumpToTodos={handleJumpToTodos}
                 onFocusTerminal={handleFocusTerminal}
-                initialCommit={graphSelectedCommit}
               />
             )}
             {mobileTab === 'files' && (
@@ -509,9 +475,6 @@ export default function SessionDetail() {
                 onFocusTerminal={handleFocusTerminal}
                 refreshTrigger={sharedRefreshTrigger}
               />
-            )}
-            {mobileTab === 'graph' && (
-              <GitGraph apiHost={apiHost} sessionName={name} onSelectCommit={handleGraphSelectCommit} />
             )}
           </div>
         </div>
