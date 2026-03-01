@@ -26,6 +26,12 @@ class CommitInput(BaseModel):
     message: str
 
 
+class AmendInput(BaseModel):
+    """Input for amending a git commit."""
+
+    message: str | None = None
+
+
 class CheckoutInput(BaseModel):
     """Input for checking out a git branch."""
 

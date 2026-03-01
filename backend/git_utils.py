@@ -456,6 +456,138 @@ def stage_all_and_commit(cwd: Path, message: str) -> dict:
         return {"error": f"git commit failed: {e}"}
 
 
+def amend_commit(cwd: Path, message: str | None = None) -> dict:
+    """
+    Amend the last commit, staging all current changes.
+
+    If message is provided, use it as the new commit message.
+    If message is None, keep the previous commit message (--no-edit).
+
+    Returns:
+        Dict with status, hash, and message on success, or error on failure
+    """
+    try:
+        repo = get_repo(cwd)
+    except InvalidGitRepositoryError:
+        return {"error": "Not a git repository"}
+
+    if not repo.head.is_valid():
+        return {"error": "No commits to amend"}
+
+    try:
+        repo.git.add("-A")
+        if message:
+            repo.git.commit("--amend", "-m", message)
+        else:
+            repo.git.commit("--amend", "--no-edit")
+
+        commit = repo.head.commit
+        return {
+            "status": "amended",
+            "hash": commit.hexsha[:7],
+            "message": commit.summary,
+        }
+    except GitCommandError as e:
+        return {"error": f"git commit --amend failed: {e}"}
+
+
+def git_force_push(cwd: Path) -> dict:
+    """
+    Force push with lease to the remote repository.
+
+    Returns:
+        Dict with status, remote, branch, and message on success, or error on failure
+    """
+    try:
+        repo = get_repo(cwd)
+    except InvalidGitRepositoryError:
+        return {"error": "Not a git repository"}
+
+    if repo.head.is_detached:
+        return {"error": "Cannot push: HEAD is detached"}
+
+    branch = repo.active_branch
+
+    tracking = branch.tracking_branch()
+    if tracking:
+        remote_name = tracking.remote_name
+    else:
+        try:
+            remote_name = "origin"
+            repo.remote(remote_name)
+        except ValueError:
+            return {"error": "No remote configured"}
+
+    try:
+        repo.git.push("--force-with-lease", remote_name, branch.name)
+        return {
+            "status": "force_pushed",
+            "remote": remote_name,
+            "branch": branch.name,
+            "message": f"Force pushed {branch.name} to {remote_name}",
+        }
+    except GitCommandError as e:
+        error_msg = str(e)
+        if "stale info" in error_msg or "rejected" in error_msg:
+            return {"error": "Force push rejected: remote has newer changes. Fetch first."}
+        return {"error": f"Force push failed: {e}"}
+
+
+def git_stash(cwd: Path) -> dict:
+    """
+    Stash all changes (including untracked files).
+
+    Returns:
+        Dict with status and message on success, or error on failure
+    """
+    try:
+        repo = get_repo(cwd)
+    except InvalidGitRepositoryError:
+        return {"error": "Not a git repository"}
+
+    if not repo.is_dirty(untracked_files=True):
+        return {"error": "No changes to stash"}
+
+    try:
+        repo.git.stash("push", "-u")
+        return {
+            "status": "stashed",
+            "message": "Changes stashed",
+        }
+    except GitCommandError as e:
+        return {"error": f"git stash failed: {e}"}
+
+
+def git_stash_pop(cwd: Path) -> dict:
+    """
+    Pop the most recent stash.
+
+    Returns:
+        Dict with status and message on success, or error on failure
+    """
+    try:
+        repo = get_repo(cwd)
+    except InvalidGitRepositoryError:
+        return {"error": "Not a git repository"}
+
+    try:
+        # Check if there are any stashes
+        stash_list = repo.git.stash("list")
+        if not stash_list:
+            return {"error": "No stashes to pop"}
+
+        repo.git.stash("pop")
+        return {
+            "status": "popped",
+            "message": "Stash popped",
+        }
+    except GitCommandError as e:
+        error_msg = str(e)
+        if "conflict" in error_msg.lower():
+            return {"error": "Stash pop had conflicts. Resolve them manually."}
+        return {"error": f"git stash pop failed: {e}"}
+
+
 def get_branches(cwd: Path) -> dict:
     """
     Get local and remote branches.

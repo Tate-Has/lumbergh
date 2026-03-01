@@ -27,6 +27,7 @@ from db_utils import (
 )
 from file_utils import get_file_language, list_project_files, validate_path_within_root
 from git_utils import (
+    amend_commit,
     checkout_branch,
     create_worktree,
     get_branches,
@@ -38,13 +39,17 @@ from git_utils import (
     get_graph_log,
     get_porcelain_status,
     get_remote_status,
+    git_force_push,
     git_pull_rebase,
     git_push,
+    git_stash,
+    git_stash_pop,
     remove_worktree,
     reset_to_head,
     stage_all_and_commit,
 )
 from models import (
+    AmendInput,
     CheckoutInput,
     CommitInput,
     CreateSessionRequest,
@@ -737,6 +742,79 @@ async def session_git_push(name: str):
         result = git_push(workdir)
         if "error" in result:
             raise HTTPException(status_code=400, detail=result["error"])
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{name}/git/amend")
+async def session_git_amend(name: str, body: AmendInput):
+    """Amend the last commit, optionally with a new message."""
+    workdir = get_session_workdir(name)
+
+    try:
+        result = amend_commit(workdir, body.message)
+        if "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
+        from diff_cache import diff_cache
+        diff_cache.invalidate(name)
+        _files_cache.pop(name, None)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{name}/git/force-push")
+async def session_git_force_push(name: str):
+    """Force push with lease to remote."""
+    workdir = get_session_workdir(name)
+
+    try:
+        result = git_force_push(workdir)
+        if "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{name}/git/stash")
+async def session_git_stash(name: str):
+    """Stash all changes."""
+    workdir = get_session_workdir(name)
+
+    try:
+        result = git_stash(workdir)
+        if "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
+        from diff_cache import diff_cache
+        diff_cache.invalidate(name)
+        _files_cache.pop(name, None)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{name}/git/stash-pop")
+async def session_git_stash_pop(name: str):
+    """Pop the most recent stash."""
+    workdir = get_session_workdir(name)
+
+    try:
+        result = git_stash_pop(workdir)
+        if "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
+        from diff_cache import diff_cache
+        diff_cache.invalidate(name)
+        _files_cache.pop(name, None)
         return result
     except HTTPException:
         raise

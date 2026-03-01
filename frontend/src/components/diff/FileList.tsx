@@ -1,4 +1,4 @@
-import { useState, memo } from 'react'
+import { useState, useEffect, useRef, memo } from 'react'
 import type { DiffData } from './types'
 import { getFileStats } from './utils'
 import BranchSelector from './BranchSelector'
@@ -29,10 +29,28 @@ const FileList = memo(function FileList({
   const [isPushing, setIsPushing] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
   const [isResetting, setIsResetting] = useState(false)
+  const [showMenu, setShowMenu] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const menuBtnRef = useRef<HTMLButtonElement>(null)
   const [commitResult, setCommitResult] = useState<{
     type: 'success' | 'error'
     message: string
   } | null>(null)
+
+  // Close menu on click outside
+  useEffect(() => {
+    if (!showMenu) return
+    const handleClick = (e: MouseEvent) => {
+      if (
+        menuRef.current && !menuRef.current.contains(e.target as Node) &&
+        menuBtnRef.current && !menuBtnRef.current.contains(e.target as Node)
+      ) {
+        setShowMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [showMenu])
 
   const gitBaseUrl = sessionName
     ? `http://${apiHost}/api/sessions/${sessionName}/git`
@@ -168,6 +186,50 @@ const FileList = memo(function FileList({
     }
   }
 
+  const handleMenuAction = async (action: 'amend' | 'force-push' | 'stash' | 'stash-pop') => {
+    setShowMenu(false)
+
+    if (action === 'force-push') {
+      if (!confirm('Force push with --force-with-lease? This will overwrite remote history.')) return
+    }
+
+    setCommitResult(null)
+
+    try {
+      const url = `${gitBaseUrl}/${action}`
+      const options: RequestInit = { method: 'POST' }
+
+      if (action === 'amend') {
+        options.headers = { 'Content-Type': 'application/json' }
+        options.body = JSON.stringify({
+          message: commitMessage.trim() || null,
+        })
+      }
+
+      const res = await fetch(url, options)
+      const result = await res.json()
+
+      if (!res.ok) {
+        setCommitResult({ type: 'error', message: result.detail || `${action} failed` })
+      } else {
+        const messages: Record<string, string> = {
+          amend: `Amended: ${result.hash} — ${result.message}`,
+          'force-push': result.message || 'Force pushed',
+          stash: 'Changes stashed',
+          'stash-pop': 'Stash popped',
+        }
+        setCommitResult({ type: 'success', message: messages[action] })
+        if (action === 'amend') setCommitMessage('')
+        onRefresh()
+        onGitAction?.()
+      }
+    } catch {
+      setCommitResult({ type: 'error', message: `${action} failed` })
+    } finally {
+      setTimeout(() => setCommitResult(null), 4000)
+    }
+  }
+
   return (
     <div className="h-full flex flex-col">
       {/* Breadcrumb header */}
@@ -250,14 +312,57 @@ const FileList = memo(function FileList({
               >
                 {isCommitting ? 'Committing...' : isPushing ? 'Pushing...' : 'Commit & Push'}
               </button>
-              <button
-                onClick={() => handleCommit(false)}
-                disabled={!commitMessage.trim() || isCommitting || isPushing || isGenerating || isResetting}
-                className="px-2 py-1 text-text-tertiary hover:text-text-secondary disabled:text-text-muted disabled:cursor-not-allowed text-xs transition-colors"
-                title="Commit only (Ctrl/Cmd+Enter)"
-              >
-                Commit only
-              </button>
+              <div className="relative flex gap-1">
+                <button
+                  onClick={() => handleCommit(false)}
+                  disabled={!commitMessage.trim() || isCommitting || isPushing || isGenerating || isResetting}
+                  className="flex-1 px-2 py-1 text-text-tertiary hover:text-text-secondary disabled:text-text-muted disabled:cursor-not-allowed text-xs transition-colors"
+                  title="Commit only (Ctrl/Cmd+Enter)"
+                >
+                  Commit
+                </button>
+                <button
+                  ref={menuBtnRef}
+                  onClick={() => setShowMenu((v) => !v)}
+                  disabled={isCommitting || isPushing || isResetting}
+                  className="px-1.5 py-1 text-text-tertiary hover:text-text-secondary disabled:text-text-muted disabled:cursor-not-allowed text-xs transition-colors"
+                  title="More git actions"
+                >
+                  ···
+                </button>
+                {showMenu && (
+                  <div
+                    ref={menuRef}
+                    className="absolute top-full right-0 mt-1 w-48 bg-bg-surface border border-border-default rounded shadow-lg z-50"
+                  >
+                    <button
+                      onClick={() => handleMenuAction('amend')}
+                      className="w-full text-left px-3 py-2 text-sm text-text-secondary hover:bg-control-bg-hover transition-colors"
+                    >
+                      Amend last commit
+                    </button>
+                    <button
+                      onClick={() => handleMenuAction('force-push')}
+                      className="w-full text-left px-3 py-2 text-sm text-text-secondary hover:bg-control-bg-hover transition-colors"
+                    >
+                      Force push (lease)
+                    </button>
+                    <div className="border-t border-border-default" />
+                    <button
+                      onClick={() => handleMenuAction('stash')}
+                      className="w-full text-left px-3 py-2 text-sm text-text-secondary hover:bg-control-bg-hover transition-colors"
+                    >
+                      Stash changes
+                    </button>
+                    <button
+                      onClick={() => handleMenuAction('stash-pop')}
+                      className="w-full text-left px-3 py-2 text-sm text-text-secondary hover:bg-control-bg-hover transition-colors"
+                    >
+                      Pop stash
+                    </button>
+                  </div>
+                )}
+              </div>
               {generateUrl && hasChanges && (
                 <button
                   onClick={handleGenerate}
