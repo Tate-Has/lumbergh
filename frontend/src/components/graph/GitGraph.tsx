@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import type { GraphData } from '../diff/types'
 import { computeGraphLayout, laneColor } from './graphLayout'
 
@@ -34,7 +34,7 @@ export default function GitGraph({ apiHost, sessionName, onSelectCommit, selecte
       .catch(() => {})
   }, [apiHost])
 
-  const fetchGraph = async () => {
+  const fetchGraph = useCallback(async () => {
     if (!sessionName) return
     setLoading(true)
     setError(null)
@@ -48,11 +48,15 @@ export default function GitGraph({ apiHost, sessionName, onSelectCommit, selecte
     } finally {
       setLoading(false)
     }
-  }
+  }, [apiHost, sessionName, commitLimit])
 
+  // Fetch on mount + poll every 5s (matches diff polling cadence)
+  // Also re-fetch when refreshTrigger bumps (after git actions)
   useEffect(() => {
     fetchGraph()
-  }, [apiHost, sessionName, refreshTrigger, commitLimit])
+    const interval = setInterval(fetchGraph, 5000)
+    return () => clearInterval(interval)
+  }, [fetchGraph, refreshTrigger])
 
   const nodes = useMemo(() => {
     if (!graphData) return []
@@ -221,28 +225,6 @@ export default function GitGraph({ apiHost, sessionName, onSelectCommit, selecte
           {error}
         </div>
       )}
-
-      {/* Floating refresh button */}
-      <button
-        onClick={fetchGraph}
-        disabled={loading}
-        className="absolute top-2 right-2 z-10 p-1.5 rounded bg-bg-surface/80 hover:bg-control-bg-hover text-text-tertiary hover:text-text-secondary transition-colors disabled:opacity-50 backdrop-blur-sm"
-        title="Refresh graph"
-      >
-        <svg
-          className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-          />
-        </svg>
-      </button>
 
       {/* Graph */}
       <div ref={containerRef} className="flex-1 min-h-0 overflow-auto">

@@ -26,6 +26,7 @@ const FileList = memo(function FileList({
 }: Props) {
   const [commitMessage, setCommitMessage] = useState('')
   const [isCommitting, setIsCommitting] = useState(false)
+  const [isPushing, setIsPushing] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
   const [isResetting, setIsResetting] = useState(false)
   const [commitResult, setCommitResult] = useState<{
@@ -33,20 +34,18 @@ const FileList = memo(function FileList({
     message: string
   } | null>(null)
 
-  // Build commit URL based on whether we have a session
-  const commitUrl = sessionName
-    ? `http://${apiHost}/api/sessions/${sessionName}/git/commit`
-    : `http://${apiHost}/api/git/commit`
+  const gitBaseUrl = sessionName
+    ? `http://${apiHost}/api/sessions/${sessionName}/git`
+    : `http://${apiHost}/api/git`
+
+  const commitUrl = `${gitBaseUrl}/commit`
+  const pushUrl = `${gitBaseUrl}/push`
+  const resetUrl = `${gitBaseUrl}/reset`
 
   // Build AI generate URL (only works with sessions)
   const generateUrl = sessionName
     ? `http://${apiHost}/api/sessions/${sessionName}/ai/generate-commit-message`
     : null
-
-  // Build reset URL
-  const resetUrl = sessionName
-    ? `http://${apiHost}/api/sessions/${sessionName}/git/reset`
-    : `http://${apiHost}/api/git/reset`
 
   const isWorkingChanges = !commit
   const hasChanges = data.files.length > 0
@@ -81,7 +80,7 @@ const FileList = memo(function FileList({
     }
   }
 
-  const handleCommit = async () => {
+  const handleCommit = async (andPush = false) => {
     if (!commitMessage.trim()) return
     setIsCommitting(true)
     setCommitResult(null)
@@ -94,28 +93,55 @@ const FileList = memo(function FileList({
       const result = await res.json()
       if (!res.ok) {
         setCommitResult({ type: 'error', message: result.detail || 'Commit failed' })
-      } else if (result.status === 'nothing_to_commit') {
+        return
+      }
+      if (result.status === 'nothing_to_commit') {
         setCommitResult({ type: 'error', message: 'Nothing to commit' })
+        return
+      }
+
+      setCommitMessage('')
+      onRefresh()
+      onGitAction?.()
+
+      if (andPush) {
+        setIsPushing(true)
+        setCommitResult({ type: 'success', message: `Committed: ${result.hash} — pushing...` })
+        try {
+          const pushRes = await fetch(pushUrl, { method: 'POST' })
+          if (pushRes.ok) {
+            setCommitResult({ type: 'success', message: `Committed & pushed: ${result.hash}` })
+            onGitAction?.()
+          } else {
+            const pushData = await pushRes.json()
+            setCommitResult({ type: 'error', message: `Committed but push failed: ${pushData.detail || 'Unknown error'}` })
+          }
+        } catch {
+          setCommitResult({ type: 'error', message: `Committed but push failed: network error` })
+        } finally {
+          setIsPushing(false)
+        }
       } else {
         setCommitResult({ type: 'success', message: `Committed: ${result.hash}` })
-        setCommitMessage('')
-        onRefresh()
-        onGitAction?.()
       }
     } catch {
       setCommitResult({ type: 'error', message: 'Failed to commit' })
     } finally {
       setIsCommitting(false)
-      // Clear result message after 3 seconds
-      setTimeout(() => setCommitResult(null), 3000)
+      setTimeout(() => setCommitResult(null), 4000)
     }
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    // Cmd/Ctrl+Enter to commit
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && commitMessage.trim()) {
+    if (!commitMessage.trim()) return
+    // Cmd/Ctrl+Shift+Enter = commit & push
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && e.shiftKey) {
       e.preventDefault()
-      handleCommit()
+      handleCommit(true)
+    // Cmd/Ctrl+Enter = commit only
+    } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault()
+      handleCommit(false)
     }
   }
 
@@ -174,7 +200,7 @@ const FileList = memo(function FileList({
           )}
           {isWorkingChanges && sessionName && (
             <BranchSelector
-              gitBaseUrl={`http://${apiHost}/api/sessions/${sessionName}/git`}
+              gitBaseUrl={gitBaseUrl}
               onBranchChange={onRefresh}
             />
           )}
@@ -215,19 +241,27 @@ const FileList = memo(function FileList({
               className="flex-1 px-3 py-2 bg-control-bg text-text-primary text-sm rounded border border-border-subtle focus:outline-none focus:border-blue-500 resize-none"
               disabled={isCommitting || isGenerating}
             />
-            <div className="flex flex-col gap-2 shrink-0">
+            <div className="flex flex-col gap-1.5 shrink-0">
               <button
-                onClick={handleCommit}
-                disabled={!commitMessage.trim() || isCommitting || isGenerating || isResetting}
+                onClick={() => handleCommit(true)}
+                disabled={!commitMessage.trim() || isCommitting || isPushing || isGenerating || isResetting}
                 className="px-3 py-2 bg-green-600 hover:bg-green-500 disabled:bg-control-bg-hover disabled:cursor-not-allowed text-text-primary text-sm rounded transition-colors"
-                title="Commit changes (Ctrl/Cmd+Enter)"
+                title="Commit & push (Ctrl/Cmd+Shift+Enter)"
               >
-                {isCommitting ? '...' : 'Commit'}
+                {isCommitting ? 'Committing...' : isPushing ? 'Pushing...' : 'Commit & Push'}
+              </button>
+              <button
+                onClick={() => handleCommit(false)}
+                disabled={!commitMessage.trim() || isCommitting || isPushing || isGenerating || isResetting}
+                className="px-2 py-1 text-text-tertiary hover:text-text-secondary disabled:text-text-muted disabled:cursor-not-allowed text-xs transition-colors"
+                title="Commit only (Ctrl/Cmd+Enter)"
+              >
+                Commit only
               </button>
               {generateUrl && hasChanges && (
                 <button
                   onClick={handleGenerate}
-                  disabled={isGenerating || isCommitting || isResetting}
+                  disabled={isGenerating || isCommitting || isPushing || isResetting}
                   className="px-3 py-2 bg-purple-600 hover:bg-purple-500 disabled:bg-control-bg-hover disabled:cursor-not-allowed text-text-primary text-sm rounded transition-colors"
                   title="Generate commit message with AI"
                 >
