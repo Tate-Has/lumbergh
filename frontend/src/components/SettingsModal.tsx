@@ -132,7 +132,7 @@ const PROVIDERS: ProviderDef[] = [
 export default function SettingsModal({ apiHost, onClose }: Props) {
   const [activeTab, setActiveTab] = useState<TabId>('general')
   const [repoSearchDir, setRepoSearchDir] = useState('')
-  const [gitGraphCommits, setGitGraphCommits] = useState(100)
+  const [gitGraphCommits, setGitGraphCommits] = useState('100')
   const [aiProvider, setAiProvider] = useState('ollama')
   const [providerConfigs, setProviderConfigs] = useState<Record<string, AIProviderConfig>>(() => {
     const initial: Record<string, AIProviderConfig> = {}
@@ -158,7 +158,7 @@ export default function SettingsModal({ apiHost, onClose }: Props) {
         if (!res.ok) throw new Error('Failed to fetch settings')
         const data: Settings = await res.json()
         setRepoSearchDir(data.repoSearchDir || '')
-        if (data.gitGraphCommits) setGitGraphCommits(data.gitGraphCommits)
+        if (data.gitGraphCommits) setGitGraphCommits(String(data.gitGraphCommits))
 
         if (data.ai) {
           setAiProvider(data.ai.provider || 'ollama')
@@ -221,7 +221,8 @@ export default function SettingsModal({ apiHost, onClose }: Props) {
       if (repoSearchDir.trim()) {
         payload.repoSearchDir = repoSearchDir.trim()
       }
-      payload.gitGraphCommits = gitGraphCommits
+      const parsedCommits = parseInt(gitGraphCommits) || 100
+      payload.gitGraphCommits = Math.min(1000, Math.max(10, parsedCommits))
       payload.ai = {
         provider: aiProvider,
         providers: providerConfigs,
@@ -380,7 +381,7 @@ export default function SettingsModal({ apiHost, onClose }: Props) {
                     max={1000}
                     step={10}
                     value={gitGraphCommits}
-                    onChange={(e) => setGitGraphCommits(parseInt(e.target.value) || 100)}
+                    onChange={(e) => setGitGraphCommits(e.target.value)}
                     className="w-32 px-3 py-2 bg-input-bg text-text-primary rounded border border-input-border focus:outline-none focus:border-blue-500 font-mono text-sm"
                   />
                   <p className="text-xs text-text-muted mt-1">
