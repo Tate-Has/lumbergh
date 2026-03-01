@@ -38,6 +38,8 @@ const DiffViewer = memo(function DiffViewer({
   selectedCommit: controlledCommit,
   onGitAction,
 }: Props) {
+  const [expanded, setExpanded] = useState(false)
+  const expandedScrollRef = useRef<HTMLDivElement>(null)
   // Build base URL for git endpoints
   const gitBaseUrl = sessionName
     ? `http://${apiHost}/api/sessions/${sessionName}/git`
@@ -272,6 +274,54 @@ const DiffViewer = memo(function DiffViewer({
     }
   }
 
+  // Escape key to close expanded modal + body scroll lock
+  useEffect(() => {
+    if (!expanded) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setExpanded(false)
+        return
+      }
+      if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && expandedScrollRef.current) {
+        if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+        e.preventDefault()
+        // Find the deepest scrollable element (child components have their own overflow-auto)
+        const el = expandedScrollRef.current
+        const scrollable = el.querySelector('.overflow-auto') as HTMLElement | null
+        const target = scrollable && scrollable.scrollHeight > scrollable.clientHeight ? scrollable : el
+        target.scrollBy({ top: e.key === 'ArrowDown' ? 160 : -160, behavior: 'smooth' })
+      }
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => {
+      document.body.style.overflow = prev
+      window.removeEventListener('keydown', handleKey)
+    }
+  }, [expanded])
+
+  // Arrow key file navigation (only when expanded + file view)
+  useEffect(() => {
+    if (!expanded || view.level !== 'file') return
+    const data = view.commit ? commitData : workingData
+    if (!data || data.files.length === 0) return
+
+    const handleArrow = (e: KeyboardEvent) => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+      // Don't capture if user is in an input/textarea
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      e.preventDefault()
+      const idx = data.files.findIndex((f) => f.path === view.file)
+      if (idx === -1) return
+      const len = data.files.length
+      const nextIdx = e.key === 'ArrowRight' ? (idx + 1) % len : (idx - 1 + len) % len
+      setView({ level: 'file', commit: view.commit, file: data.files[nextIdx].path })
+    }
+    window.addEventListener('keydown', handleArrow)
+    return () => window.removeEventListener('keydown', handleArrow)
+  }, [expanded, view, commitData, workingData])
+
   // Get current data based on view
   const getCurrentData = (): DiffData | null => {
     if (view.commit) return commitData
@@ -308,224 +358,301 @@ const DiffViewer = memo(function DiffViewer({
     [apiHost, sessionName, onFocusTerminal]
   )
 
-  // Loading state
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full text-text-muted">Loading diff...</div>
-    )
+  // Helper: file navigation for expanded mode
+  const getFileNav = () => {
+    if (view.level !== 'file') return null
+    const data = getCurrentData()
+    if (!data || data.files.length <= 1) return null
+    const idx = data.files.findIndex((f) => f.path === view.file)
+    if (idx === -1) return null
+    const len = data.files.length
+    return {
+      index: idx,
+      total: len,
+      goPrev: () => {
+        const prevIdx = (idx - 1 + len) % len
+        setView({ level: 'file', commit: view.commit, file: data.files[prevIdx].path })
+      },
+      goNext: () => {
+        const nextIdx = (idx + 1) % len
+        setView({ level: 'file', commit: view.commit, file: data.files[nextIdx].path })
+      },
+    }
   }
 
-  // Error state
-  if (error) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full gap-4">
-        <span className="text-red-400">Error: {error}</span>
-        <button
-          onClick={handleRefresh}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-white"
-        >
-          Retry
-        </button>
-      </div>
-    )
-  }
+  const handleExpand = expanded ? undefined : () => setExpanded(true)
 
-  const data = getCurrentData()
-
-  // No data / empty state (only for working changes)
-  // At this point view.level is 'changes' or 'file' (we returned early for 'history')
-  const isWorkingChanges = view.level === 'changes' && !view.commit
-  if (!data || data.files.length === 0) {
-    if (isWorkingChanges) {
+  // Build content based on current state
+  const renderContent = () => {
+    // Loading state
+    if (loading) {
       return (
-        <div className="h-full flex flex-col">
-          {/* Header */}
-          <div className="flex items-center justify-between p-3 bg-bg-surface border-b border-border-default">
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-text-secondary">Working Changes</span>
-              {sessionName && (
-                <BranchSelector gitBaseUrl={gitBaseUrl} onBranchChange={handleRefresh} />
-              )}
-            </div>
-            <button
-              onClick={handleRefresh}
-              className="px-2 py-1 bg-control-bg hover:bg-control-bg-hover rounded text-sm"
-            >
-              ↻
-            </button>
-          </div>
-          <div className="flex flex-col items-center justify-center flex-1 gap-6 p-6">
-            {remoteStatus && remoteStatus.ahead > 0 && remoteStatus.behind > 0 ? (
-              // Diverged state - need to pull before push
-              <>
-                <div className="text-center">
-                  <div className="text-lg text-yellow-400 mb-1">Branches have diverged</div>
-                  <div className="text-text-muted">
-                    {remoteStatus.ahead} unpushed commit{remoteStatus.ahead > 1 ? 's' : ''},{' '}
-                    {remoteStatus.behind} commit{remoteStatus.behind > 1 ? 's' : ''} behind{' '}
-                    <span className="font-mono">{remoteStatus.remote || 'origin'}</span>
-                  </div>
-                </div>
-                <div className="flex flex-col gap-3">
-                  <button
-                    onClick={handlePullAndPush}
-                    disabled={isPulling || isPushing}
-                    className="px-6 py-3 bg-yellow-600 hover:bg-yellow-500 disabled:bg-control-bg-hover disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center justify-center gap-2"
-                  >
-                    {isPulling ? (
-                      <>Pulling...</>
-                    ) : isPushing ? (
-                      <>Pushing...</>
-                    ) : (
-                      <>
-                        <span>↓↑</span>
-                        <span>Pull (rebase) & Push</span>
-                      </>
-                    )}
-                  </button>
-                  {onJumpToTodos && (
-                    <button
-                      onClick={onJumpToTodos}
-                      className="px-4 py-2 text-text-tertiary hover:text-text-secondary text-sm transition-colors"
-                    >
-                      Something else to work on? Jump to Todos →
-                    </button>
-                  )}
-                </div>
-              </>
-            ) : remoteStatus && remoteStatus.ahead > 0 ? (
-              <>
-                <div className="text-center">
-                  <div className="text-lg text-text-secondary mb-1">No local changes</div>
-                  <div className="text-text-muted">
-                    You have {remoteStatus.ahead} unpushed commit{remoteStatus.ahead > 1 ? 's' : ''} on{' '}
-                    <span className="text-blue-400 font-mono">{remoteStatus.branch}</span>
-                  </div>
-                </div>
-                <div className="flex flex-col gap-3">
-                  <button
-                    onClick={handlePush}
-                    disabled={isPushing}
-                    className="px-6 py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-control-bg-hover disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center justify-center gap-2"
-                  >
-                    {isPushing ? (
-                      <>Pushing...</>
-                    ) : (
-                      <>
-                        <span>↑</span>
-                        <span>Push to {remoteStatus.remote || 'origin'}</span>
-                      </>
-                    )}
-                  </button>
-                  {onJumpToTodos && (
-                    <button
-                      onClick={onJumpToTodos}
-                      className="px-4 py-2 text-text-tertiary hover:text-text-secondary text-sm transition-colors"
-                    >
-                      Something else to work on? Jump to Todos →
-                    </button>
-                  )}
-                </div>
-              </>
-            ) : remoteStatus && remoteStatus.behind > 0 ? (
-              <>
-                <div className="text-center">
-                  <div className="text-lg text-text-secondary mb-1">No local changes</div>
-                  <div className="text-yellow-500">
-                    {remoteStatus.behind} commit{remoteStatus.behind > 1 ? 's' : ''} behind{' '}
-                    <span className="font-mono">{remoteStatus.remote || 'origin'}</span>
-                  </div>
-                </div>
-                <div className="flex flex-col gap-3">
-                  <button
-                    onClick={handlePull}
-                    disabled={isPulling}
-                    className="px-6 py-3 bg-yellow-600 hover:bg-yellow-500 disabled:bg-control-bg-hover disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center justify-center gap-2"
-                  >
-                    {isPulling ? (
-                      <>Pulling...</>
-                    ) : (
-                      <>
-                        <span>↓</span>
-                        <span>Pull from {remoteStatus.remote || 'origin'}</span>
-                      </>
-                    )}
-                  </button>
-                  {onJumpToTodos && (
-                    <button
-                      onClick={onJumpToTodos}
-                      className="px-4 py-2 text-text-tertiary hover:text-text-secondary text-sm transition-colors"
-                    >
-                      Something else to work on? Jump to Todos →
-                    </button>
-                  )}
-                </div>
-              </>
-            ) : remoteStatus ? (
-              <>
-                <div className="text-center">
-                  <div className="text-lg text-text-secondary mb-1">All caught up</div>
-                  <div className="text-text-muted">
-                    No local changes, in sync with{' '}
-                    <span className="font-mono">{remoteStatus.remote || 'origin'}</span>
-                  </div>
-                </div>
-                {onJumpToTodos && (
-                  <button
-                    onClick={onJumpToTodos}
-                    className="px-4 py-2 text-text-tertiary hover:text-text-secondary text-sm transition-colors"
-                  >
-                    Something else to work on? Jump to Todos →
-                  </button>
-                )}
-              </>
-            ) : (
-              <div className="text-text-muted">No changes detected</div>
-            )}
-          </div>
+        <div className="flex items-center justify-center h-full text-text-muted">Loading diff...</div>
+      )
+    }
+
+    // Error state
+    if (error) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full gap-4">
+          <span className="text-red-400">Error: {error}</span>
+          <button
+            onClick={handleRefresh}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-white"
+          >
+            Retry
+          </button>
         </div>
       )
     }
-    // Commit with no files - shouldn't happen but handle gracefully
+
+    const data = getCurrentData()
+
+    // No data / empty state (only for working changes)
+    const isWorkingChanges = view.level === 'changes' && !view.commit
+    if (!data || data.files.length === 0) {
+      if (isWorkingChanges) {
+        return (
+          <div className="h-full flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between p-3 bg-bg-surface border-b border-border-default">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-text-secondary">Working Changes</span>
+                {sessionName && (
+                  <BranchSelector gitBaseUrl={gitBaseUrl} onBranchChange={handleRefresh} />
+                )}
+              </div>
+              <button
+                onClick={handleRefresh}
+                className="px-2 py-1 bg-control-bg hover:bg-control-bg-hover rounded text-sm"
+              >
+                ↻
+              </button>
+            </div>
+            <div className="flex flex-col items-center justify-center flex-1 gap-6 p-6">
+              {remoteStatus && remoteStatus.ahead > 0 && remoteStatus.behind > 0 ? (
+                // Diverged state - need to pull before push
+                <>
+                  <div className="text-center">
+                    <div className="text-lg text-yellow-400 mb-1">Branches have diverged</div>
+                    <div className="text-text-muted">
+                      {remoteStatus.ahead} unpushed commit{remoteStatus.ahead > 1 ? 's' : ''},{' '}
+                      {remoteStatus.behind} commit{remoteStatus.behind > 1 ? 's' : ''} behind{' '}
+                      <span className="font-mono">{remoteStatus.remote || 'origin'}</span>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-3">
+                    <button
+                      onClick={handlePullAndPush}
+                      disabled={isPulling || isPushing}
+                      className="px-6 py-3 bg-yellow-600 hover:bg-yellow-500 disabled:bg-control-bg-hover disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center justify-center gap-2"
+                    >
+                      {isPulling ? (
+                        <>Pulling...</>
+                      ) : isPushing ? (
+                        <>Pushing...</>
+                      ) : (
+                        <>
+                          <span>↓↑</span>
+                          <span>Pull (rebase) & Push</span>
+                        </>
+                      )}
+                    </button>
+                    {onJumpToTodos && (
+                      <button
+                        onClick={onJumpToTodos}
+                        className="px-4 py-2 text-text-tertiary hover:text-text-secondary text-sm transition-colors"
+                      >
+                        Something else to work on? Jump to Todos →
+                      </button>
+                    )}
+                  </div>
+                </>
+              ) : remoteStatus && remoteStatus.ahead > 0 ? (
+                <>
+                  <div className="text-center">
+                    <div className="text-lg text-text-secondary mb-1">No local changes</div>
+                    <div className="text-text-muted">
+                      You have {remoteStatus.ahead} unpushed commit{remoteStatus.ahead > 1 ? 's' : ''} on{' '}
+                      <span className="text-blue-400 font-mono">{remoteStatus.branch}</span>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-3">
+                    <button
+                      onClick={handlePush}
+                      disabled={isPushing}
+                      className="px-6 py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-control-bg-hover disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center justify-center gap-2"
+                    >
+                      {isPushing ? (
+                        <>Pushing...</>
+                      ) : (
+                        <>
+                          <span>↑</span>
+                          <span>Push to {remoteStatus.remote || 'origin'}</span>
+                        </>
+                      )}
+                    </button>
+                    {onJumpToTodos && (
+                      <button
+                        onClick={onJumpToTodos}
+                        className="px-4 py-2 text-text-tertiary hover:text-text-secondary text-sm transition-colors"
+                      >
+                        Something else to work on? Jump to Todos →
+                      </button>
+                    )}
+                  </div>
+                </>
+              ) : remoteStatus && remoteStatus.behind > 0 ? (
+                <>
+                  <div className="text-center">
+                    <div className="text-lg text-text-secondary mb-1">No local changes</div>
+                    <div className="text-yellow-500">
+                      {remoteStatus.behind} commit{remoteStatus.behind > 1 ? 's' : ''} behind{' '}
+                      <span className="font-mono">{remoteStatus.remote || 'origin'}</span>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-3">
+                    <button
+                      onClick={handlePull}
+                      disabled={isPulling}
+                      className="px-6 py-3 bg-yellow-600 hover:bg-yellow-500 disabled:bg-control-bg-hover disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center justify-center gap-2"
+                    >
+                      {isPulling ? (
+                        <>Pulling...</>
+                      ) : (
+                        <>
+                          <span>↓</span>
+                          <span>Pull from {remoteStatus.remote || 'origin'}</span>
+                        </>
+                      )}
+                    </button>
+                    {onJumpToTodos && (
+                      <button
+                        onClick={onJumpToTodos}
+                        className="px-4 py-2 text-text-tertiary hover:text-text-secondary text-sm transition-colors"
+                      >
+                        Something else to work on? Jump to Todos →
+                      </button>
+                    )}
+                  </div>
+                </>
+              ) : remoteStatus ? (
+                <>
+                  <div className="text-center">
+                    <div className="text-lg text-text-secondary mb-1">All caught up</div>
+                    <div className="text-text-muted">
+                      No local changes, in sync with{' '}
+                      <span className="font-mono">{remoteStatus.remote || 'origin'}</span>
+                    </div>
+                  </div>
+                  {onJumpToTodos && (
+                    <button
+                      onClick={onJumpToTodos}
+                      className="px-4 py-2 text-text-tertiary hover:text-text-secondary text-sm transition-colors"
+                    >
+                      Something else to work on? Jump to Todos →
+                    </button>
+                  )}
+                </>
+              ) : (
+                <div className="text-text-muted">No changes detected</div>
+              )}
+            </div>
+          </div>
+        )
+      }
+      // Commit with no files - shouldn't happen but handle gracefully
+      return (
+        <div className="flex items-center justify-center h-full text-text-muted">
+          No files in this commit
+        </div>
+      )
+    }
+
+    // Single file diff view
+    if (view.level === 'file') {
+      const file = data.files.find((f) => f.path === view.file)
+      if (file) {
+        return (
+          <FileDiff
+            file={file}
+            onBack={handleBackToChanges}
+            apiHost={apiHost}
+            sessionName={sessionName}
+            onFocusTerminal={onFocusTerminal}
+            onCloseExpanded={expanded ? () => setExpanded(false) : undefined}
+            onExpand={handleExpand}
+          />
+        )
+      }
+      // File not found, go back to changes
+      handleBackToChanges()
+      return null
+    }
+
+    // File list view (changes level)
     return (
-      <div className="flex items-center justify-center h-full text-text-muted">
-        No files in this commit
+      <FileList
+        data={data}
+        apiHost={apiHost}
+        sessionName={sessionName}
+        onSelectFile={handleSelectFile}
+        onRefresh={handleRefresh}
+        commit={getCurrentCommitInfo()}
+        onSendToTerminal={sessionName ? handleSendToTerminal : undefined}
+        onGitAction={onGitAction}
+      onExpand={handleExpand}
+      />
+    )
+  }
+
+  // Expanded fullscreen modal
+  if (expanded) {
+    const fileNav = getFileNav()
+    return (
+      <div className="fixed inset-0 bg-black/95 flex flex-col z-50">
+        {/* Header bar */}
+        <div className="flex items-center justify-between px-3 py-2 bg-bg-sunken border-b border-border-default">
+          <span className="text-sm text-text-secondary">Diff Viewer</span>
+          {fileNav && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={fileNav.goPrev}
+                className="px-2 py-1 bg-control-bg hover:bg-control-bg-hover rounded text-sm"
+                title="Previous file (←)"
+              >
+                ←
+              </button>
+              <span className="text-xs text-text-muted tabular-nums">
+                {fileNav.index + 1} / {fileNav.total}
+              </span>
+              <button
+                onClick={fileNav.goNext}
+                className="px-2 py-1 bg-control-bg hover:bg-control-bg-hover rounded text-sm"
+                title="Next file (→)"
+              >
+                →
+              </button>
+            </div>
+          )}
+          <button
+            onClick={() => setExpanded(false)}
+            className="px-2 py-1 bg-control-bg hover:bg-control-bg-hover rounded text-sm"
+            title="Close (Escape)"
+          >
+            ✕ Close
+          </button>
+        </div>
+        {/* Content */}
+        <div className="flex-1 min-h-0 overflow-auto" ref={expandedScrollRef}>
+          {renderContent()}
+        </div>
       </div>
     )
   }
 
-  // Single file diff view
-  if (view.level === 'file') {
-    const file = data.files.find((f) => f.path === view.file)
-    if (file) {
-      return (
-        <FileDiff
-          file={file}
-          onBack={handleBackToChanges}
-          apiHost={apiHost}
-          sessionName={sessionName}
-          onFocusTerminal={onFocusTerminal}
-        />
-      )
-    }
-    // File not found, go back to changes
-    handleBackToChanges()
-    return null
-  }
-
-  // File list view (changes level)
-  return (
-    <FileList
-      data={data}
-      apiHost={apiHost}
-      sessionName={sessionName}
-      onSelectFile={handleSelectFile}
-      onRefresh={handleRefresh}
-      commit={getCurrentCommitInfo()}
-      onSendToTerminal={sessionName ? handleSendToTerminal : undefined}
-      onGitAction={onGitAction}
-    />
-  )
+  // Inline (non-expanded) mode
+  return renderContent()
 })
 
 export default DiffViewer

@@ -12,6 +12,7 @@ interface Props {
   commit?: { hash: string; shortHash: string; message: string } | null
   onSendToTerminal?: (text: string, sendEnter: boolean) => void
   onGitAction?: () => void
+  onExpand?: () => void
 }
 
 const FileList = memo(function FileList({
@@ -23,6 +24,7 @@ const FileList = memo(function FileList({
   commit,
   onSendToTerminal,
   onGitAction,
+  onExpand,
 }: Props) {
   const [commitMessage, setCommitMessage] = useState('')
   const [isCommitting, setIsCommitting] = useState(false)
@@ -285,6 +287,15 @@ const FileList = memo(function FileList({
               title="Revert all changes"
             >
               {isResetting ? '...' : '⟲'}
+            </button>
+          )}
+          {onExpand && (
+            <button
+              onClick={onExpand}
+              className="px-1.5 py-0.5 text-sm bg-control-bg hover:bg-control-bg-hover rounded"
+              title="Expand diff viewer"
+            >
+              &#x26F6;
             </button>
           )}
         </div>

@@ -11,6 +11,8 @@ interface Props {
   apiHost?: string
   sessionName?: string
   onFocusTerminal?: () => void
+  onCloseExpanded?: () => void
+  onExpand?: () => void
 }
 
 const FONT_SIZE_KEY = 'diff-font-size'
@@ -25,6 +27,8 @@ const FileDiff = memo(function FileDiff({
   apiHost,
   sessionName,
   onFocusTerminal,
+  onCloseExpanded,
+  onExpand,
 }: Props) {
   const { theme } = useTheme()
   const [showMarkdownPreview, setShowMarkdownPreview] = useState(false)
@@ -117,6 +121,7 @@ const FileDiff = memo(function FileDiff({
         console.error('Failed to send to terminal:', await response.text())
       }
       onFocusTerminal?.()
+      onCloseExpanded?.()
     } catch (err) {
       console.error('Failed to send to terminal:', err)
     }
@@ -163,6 +168,15 @@ const FileDiff = memo(function FileDiff({
             A+
           </button>
         </div>
+        {onExpand && (
+          <button
+            onClick={onExpand}
+            className="px-1.5 py-0.5 text-xs bg-control-bg hover:bg-control-bg-hover rounded"
+            title="Expand diff viewer"
+          >
+            &#x26F6;
+          </button>
+        )}
       </div>
 
       {/* Diff viewer */}
