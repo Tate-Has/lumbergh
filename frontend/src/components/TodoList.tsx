@@ -333,7 +333,8 @@ export default function TodoList({ apiHost, sessionName, onFocusTerminal, onTodo
                           onBlur={handleSaveEdit}
                           onKeyDown={handleEditKeyDown}
                           autoFocus
-                          className="flex-1 px-2 py-1 bg-input-bg text-text-primary rounded border border-blue-500 focus:outline-none"
+                          containerClassName="flex-1 min-w-0"
+                          className="w-full px-2 py-1 bg-input-bg text-text-primary text-base rounded border border-blue-500 focus:outline-none"
                         />
                       ) : (
                         <span

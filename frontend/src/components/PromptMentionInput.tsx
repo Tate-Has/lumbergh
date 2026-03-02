@@ -9,6 +9,7 @@ interface PromptMentionInputProps {
   prompts: PromptTemplate[]
   placeholder?: string
   className?: string
+  containerClassName?: string
   multiline?: boolean
   rows?: number
   autoFocus?: boolean
@@ -22,6 +23,7 @@ export default function PromptMentionInput({
   prompts,
   placeholder,
   className = '',
+  containerClassName = '',
   multiline = false,
   rows = 3,
   autoFocus = false,
@@ -213,7 +215,7 @@ export default function PromptMentionInput({
   }
 
   return (
-    <div ref={containerRef} className="relative">
+    <div ref={containerRef} className={`relative ${containerClassName}`}>
       {multiline ? (
         <textarea {...commonProps} rows={rows} />
       ) : (
