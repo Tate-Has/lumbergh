@@ -161,8 +161,17 @@ export default function GitGraph({ apiHost, sessionName, onSelectCommit, selecte
   }, [graphData])
 
   const hasWip = graphData?.workingChanges != null
-  // When WIP row exists, all commit rows shift down by 1
-  const rowOffset = hasWip ? 1 : 0
+  // Find which row HEAD is on so we can insert WIP right above it
+  const headRow = useMemo(() => {
+    const idx = nodes.findIndex((n) => n.isHead)
+    return idx >= 0 ? idx : 0
+  }, [nodes])
+  // Helper: map a commit row index to its pixel position, accounting for WIP insertion
+  const rowToY = useCallback((row: number) => {
+    if (!hasWip) return row * ROW_HEIGHT
+    // Rows before HEAD are unshifted; HEAD and after shift down by 1 to make room for WIP
+    return row < headRow ? row * ROW_HEIGHT : (row + 1) * ROW_HEIGHT
+  }, [hasWip, headRow])
 
   const maxLane = useMemo(() => {
     let max = 0
@@ -177,7 +186,7 @@ export default function GitGraph({ apiHost, sessionName, onSelectCommit, selecte
   }, [nodes])
 
   const svgWidth = SVG_PADDING_LEFT + (maxLane + 1) * LANE_WIDTH + 8
-  const totalRows = nodes.length + rowOffset
+  const totalRows = nodes.length + (hasWip ? 1 : 0)
 
   // Find the lane HEAD lives on (for highlighting the current branch lane)
   const headLane = useMemo(() => {
@@ -188,8 +197,8 @@ export default function GitGraph({ apiHost, sessionName, onSelectCommit, selecte
   const renderWipSvg = () => {
     if (!hasWip) return null
     const cx = SVG_PADDING_LEFT + headLane * LANE_WIDTH + LANE_WIDTH / 2
-    const wipY = ROW_HEIGHT / 2
-    const headY = (0 + rowOffset) * ROW_HEIGHT + ROW_HEIGHT / 2
+    const wipY = headRow * ROW_HEIGHT + ROW_HEIGHT / 2 // WIP sits at headRow position
+    const headY = (headRow + 1) * ROW_HEIGHT + ROW_HEIGHT / 2 // HEAD shifts down by 1
 
     return (
       <g>
@@ -230,9 +239,9 @@ export default function GitGraph({ apiHost, sessionName, onSelectCommit, selecte
       for (let ei = 0; ei < node.edges.length; ei++) {
         const e = node.edges[ei]
         const x1 = SVG_PADDING_LEFT + e.fromLane * LANE_WIDTH + LANE_WIDTH / 2
-        const y1 = (e.fromRow + rowOffset) * ROW_HEIGHT + ROW_HEIGHT / 2
+        const y1 = rowToY(e.fromRow) + ROW_HEIGHT / 2
         const x2 = SVG_PADDING_LEFT + e.toLane * LANE_WIDTH + LANE_WIDTH / 2
-        const y2 = (e.toRow + rowOffset) * ROW_HEIGHT + ROW_HEIGHT / 2
+        const y2 = rowToY(e.toRow) + ROW_HEIGHT / 2
         const color = laneColor(e.fromLane)
         const key = `${node.commit.shortHash}-${ei}`
         const isCurrentBranchEdge = node.onCurrentBranch && e.fromLane === headLane && e.toLane === headLane
@@ -273,7 +282,7 @@ export default function GitGraph({ apiHost, sessionName, onSelectCommit, selecte
   const renderNodes = () => {
     return nodes.map((node, row) => {
       const cx = SVG_PADDING_LEFT + node.lane * LANE_WIDTH + LANE_WIDTH / 2
-      const cy = (row + rowOffset) * ROW_HEIGHT + ROW_HEIGHT / 2
+      const cy = rowToY(row) + ROW_HEIGHT / 2
       const color = laneColor(node.lane)
 
       if (node.isHead) {
@@ -353,7 +362,7 @@ export default function GitGraph({ apiHost, sessionName, onSelectCommit, selecte
                     : 'bg-orange-500/[0.1] hover:bg-orange-500/[0.16]'
                 }`}
                 style={{
-                  top: 0,
+                  top: headRow * ROW_HEIGHT,
                   height: ROW_HEIGHT,
                   paddingLeft: svgWidth + 4,
                 }}
@@ -384,7 +393,7 @@ export default function GitGraph({ apiHost, sessionName, onSelectCommit, selecte
                         : 'hover:bg-bg-surface/50 opacity-60'
                 }`}
                 style={{
-                  top: (row + rowOffset) * ROW_HEIGHT,
+                  top: rowToY(row),
                   height: ROW_HEIGHT,
                   paddingLeft: svgWidth + 4,
                 }}
@@ -457,7 +466,7 @@ export default function GitGraph({ apiHost, sessionName, onSelectCommit, selecte
             {menuCommit && (() => {
               const menuRow = nodes.findIndex((n) => n.commit.hash === menuCommit.hash)
               if (menuRow === -1) return null
-              const topPx = (menuRow + rowOffset) * ROW_HEIGHT + ROW_HEIGHT
+              const topPx = rowToY(menuRow) + ROW_HEIGHT
               return (
                 <div
                   ref={menuRef}
