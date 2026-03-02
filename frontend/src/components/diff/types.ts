@@ -54,6 +54,8 @@ export interface GraphCommit {
   shortHash: string
   message: string
   author: string
+  authorEmail?: string
+  authorGravatar?: string
   relativeDate: string
   parents: string[]
   refs: { name: string; local: boolean; remote: boolean; tag?: boolean }[]

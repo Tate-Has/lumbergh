@@ -3,11 +3,25 @@ import type { GraphData } from '../diff/types'
 import { computeGraphLayout, laneColor } from './graphLayout'
 
 const ROW_HEIGHT = 36
-const LANE_WIDTH = 16
-const NODE_RADIUS = 4
-const HEAD_RADIUS = 6
-const SVG_PADDING_LEFT = 8
+const LANE_WIDTH = 24
+const NODE_RADIUS = 10
+const HEAD_RADIUS = 10
+const SVG_PADDING_LEFT = 12
 const WIP_COLOR = '#ffb74d' // orange for WIP
+
+function getInitials(author: string, email?: string): string {
+  if (author) {
+    const parts = author.trim().split(/\s+/)
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase()
+    if (parts[0].length >= 2) return parts[0].slice(0, 2).toUpperCase()
+  }
+  if (email) {
+    const local = email.split('@')[0]
+    if (local && local.length >= 2) return local.slice(0, 2).toUpperCase()
+    if (local) return local[0].toUpperCase()
+  }
+  return '?'
+}
 
 interface Props {
   apiHost: string
@@ -339,33 +353,71 @@ export default function GitGraph({ apiHost, sessionName, onSelectCommit, selecte
       const cx = SVG_PADDING_LEFT + node.lane * LANE_WIDTH + LANE_WIDTH / 2
       const cy = rowToY(row) + ROW_HEIGHT / 2
       const color = laneColor(node.lane)
+      const initials = getInitials(node.commit.author, node.commit.authorEmail)
+      const clipId = `clip-${node.commit.hash}`
+      const r = NODE_RADIUS
+      const opacity = node.onCurrentBranch ? 1 : 0.7
+
+      const avatarGroup = (
+        <>
+          {/* Background circle with lane color */}
+          <circle cx={cx} cy={cy} r={r} fill={color} />
+          {/* Initials text (visible when no gravatar) */}
+          <text
+            x={cx}
+            y={cy}
+            textAnchor="middle"
+            dominantBaseline="central"
+            fill="white"
+            fontSize="9"
+            fontWeight="bold"
+            fontFamily="system-ui, sans-serif"
+            style={{ pointerEvents: 'none' }}
+          >
+            {initials}
+          </text>
+          {/* Clip path for gravatar */}
+          <defs>
+            <clipPath id={clipId}>
+              <circle cx={cx} cy={cy} r={r} />
+            </clipPath>
+          </defs>
+          {/* Gravatar image (transparent if missing, so initials show through) */}
+          {node.commit.authorGravatar && (
+            <image
+              href={node.commit.authorGravatar}
+              x={cx - r}
+              y={cy - r}
+              width={r * 2}
+              height={r * 2}
+              clipPath={`url(#${clipId})`}
+              style={{ pointerEvents: 'none' }}
+            />
+          )}
+          {/* Border ring */}
+          <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth={1.5} />
+        </>
+      )
 
       if (node.isHead) {
         return (
           <g key={node.commit.hash}>
             {/* Pulsing glow */}
-            <circle cx={cx} cy={cy} r={12} fill={color} opacity={0.15}>
-              <animate attributeName="r" values="10;14;10" dur="2s" repeatCount="indefinite" />
+            <circle cx={cx} cy={cy} r={16} fill={color} opacity={0.15}>
+              <animate attributeName="r" values="14;18;14" dur="2s" repeatCount="indefinite" />
               <animate attributeName="opacity" values="0.18;0.08;0.18" dur="2s" repeatCount="indefinite" />
             </circle>
             {/* Outer ring */}
-            <circle cx={cx} cy={cy} r={HEAD_RADIUS + 3} fill="none" stroke={color} strokeWidth={2} opacity={0.6} />
-            {/* White inner ring for contrast */}
-            <circle cx={cx} cy={cy} r={HEAD_RADIUS + 1} fill="none" stroke="white" strokeWidth={1} opacity={0.3} />
-            {/* Solid dot */}
-            <circle cx={cx} cy={cy} r={HEAD_RADIUS} fill={color} />
+            <circle cx={cx} cy={cy} r={r + 3} fill="none" stroke={color} strokeWidth={2} opacity={0.6} />
+            {/* Avatar */}
+            {avatarGroup}
           </g>
         )
       }
       return (
-        <circle
-          key={node.commit.hash}
-          cx={cx}
-          cy={cy}
-          r={node.onCurrentBranch ? NODE_RADIUS + 1 : NODE_RADIUS}
-          fill={color}
-          opacity={node.onCurrentBranch ? 1 : 0.4}
-        />
+        <g key={node.commit.hash} opacity={opacity}>
+          {avatarGroup}
+        </g>
       )
     })
   }

@@ -5,12 +5,19 @@ Git utilities for the Lumbergh backend using GitPython.
 from dataclasses import dataclass
 from pathlib import Path
 
+import hashlib
 import os
 import subprocess
 import tempfile
 
 from git import InvalidGitRepositoryError, Repo
 from git.exc import GitCommandError
+
+
+def gravatar_url(email: str, size: int = 40) -> str:
+    """Generate a Gravatar URL for an email address. Uses d=blank so missing gravatars return a transparent PNG."""
+    md5 = hashlib.md5(email.strip().lower().encode()).hexdigest()
+    return f"https://www.gravatar.com/avatar/{md5}?s={size}&d=blank"
 
 
 @dataclass
@@ -365,11 +372,14 @@ def get_graph_log(cwd: Path, limit: int = 100) -> dict:
     # Collect commits (--all walks all refs, not just HEAD)
     commits = []
     for commit in repo.iter_commits(rev="--all", max_count=limit, topo_order=True):
+        email = commit.author.email or ""
         commits.append({
             "hash": commit.hexsha,
             "shortHash": commit.hexsha[:7],
             "message": commit.summary,
             "author": commit.author.name,
+            "authorEmail": email,
+            "authorGravatar": gravatar_url(email) if email else None,
             "relativeDate": commit.committed_datetime.strftime("%Y-%m-%d %H:%M"),
             "parents": [p.hexsha for p in commit.parents],
             "refs": ref_map.get(commit.hexsha, []),
