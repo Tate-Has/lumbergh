@@ -56,7 +56,7 @@ export interface GraphCommit {
   author: string
   relativeDate: string
   parents: string[]
-  refs: string[]
+  refs: { name: string; local: boolean; remote: boolean; tag?: boolean }[]
   pushed?: boolean
 }
 

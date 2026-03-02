@@ -250,22 +250,81 @@ def get_graph_log(cwd: Path, limit: int = 100) -> dict:
     if not repo.head.is_valid():
         return {"commits": [], "branches": [], "head": None}
 
-    # Build hash → ref names map
-    ref_map: dict[str, list[str]] = {}
+    # Build hash → ref names map, tracking local vs remote vs tag
+    # Each entry: (name, kind) where kind is 'local', 'remote', or 'tag'
+    raw_refs: dict[str, list[tuple[str, str]]] = {}
     for ref in repo.refs:
         name = ref.name
-        # Clean up ref names
+        kind = "local"
         if name.startswith("refs/heads/"):
             name = name[11:]
         elif name.startswith("refs/remotes/"):
             name = name[13:]
+            kind = "remote"
         elif name.startswith("refs/tags/"):
             name = name[10:]
+            kind = "tag"
+        elif name.startswith("origin/"):
+            # RemoteReference without refs/remotes/ prefix (e.g. origin/HEAD)
+            kind = "remote"
+        if name == "origin/HEAD":
+            continue  # symref to default branch, not a real branch
         try:
             hexsha = ref.commit.hexsha
         except Exception:
             continue
-        ref_map.setdefault(hexsha, []).append(name)
+        raw_refs.setdefault(hexsha, []).append((name, kind))
+
+    # Build a lookup: branch_name → hash for local and remote refs
+    local_branch_hash: dict[str, str] = {}
+    remote_branch_hash: dict[str, str] = {}
+    for hexsha, entries in raw_refs.items():
+        for name, kind in entries:
+            if kind == "remote" and name.startswith("origin/"):
+                remote_branch_hash[name[7:]] = hexsha
+            elif kind == "local" and name != "HEAD":
+                local_branch_hash[name] = hexsha
+
+    # Build enriched ref_map: hash → list of { name, local, remote }
+    ref_map: dict[str, list[dict]] = {}
+    seen_per_commit: dict[str, set[str]] = {}
+    for hexsha, entries in raw_refs.items():
+        enriched = []
+        commit_seen = seen_per_commit.setdefault(hexsha, set())
+        for name, kind in entries:
+            if kind == "tag":
+                enriched.append({"name": name, "local": False, "remote": False, "tag": True})
+                continue
+            if name == "HEAD" or name.startswith("HEAD -> "):
+                continue
+            if kind == "remote":
+                if not name.startswith("origin/"):
+                    continue  # skip non-origin remotes for now
+                branch_name = name[7:]
+                if branch_name == "HEAD":
+                    continue
+                if branch_name in commit_seen:
+                    continue  # already handled by local ref at same commit
+                commit_seen.add(branch_name)
+                local_at_same = local_branch_hash.get(branch_name) == hexsha
+                enriched.append({
+                    "name": branch_name,
+                    "local": local_at_same,
+                    "remote": True,
+                })
+            else:
+                # Local branch
+                if name in commit_seen:
+                    continue
+                commit_seen.add(name)
+                remote_at_same = remote_branch_hash.get(name) == hexsha
+                enriched.append({
+                    "name": name,
+                    "local": True,
+                    "remote": remote_at_same,
+                })
+        if enriched:
+            ref_map.setdefault(hexsha, []).extend(enriched)
 
     # HEAD info
     head_hash = repo.head.commit.hexsha
@@ -671,9 +730,10 @@ def get_branches(cwd: Path) -> dict:
     }
 
 
-def checkout_branch(cwd: Path, branch: str) -> dict:
+def checkout_branch(cwd: Path, branch: str, reset_to: str | None = None) -> dict:
     """
     Checkout a branch if the working directory is clean.
+    If reset_to is provided, reset the branch to that commit after checkout.
 
     Returns:
         Dict with status, branch, and message
@@ -689,11 +749,13 @@ def checkout_branch(cwd: Path, branch: str) -> dict:
 
     try:
         repo.git.checkout(branch)
+        if reset_to:
+            repo.git.reset("--hard", reset_to)
         current_branch = get_current_branch(cwd)
         return {
             "status": "success",
             "branch": current_branch,
-            "message": f"Switched to branch '{current_branch}'",
+            "message": f"Switched to branch '{current_branch}'" + (f" and reset to {reset_to[:7]}" if reset_to else ""),
         }
     except GitCommandError as e:
         return {"error": str(e)}

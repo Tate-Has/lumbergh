@@ -23,7 +23,7 @@ export default function GitGraph({ apiHost, sessionName, onSelectCommit, selecte
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [commitLimit, setCommitLimit] = useState(100)
-  const [menuCommit, setMenuCommit] = useState<{ hash: string; shortHash: string; message: string; pushed: boolean } | null>(null)
+  const [menuCommit, setMenuCommit] = useState<{ hash: string; shortHash: string; message: string; pushed: boolean; refs: { name: string; local: boolean; remote: boolean }[] } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -174,6 +174,39 @@ export default function GitGraph({ apiHost, sessionName, onSelectCommit, selecte
       afterAction()
     } catch {
       alert('Failed to reword commit')
+    }
+  }, [apiHost, sessionName, menuCommit, afterAction])
+
+  const handleCheckout = useCallback(async (branchName: string, ref: { local: boolean; remote: boolean }) => {
+    if (!sessionName || !menuCommit) return
+
+    // If remote-only at this commit, the local branch is elsewhere — confirm reset
+    if (!ref.local && ref.remote) {
+      const confirmed = confirm(
+        `"${branchName}" exists locally at a different commit.\n\nCheckout and reset it to ${menuCommit.shortHash}?`
+      )
+      if (!confirmed) return
+    }
+
+    const body: { branch: string; reset_to?: string } = { branch: branchName }
+    if (!ref.local && ref.remote) {
+      body.reset_to = menuCommit.hash
+    }
+
+    try {
+      const res = await fetch(`http://${apiHost}/api/sessions/${sessionName}/git/checkout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        alert(data.detail || `Checkout failed (HTTP ${res.status})`)
+        return
+      }
+      afterAction()
+    } catch {
+      alert('Checkout failed')
     }
   }, [apiHost, sessionName, menuCommit, afterAction])
 
@@ -424,17 +457,27 @@ export default function GitGraph({ apiHost, sessionName, onSelectCommit, selecte
                 {node.commit.refs.length > 0 && (
                   <div className="flex gap-1 shrink-0">
                     {node.commit.refs.map((ref) => {
-                      const isCurrent = graphData?.head?.branch === ref
+                      const isCurrent = graphData?.head?.branch === ref.name
                       return (
                         <span
-                          key={ref}
-                          className={`px-1.5 py-0.5 text-[10px] rounded font-medium leading-none ${
+                          key={ref.name}
+                          className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] rounded font-medium leading-none ${
                             isCurrent
                               ? 'bg-blue-500/25 text-blue-300 ring-1 ring-blue-400/50'
                               : 'bg-bg-surface text-text-tertiary ring-1 ring-border-default'
                           }`}
                         >
-                          {ref}
+                          {ref.name}
+                          {ref.local && (
+                            <svg className="w-2.5 h-2.5 ml-0.5 opacity-70" viewBox="0 0 16 16" fill="currentColor" title="Local">
+                              <path d="M2 4a1 1 0 011-1h10a1 1 0 011 1v7a1 1 0 01-1 1H3a1 1 0 01-1-1V4zm2 0v6h8V4H4zm1 9h6l.5 1H4.5l.5-1z"/>
+                            </svg>
+                          )}
+                          {ref.remote && (
+                            <svg className="w-2.5 h-2.5 ml-0.5 opacity-70" viewBox="0 0 16 16" fill="currentColor" title="Remote">
+                              <path d="M4.5 7a3.5 3.5 0 116.4 2H12a2 2 0 010 4H4a2.5 2.5 0 01-.5-4.95A3.5 3.5 0 014.5 7z"/>
+                            </svg>
+                          )}
                         </span>
                       )
                     })}
@@ -468,7 +511,7 @@ export default function GitGraph({ apiHost, sessionName, onSelectCommit, selecte
                     setMenuCommit(
                       menuCommit?.hash === node.commit.hash
                         ? null
-                        : { hash: node.commit.hash, shortHash: node.commit.shortHash, message: node.commit.message, pushed: node.commit.pushed ?? true }
+                        : { hash: node.commit.hash, shortHash: node.commit.shortHash, message: node.commit.message, pushed: node.commit.pushed ?? true, refs: node.commit.refs }
                     )
                   }}
                   className={`shrink-0 p-0.5 rounded hover:bg-control-bg-hover text-text-muted hover:text-text-secondary transition-opacity ${
@@ -512,6 +555,17 @@ export default function GitGraph({ apiHost, sessionName, onSelectCommit, selecte
                   >
                     Create branch here...
                   </button>
+                  {menuCommit.refs
+                    .filter((r) => r.name !== graphData?.head?.branch)
+                    .map((r) => (
+                      <button
+                        key={r.name}
+                        onClick={() => handleCheckout(r.name, r)}
+                        className="w-full text-left px-3 py-1.5 text-sm text-text-secondary hover:bg-control-bg-hover hover:text-text-primary"
+                      >
+                        Checkout <span className="font-mono text-text-primary">{r.name}</span>
+                      </button>
+                    ))}
                   <div className="mx-2 my-1 border-t border-border-default" />
                   <button
                     onClick={handleResetSoft}

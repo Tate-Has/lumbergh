@@ -706,7 +706,7 @@ async def session_git_checkout(name: str, body: CheckoutInput):
     workdir = get_session_workdir(name)
 
     try:
-        result = checkout_branch(workdir, body.branch)
+        result = checkout_branch(workdir, body.branch, body.reset_to)
         if "error" in result:
             status_code = 409 if "pending changes" in result["error"] else 400
             raise HTTPException(status_code=status_code, detail=result["error"])
