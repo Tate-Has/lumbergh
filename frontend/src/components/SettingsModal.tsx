@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { X } from 'lucide-react'
 
 interface Props {
   apiHost: string
@@ -321,14 +322,7 @@ export default function SettingsModal({ apiHost, onClose }: Props) {
         <div className="flex items-center justify-between p-4 border-b border-border-default">
           <h2 className="text-lg font-semibold text-text-primary">Settings</h2>
           <button onClick={onClose} className="text-text-tertiary hover:text-text-primary transition-colors">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
+            <X size={20} />
           </button>
         </div>
 

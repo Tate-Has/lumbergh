@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { GripVertical, Play, SendHorizonal, ChevronDown, ChevronRight, StickyNote, ExternalLink, Trash2 } from 'lucide-react'
 import { usePrompts } from '../hooks/usePrompts'
 import { useLocalStorageDraft } from '../hooks/useLocalStorageDraft'
 import { expandPromptReferences } from '../utils/promptResolver'
@@ -32,7 +33,9 @@ export default function TodoList({ apiHost, sessionName, onFocusTerminal, onTodo
   const [editingDescription, setEditingDescription] = useState('')
   const [movePickerIndex, setMovePickerIndex] = useState<number | null>(null)
   const [availableSessions, setAvailableSessions] = useState<{ name: string; displayName?: string }[]>([])
+  const [highlightIndex, setHighlightIndex] = useState<number | null>(null)
   const movePickerRef = useRef<HTMLDivElement>(null)
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout>>(null)
 
   // Fetch prompts for @ mention autocomplete
   const { allPrompts } = usePrompts(apiHost, sessionName)
@@ -65,11 +68,19 @@ export default function TodoList({ apiHost, sessionName, onFocusTerminal, onTodo
   }
 
   const handleToggle = (index: number) => {
-    const updated = todos.map((t, i) => (i === index ? { ...t, done: !t.done } : t))
-    // Sort: unchecked first, then checked
-    const unchecked = updated.filter((t) => !t.done)
-    const checked = updated.filter((t) => t.done)
-    const reordered = [...unchecked, ...checked]
+    const toggled = { ...todos[index], done: !todos[index].done }
+    const rest = todos.filter((_, i) => i !== index)
+    const unchecked = rest.filter((t) => !t.done)
+    const checked = rest.filter((t) => t.done)
+    // When unchecking, prepend to top; when checking, append to checked
+    const reordered = toggled.done
+      ? [...unchecked, toggled, ...checked]
+      : [toggled, ...unchecked, ...checked]
+    // Highlight the moved item's new position
+    const newIndex = toggled.done ? unchecked.length : 0
+    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current)
+    setHighlightIndex(newIndex)
+    highlightTimerRef.current = setTimeout(() => setHighlightIndex(null), 850)
     setTodos(reordered)
     saveTodos(reordered)
   }
@@ -307,7 +318,9 @@ export default function TodoList({ apiHost, sessionName, onFocusTerminal, onTodo
                   <div
                     className={`bg-bg-surface rounded border border-border-default ${
                       dragIndex === index ? 'opacity-50' : ''
-                    } ${dragOverIndex === index && dragIndex !== index ? 'border-blue-500' : ''}`}
+                    } ${dragOverIndex === index && dragIndex !== index ? 'border-blue-500' : ''} ${
+                      highlightIndex === index ? 'todo-highlight' : ''
+                    }`}
                   >
                     <div
                       draggable
@@ -316,13 +329,31 @@ export default function TodoList({ apiHost, sessionName, onFocusTerminal, onTodo
                       onDragEnd={handleDragEnd}
                       className="flex items-center gap-3 px-3 py-1 cursor-grab active:cursor-grabbing"
                     >
-                      <span className="text-text-muted select-none">⠿</span>
+                      <GripVertical size={16} className="text-text-muted select-none" />
+                      {sessionName && !todo.done && (
+                        <>
+                          <button
+                            onClick={() => handleSendToTerminal(index, false)}
+                            className="text-text-muted hover:text-yellow-400 transition-colors px-1"
+                            title="Send text (no Enter)"
+                          >
+                            <Play size={18} />
+                          </button>
+                          <button
+                            onClick={() => handleSendToTerminal(index, true)}
+                            className="text-text-muted hover:text-blue-400 transition-colors px-1"
+                            title="Send + Enter (yolo)"
+                          >
+                            <SendHorizonal size={18} />
+                          </button>
+                        </>
+                      )}
                       <button
                         onClick={() => handleToggleExpand(index)}
                         className="w-8 h-8 flex items-center justify-center text-text-muted hover:text-text-secondary hover:bg-control-bg rounded transition-colors text-xl"
                         title={expandedIndex === index ? 'Collapse' : 'Expand'}
                       >
-                        {expandedIndex === index ? '⌄' : '›'}
+                        {expandedIndex === index ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
                       </button>
                       {editingIndex === index ? (
                         <PromptMentionInput
@@ -344,44 +375,26 @@ export default function TodoList({ apiHost, sessionName, onFocusTerminal, onTodo
                         >
                           {todo.done ? todo.text : <MentionText text={todo.text} prompts={allPrompts} />}
                           {todo.description && expandedIndex !== index && (
-                            <span className="ml-2 text-text-muted text-sm" title="Has description">
-                              📝
-                            </span>
+                            <span className="ml-2 inline-flex" title="Has description"><StickyNote size={14} className="text-text-muted" /></span>
                           )}
                         </span>
                       )}
                       {sessionName && !todo.done && (
-                        <>
-                          <button
-                            onClick={() => handleOpenMovePicker(index)}
-                            className={`text-sm text-text-muted hover:text-green-400 transition-colors px-1 ${movePickerIndex === index ? 'text-green-400' : ''}`}
-                            title="Move to another session"
-                          >
-                            ↗
-                          </button>
-                          <button
-                            onClick={() => handleSendToTerminal(index, false)}
-                            className="text-xl text-text-muted hover:text-yellow-400 transition-colors px-1"
-                            title="Send text (no Enter)"
-                          >
-                            ▷
-                          </button>
-                          <button
-                            onClick={() => handleSendToTerminal(index, true)}
-                            className="text-xl text-text-muted hover:text-blue-400 transition-colors px-1"
-                            title="Send + Enter (yolo)"
-                          >
-                            ➤
-                          </button>
-                        </>
+                        <button
+                          onClick={() => handleOpenMovePicker(index)}
+                          className={`text-sm text-text-muted hover:text-green-400 transition-colors px-1 ${movePickerIndex === index ? 'text-green-400' : ''}`}
+                          title="Move to another session"
+                        >
+                          <ExternalLink size={16} />
+                        </button>
                       )}
                       {todo.done && (
                         <button
                           onClick={() => handleDelete(index)}
-                          className="text-sm text-text-muted hover:text-red-400 transition-colors px-1"
+                          className="text-sm text-red-400/50 hover:text-red-400 transition-colors px-1"
                           title="Delete task"
                         >
-                          🗑
+                          <Trash2 size={16} />
                         </button>
                       )}
                       <input

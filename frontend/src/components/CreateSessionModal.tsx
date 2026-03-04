@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { X } from 'lucide-react'
 import DirectoryPicker from './DirectoryPicker'
 import BranchPicker from './BranchPicker'
 
@@ -107,14 +108,7 @@ export default function CreateSessionModal({ apiHost, onClose, onCreated }: Prop
         <div className="flex items-center justify-between p-4 border-b border-border-default">
           <h2 className="text-lg font-semibold text-text-primary">New Session</h2>
           <button onClick={onClose} className="text-text-tertiary hover:text-text-primary transition-colors">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
+            <X size={20} />
           </button>
         </div>
 

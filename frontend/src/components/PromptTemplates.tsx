@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Play, GripVertical, X } from 'lucide-react'
 import { useLocalStorageDraft } from '../hooks/useLocalStorageDraft'
 
 // Simple UUID generator that works without crypto.randomUUID()
@@ -266,14 +267,14 @@ export default function PromptTemplates({
           editMode ? 'cursor-grab active:cursor-grabbing' : ''
         } ${isDragging ? 'opacity-50' : ''} ${isDragOver ? 'border-blue-500' : ''}`}
       >
-        {editMode && <span className="text-text-muted select-none">&#x2807;</span>}
+        {editMode && <GripVertical size={16} className="text-text-muted select-none" />}
         {!editMode && sessionName && (
           <button
             onClick={() => handleSendToTerminal(template, false)}
-            className="text-xl text-text-muted hover:text-yellow-400 transition-colors px-1"
+            className="text-text-muted hover:text-yellow-400 transition-colors px-1"
             title="Send text (no Enter)"
           >
-            &#x25B7;
+            <Play size={18} />
           </button>
         )}
         <span className="flex-1 text-text-primary truncate" title={template.prompt}>
@@ -294,7 +295,7 @@ export default function PromptTemplates({
                 className="text-sm text-text-muted hover:text-green-400 transition-colors px-1"
                 title="Move to Global"
               >
-                &#x2191;G
+                ↑G
               </button>
             ) : (
               <button
@@ -302,7 +303,7 @@ export default function PromptTemplates({
                 className="text-sm text-text-muted hover:text-green-400 transition-colors px-1"
                 title="Copy to Project"
               >
-                &#x2193;P
+                ↓P
               </button>
             )}
             <button
@@ -310,7 +311,7 @@ export default function PromptTemplates({
               className="text-sm text-text-muted hover:text-red-400 transition-colors px-1"
               title="Delete"
             >
-              &#x00D7;
+              <X size={16} />
             </button>
           </>
         )}

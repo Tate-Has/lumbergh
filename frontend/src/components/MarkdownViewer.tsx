@@ -1,6 +1,7 @@
 import React, { useEffect, useCallback, useRef } from 'react'
 import MarkdownPreview from '@uiw/react-markdown-preview'
 import mermaid from 'mermaid'
+import { FileText, X } from 'lucide-react'
 import { useTheme } from '../hooks/useTheme'
 
 interface Props {
@@ -117,7 +118,7 @@ export default function MarkdownViewer({ content, filePath, onClose }: Props) {
       {/* Header */}
       <div className="flex items-center justify-between p-3 bg-bg-sunken border-b border-border-default">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="text-text-muted">📄</span>
+          <FileText size={16} className="text-text-muted flex-shrink-0" />
           <span className="font-mono text-sm text-text-secondary truncate" title={filePath}>
             {fileName}
           </span>
@@ -128,14 +129,7 @@ export default function MarkdownViewer({ content, filePath, onClose }: Props) {
           className="text-text-tertiary hover:text-text-primary transition-colors p-1 flex-shrink-0"
           title="Close (Esc)"
         >
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M6 18L18 6M6 6l12 12"
-            />
-          </svg>
+          <X size={24} />
         </button>
       </div>
 

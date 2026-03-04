@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, memo } from 'react'
+import { Play, RefreshCw, Undo2, ChevronRight, MoreHorizontal, Maximize2 } from 'lucide-react'
 import { relativeDate } from '../../utils/relativeDate'
 import type { DiffData } from './types'
 import { getFileStats } from './utils'
@@ -274,7 +275,7 @@ const FileList = memo(function FileList({
               className="text-sm text-text-muted hover:text-yellow-400 transition-colors shrink-0"
               title="Send commit info to terminal"
             >
-              ▷
+              <Play size={16} />
             </button>
           )}
           {isWorkingChanges && sessionName && (
@@ -298,7 +299,7 @@ const FileList = memo(function FileList({
             className="px-2 py-1 bg-control-bg hover:bg-control-bg-hover rounded text-sm"
             title="Refresh"
           >
-            ↻
+            <RefreshCw size={16} />
           </button>
           {isWorkingChanges && hasChanges && (
             <button
@@ -307,7 +308,7 @@ const FileList = memo(function FileList({
               className="px-2 py-1 text-text-tertiary hover:text-red-400 disabled:text-text-muted disabled:cursor-not-allowed text-sm transition-colors"
               title="Revert all changes"
             >
-              {isResetting ? '...' : '⟲'}
+              {isResetting ? '...' : <Undo2 size={16} />}
             </button>
           )}
           {onExpand && (
@@ -316,7 +317,7 @@ const FileList = memo(function FileList({
               className="px-1.5 py-0.5 text-sm bg-control-bg hover:bg-control-bg-hover rounded"
               title="Expand diff viewer"
             >
-              &#x26F6;
+              <Maximize2 size={16} />
             </button>
           )}
         </div>
@@ -360,7 +361,7 @@ const FileList = memo(function FileList({
                   className="px-1.5 py-1 text-text-tertiary hover:text-text-secondary disabled:text-text-muted disabled:cursor-not-allowed text-xs transition-colors"
                   title="More git actions"
                 >
-                  ···
+                  <MoreHorizontal size={16} />
                 </button>
                 {showMenu && (
                   <div
@@ -430,7 +431,7 @@ const FileList = memo(function FileList({
               <span className="text-blue-400 font-mono text-sm truncate flex-1">{file.path}</span>
               <span className="text-green-400 text-xs">+{stats.additions}</span>
               <span className="text-red-400 text-xs">-{stats.deletions}</span>
-              <span className="text-text-muted">›</span>
+              <ChevronRight size={14} className="text-text-muted" />
             </button>
           )
         })}

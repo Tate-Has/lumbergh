@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { ChevronUp, ChevronDown } from 'lucide-react'
 import type { BranchData } from './types'
 
 interface Props {
@@ -80,7 +81,7 @@ export default function BranchSelector({ gitBaseUrl, onBranchChange }: Props) {
         title={isDisabled ? 'Commit or stash changes first' : 'Switch branch'}
       >
         <span className="font-mono">{branchData.current}</span>
-        <span className={isDisabled ? 'text-text-muted' : 'text-text-tertiary'}>{isOpen ? '▲' : '▼'}</span>
+        <span className={isDisabled ? 'text-text-muted' : 'text-text-tertiary'}>{isOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</span>
       </button>
 
       {isOpen && (

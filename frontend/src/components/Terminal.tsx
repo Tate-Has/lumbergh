@@ -3,6 +3,7 @@ import { Terminal as XTerm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
+import { ArrowLeft, ChevronUp, ChevronDown, Minus, Plus, MoreHorizontal, Eraser } from 'lucide-react'
 import { useTerminalSocket } from '../hooks/useTerminalSocket'
 import { useTheme } from '../hooks/useTheme'
 
@@ -384,14 +385,7 @@ export default function Terminal({
                   className="text-text-tertiary hover:text-text-primary transition-colors"
                   title="Back to Dashboard"
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M10 19l-7-7m0 0l7-7m-7 7h18"
-                    />
-                  </svg>
+                  <ArrowLeft size={16} />
                 </button>
                 {/* Separator */}
                 <div className="w-px h-4 bg-border-subtle mx-1" />
@@ -455,16 +449,14 @@ export default function Terminal({
               className="px-2 py-1 text-xs bg-control-bg hover:bg-control-bg-hover disabled:opacity-50 rounded"
               title="Send /clear"
             >
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 576 512">
-                <path d="M290.7 57.4L57.4 290.7c-25 25-25 65.5 0 90.5l80 80c12 12 28.3 18.7 45.3 18.7H288h9.4H512c17.7 0 32-14.3 32-32s-14.3-32-32-32H387.9L518.6 285.3c25-25 25-65.5 0-90.5L381.3 57.4c-25-25-65.5-25-90.5 0zM297.4 416H288l-105.4 0-80-80L227.3 211.3 364.7 348.7 297.4 416z" />
-              </svg>
+              <Eraser size={16} />
             </button>
             <button
               onClick={() => setHeaderExpanded(!headerExpanded)}
               className={`px-2 py-1 text-xs rounded ${headerExpanded ? 'bg-control-bg-hover' : 'bg-control-bg hover:bg-control-bg-hover'}`}
               title="More options"
             >
-              ...
+              <MoreHorizontal size={16} />
             </button>
           </div>
         </div>
@@ -480,7 +472,7 @@ export default function Terminal({
                   className="px-2 py-1 text-xs bg-control-bg hover:bg-control-bg-hover rounded"
                   title="Decrease font size"
                 >
-                  -
+                  <Minus size={14} />
                 </button>
                 <span className="text-xs text-text-secondary w-5 text-center">{fontSize}</span>
                 <button
@@ -488,7 +480,7 @@ export default function Terminal({
                   className="px-2 py-1 text-xs bg-control-bg hover:bg-control-bg-hover rounded"
                   title="Increase font size"
                 >
-                  +
+                  <Plus size={14} />
                 </button>
               </div>
               {onReset && (
@@ -594,17 +586,17 @@ export default function Terminal({
         <div className="absolute right-2 top-1/2 -translate-y-1/2 flex flex-col gap-2 z-10">
           <button
             onClick={() => sendRef.current('\x1b[5~')} // Page Up
-            className="w-14 h-14 bg-yellow-600/90 hover:bg-yellow-500 rounded-lg text-xl font-bold shadow-lg"
+            className="w-14 h-14 bg-yellow-600/90 hover:bg-yellow-500 rounded-lg flex items-center justify-center shadow-lg"
             title="Page Up"
           >
-            ▲
+            <ChevronUp size={24} />
           </button>
           <button
             onClick={() => sendRef.current('\x1b[6~')} // Page Down
-            className="w-14 h-14 bg-yellow-600/90 hover:bg-yellow-500 rounded-lg text-xl font-bold shadow-lg"
+            className="w-14 h-14 bg-yellow-600/90 hover:bg-yellow-500 rounded-lg flex items-center justify-center shadow-lg"
             title="Page Down"
           >
-            ▼
+            <ChevronDown size={24} />
           </button>
         </div>
       )}

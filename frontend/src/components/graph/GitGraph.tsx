@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { MoreVertical, Monitor, Cloud } from 'lucide-react'
 import type { GraphData } from '../diff/types'
 import { computeGraphLayout, laneColor } from './graphLayout'
 import { relativeDate } from '../../utils/relativeDate'
@@ -304,7 +305,7 @@ export default function GitGraph({ apiHost, sessionName, onSelectCommit, selecte
   }
 
   const renderEdges = () => {
-    const lines: JSX.Element[] = []
+    const lines: React.ReactElement[] = []
     for (const node of nodes) {
       for (let ei = 0; ei < node.edges.length; ei++) {
         const e = node.edges[ei]
@@ -522,14 +523,10 @@ export default function GitGraph({ apiHost, sessionName, onSelectCommit, selecte
                         >
                           {ref.name}
                           {ref.local && (
-                            <svg className="w-3 h-3 ml-0.5 opacity-70" viewBox="0 0 16 16" fill="currentColor" title="Local">
-                              <path d="M2 4a1 1 0 011-1h10a1 1 0 011 1v7a1 1 0 01-1 1H3a1 1 0 01-1-1V4zm2 0v6h8V4H4zm1 9h6l.5 1H4.5l.5-1z"/>
-                            </svg>
+                            <Monitor size={12} className="ml-0.5 opacity-70" />
                           )}
                           {ref.remote && (
-                            <svg className="w-3 h-3 ml-0.5 opacity-70" viewBox="0 0 16 16" fill="currentColor" title="Remote">
-                              <path d="M4.5 7a3.5 3.5 0 116.4 2H12a2 2 0 010 4H4a2.5 2.5 0 01-.5-4.95A3.5 3.5 0 014.5 7z"/>
-                            </svg>
+                            <Cloud size={12} className="ml-0.5 opacity-70" />
                           )}
                         </span>
                       )
@@ -562,9 +559,7 @@ export default function GitGraph({ apiHost, sessionName, onSelectCommit, selecte
                   }`}
                   title={`${node.commit.shortHash} · ${node.commit.author} · ${relativeDate(node.commit.relativeDate)}`}
                 >
-                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
-                  </svg>
+                  <MoreVertical size={20} />
                 </button>
               </div>
               )

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Minus, Pause, Play, AlertCircle, AlertTriangle, Circle, Pencil, RefreshCw, X, GitBranch } from 'lucide-react'
 
 interface Session {
   name: string
@@ -20,19 +21,19 @@ interface Session {
 
 function getSessionStatus(session: Session) {
   if (!session.alive) {
-    return { color: 'gray', pulse: false, label: 'Offline', icon: '\u2014' }
+    return { color: 'gray', pulse: false, label: 'Offline', Icon: Minus }
   }
   switch (session.idleState) {
     case 'idle':
-      return { color: 'yellow', pulse: true, label: 'Waiting for input', icon: '\u23F8' }
+      return { color: 'yellow', pulse: true, label: 'Waiting for input', Icon: Pause }
     case 'working':
-      return { color: 'green', pulse: false, label: 'Working', icon: '\u25B6' }
+      return { color: 'green', pulse: false, label: 'Working', Icon: Play }
     case 'error':
-      return { color: 'red', pulse: true, label: 'Error', icon: '!' }
+      return { color: 'red', pulse: true, label: 'Error', Icon: AlertCircle }
     case 'stalled':
-      return { color: 'red', pulse: true, label: 'Stalled', icon: '\u26A0' }
+      return { color: 'red', pulse: true, label: 'Stalled', Icon: AlertTriangle }
     default:
-      return { color: 'green', pulse: false, label: 'Active', icon: '\u25CF' }
+      return { color: 'green', pulse: false, label: 'Active', Icon: Circle }
   }
 }
 
@@ -218,14 +219,7 @@ export default function SessionCard({ session, onDelete, onUpdate, onReset }: Pr
             className="text-text-muted hover:text-blue-400 transition-colors p-1"
             title="Edit session"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
-              />
-            </svg>
+            <Pencil size={16} />
           </button>
           {session.alive && (
             <button
@@ -233,14 +227,7 @@ export default function SessionCard({ session, onDelete, onUpdate, onReset }: Pr
               className="text-text-muted hover:text-yellow-400 transition-colors p-1"
               title="Reset session"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                />
-              </svg>
+              <RefreshCw size={16} />
             </button>
           )}
           <button
@@ -248,14 +235,7 @@ export default function SessionCard({ session, onDelete, onUpdate, onReset }: Pr
             className="text-text-muted hover:text-red-400 transition-colors p-1"
             title="Delete session"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
+            <X size={16} />
           </button>
         </div>
       </div>
@@ -263,9 +243,7 @@ export default function SessionCard({ session, onDelete, onUpdate, onReset }: Pr
       {/* Worktree indicator */}
       {session.type === 'worktree' && session.worktreeBranch && (
         <div className="flex items-center gap-1.5 mb-1">
-          <svg className="w-3.5 h-3.5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-          </svg>
+          <GitBranch size={14} className="text-purple-400" />
           <span className="text-xs text-purple-400 font-mono">{session.worktreeBranch}</span>
           {session.worktreeParentRepo && (
             <span className="text-xs text-text-muted">
@@ -291,7 +269,7 @@ export default function SessionCard({ session, onDelete, onUpdate, onReset }: Pr
 
       {session.alive && session.idleState && session.idleState !== 'unknown' && (
         <div className={`flex items-center gap-1.5 ${colors.text} text-xs mb-2`}>
-          <span>{status.icon}</span>
+          <status.Icon size={14} />
           <span>{status.label}</span>
         </div>
       )}

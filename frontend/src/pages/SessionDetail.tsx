@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { ArrowLeft } from 'lucide-react'
 import { getApiHost } from '../config'
 import Terminal from '../components/Terminal'
 import FileBrowser from '../components/FileBrowser'
@@ -382,14 +383,7 @@ export default function SessionDetail() {
               className="shrink-0 px-2 py-1.5 text-text-tertiary hover:text-text-primary transition-colors"
               title="Back to Dashboard"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M10 19l-7-7m0 0l7-7m-7 7h18"
-                />
-              </svg>
+              <ArrowLeft size={16} />
             </button>
             {/* Separator */}
             <div className="w-px shrink-0 bg-border-default my-1" />

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react'
 import { DiffView, DiffModeEnum } from '@git-diff-view/react'
+import { ArrowLeft, Play, Maximize2 } from 'lucide-react'
 import type { DiffFile } from './types'
 import { extractDiffContent, getFileStats, getLangFromPath } from './utils'
 import MarkdownViewer from '../MarkdownViewer'
@@ -135,7 +136,7 @@ const FileDiff = memo(function FileDiff({
           onClick={onBack}
           className="flex items-center gap-1 px-2 py-1 bg-control-bg hover:bg-control-bg-hover rounded text-sm"
         >
-          ← Back
+          <ArrowLeft size={14} /> Back
         </button>
         <span className="text-text-muted">/</span>
         <span className="font-mono text-sm text-blue-400 truncate flex-1">{file.path}</span>
@@ -174,7 +175,7 @@ const FileDiff = memo(function FileDiff({
             className="px-1.5 py-0.5 text-xs bg-control-bg hover:bg-control-bg-hover rounded"
             title="Expand diff viewer"
           >
-            &#x26F6;
+            <Maximize2 size={14} />
           </button>
         )}
       </div>
@@ -191,7 +192,7 @@ const FileDiff = memo(function FileDiff({
             style={{ position: 'absolute', top: buttonPos.top, right: 16 }}
             title="Send selected text to terminal (no Enter)"
           >
-            &#x25B7;
+            <Play size={18} />
           </button>
         )}
         {hunks.length > 0 ? (

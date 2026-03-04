@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { Play, SendHorizonal, FileText, Bookmark, Check, Trash2, Copy, X } from 'lucide-react'
 import MarkdownViewer from './MarkdownViewer'
 
 interface SharedFile {
@@ -299,14 +300,14 @@ export default function SharedFiles({
                       className="p-1.5 text-text-tertiary hover:text-blue-400 hover:bg-control-bg rounded"
                       title="Send path to terminal (no Enter)"
                     >
-                      ▷
+                      <Play size={16} />
                     </button>
                     <button
                       onClick={() => sendToTerminal(file.name, true)}
                       className="p-1.5 text-text-tertiary hover:text-green-400 hover:bg-control-bg rounded"
                       title="Send path to terminal + Enter"
                     >
-                      ➤
+                      <SendHorizonal size={16} />
                     </button>
                   </div>
                 )}
@@ -320,7 +321,7 @@ export default function SharedFiles({
                       className="w-full h-full object-cover"
                     />
                   ) : (
-                    <span className="text-text-tertiary text-lg">📄</span>
+                    <FileText size={20} className="text-text-tertiary" />
                   )}
                 </div>
 
@@ -348,13 +349,9 @@ export default function SharedFiles({
                       disabled={savingPrompt === file.name}
                     >
                       {promptSuccess === file.name ? (
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
+                        <Check size={16} />
                       ) : (
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-                        </svg>
+                        <Bookmark size={16} />
                       )}
                     </button>
                   )}
@@ -374,9 +371,7 @@ export default function SharedFiles({
                     className="p-1.5 text-text-tertiary hover:text-red-400 hover:bg-control-bg rounded"
                     title="Delete file"
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
+                    <Trash2 size={16} />
                   </button>
                 </div>
 
@@ -485,10 +480,10 @@ function ImageLightbox({ src, alt, onClose }: { src: string; alt: string; onClos
     >
       <button
         onClick={onClose}
-        className="absolute top-4 right-4 text-white/70 hover:text-white text-2xl"
+        className="absolute top-4 right-4 text-white/70 hover:text-white"
         title="Close (Esc)"
       >
-        ×
+        <X size={24} />
       </button>
       <img src={src} alt={alt} className="max-w-[90vw] max-h-[90vh] object-contain" />
     </div>
@@ -534,9 +529,7 @@ function TextPreview({ content, filename, onClose }: { content: string; filename
             className="text-text-tertiary hover:text-text-primary p-1"
             title="Close (Esc)"
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
+            <X size={24} />
           </button>
         </div>
       </div>
@@ -572,13 +565,9 @@ function CopyTextButton({ apiHost, filename }: { apiHost: string; filename: stri
       title={copied ? 'Copied!' : 'Copy text'}
     >
       {copied ? (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-        </svg>
+        <Check size={16} />
       ) : (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-        </svg>
+        <Copy size={16} />
       )}
     </button>
   )

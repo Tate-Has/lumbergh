@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, memo } from 'react'
 import '@git-diff-view/react/styles/diff-view.css'
+import { RefreshCw, ArrowLeft, ArrowRight, ArrowUp, ArrowDown, ArrowDownUp, X } from 'lucide-react'
 import { FileList, FileDiff, BranchSelector } from './diff'
 import type { DiffData, CommitDiff } from './diff'
 
@@ -428,7 +429,7 @@ const DiffViewer = memo(function DiffViewer({
                 onClick={handleRefresh}
                 className="px-2 py-1 bg-control-bg hover:bg-control-bg-hover rounded text-sm"
               >
-                ↻
+                <RefreshCw size={16} />
               </button>
             </div>
             <div className="flex flex-col items-center justify-center flex-1 gap-6 p-6">
@@ -455,7 +456,7 @@ const DiffViewer = memo(function DiffViewer({
                         <>Pushing...</>
                       ) : (
                         <>
-                          <span>↓↑</span>
+                          <ArrowDownUp size={18} />
                           <span>Pull (rebase) & Push</span>
                         </>
                       )}
@@ -489,7 +490,7 @@ const DiffViewer = memo(function DiffViewer({
                         <>Pushing...</>
                       ) : (
                         <>
-                          <span>↑</span>
+                          <ArrowUp size={18} />
                           <span>Push to {remoteStatus.remote || 'origin'}</span>
                         </>
                       )}
@@ -523,7 +524,7 @@ const DiffViewer = memo(function DiffViewer({
                         <>Pulling...</>
                       ) : (
                         <>
-                          <span>↓</span>
+                          <ArrowDown size={18} />
                           <span>Pull from {remoteStatus.remote || 'origin'}</span>
                         </>
                       )}
@@ -623,7 +624,7 @@ const DiffViewer = memo(function DiffViewer({
                 className="px-2 py-1 bg-control-bg hover:bg-control-bg-hover rounded text-sm"
                 title="Previous file (←)"
               >
-                ←
+                <ArrowLeft size={16} />
               </button>
               <span className="text-xs text-text-muted tabular-nums">
                 {fileNav.index + 1} / {fileNav.total}
@@ -633,7 +634,7 @@ const DiffViewer = memo(function DiffViewer({
                 className="px-2 py-1 bg-control-bg hover:bg-control-bg-hover rounded text-sm"
                 title="Next file (→)"
               >
-                →
+                <ArrowRight size={16} />
               </button>
             </div>
           )}
@@ -642,7 +643,7 @@ const DiffViewer = memo(function DiffViewer({
             className="px-2 py-1 bg-control-bg hover:bg-control-bg-hover rounded text-sm"
             title="Close (Escape)"
           >
-            ✕ Close
+            <X size={16} className="inline mr-1" />Close
           </button>
         </div>
         {/* Content */}

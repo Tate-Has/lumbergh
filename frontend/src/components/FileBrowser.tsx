@@ -4,6 +4,7 @@ import hljsDarkUrl from 'highlight.js/styles/github-dark.css?url'
 import hljsLightUrl from 'highlight.js/styles/github.css?url'
 import MarkdownPreview from '@uiw/react-markdown-preview'
 import mermaid from 'mermaid'
+import { ChevronDown, ChevronRight, Folder, FileText, RefreshCw, PanelLeftClose, Play } from 'lucide-react'
 import { useTheme } from '../hooks/useTheme'
 
 // Initialize mermaid
@@ -119,7 +120,7 @@ export default function FileBrowser({ apiHost, sessionName, onFocusTerminal }: P
   const [hasSelection, setHasSelection] = useState(false)
   const [buttonPos, setButtonPos] = useState({ top: 0, right: 0 })
   const selectedTextRef = useRef('')
-  const contentRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLPreElement>(null)
 
   // Track text selection in the content area
   const handleSelectionChange = useCallback(() => {
@@ -354,8 +355,8 @@ export default function FileBrowser({ apiHost, sessionName, onFocusTerminal }: P
               className="w-full flex items-center gap-2 px-2 py-1 hover:bg-bg-surface text-left"
               style={{ paddingLeft: `${depth * 16 + 8}px` }}
             >
-              <span className="text-text-muted text-xs">{isExpanded ? '▼' : '▶'}</span>
-              <span className="text-yellow-400">📁</span>
+              {isExpanded ? <ChevronDown size={14} className="text-text-muted" /> : <ChevronRight size={14} className="text-text-muted" />}
+              <Folder size={16} className="text-yellow-400" />
               <span className="text-text-secondary truncate">{name}</span>
             </button>
             {isExpanded && renderTree(tree, entry.path, depth + 1)}
@@ -372,8 +373,8 @@ export default function FileBrowser({ apiHost, sessionName, onFocusTerminal }: P
           }`}
           style={{ paddingLeft: `${depth * 16 + 8}px` }}
         >
-          <span className="text-text-muted text-xs opacity-0">▶</span>
-          <span className="text-text-muted">📄</span>
+          <span className="text-text-muted text-xs opacity-0 w-3.5" />
+          <FileText size={16} className="text-text-muted" />
           <span className="text-text-secondary truncate">{name}</span>
           {entry.size !== null && (
             <span className="text-text-muted text-xs ml-auto">{formatSize(entry.size)}</span>
@@ -429,7 +430,7 @@ export default function FileBrowser({ apiHost, sessionName, onFocusTerminal }: P
 
       return (
         <div className="flex items-center gap-1 flex-wrap">
-          <span className="text-yellow-400">📁</span>
+          <Folder size={16} className="text-yellow-400" />
           {segments.map((segment, i) => (
             <span key={segment.path} className="flex items-center">
               {i < segments.length - 1 ? (
@@ -440,7 +441,7 @@ export default function FileBrowser({ apiHost, sessionName, onFocusTerminal }: P
                   >
                     {segment.name}
                   </button>
-                  <span className="text-text-muted mx-1">›</span>
+                  <ChevronRight size={14} className="text-text-muted mx-1" />
                 </>
               ) : (
                 <span className="text-text-secondary">{segment.name}</span>
@@ -488,14 +489,14 @@ export default function FileBrowser({ apiHost, sessionName, onFocusTerminal }: P
                 className="text-xs px-2 py-1 bg-control-bg hover:bg-control-bg-hover rounded"
                 title="Refresh"
               >
-                ↻
+                <RefreshCw size={14} />
               </button>
               <button
                 onClick={() => setSidebarCollapsed(true)}
                 className="text-xs px-2 py-1 bg-control-bg hover:bg-control-bg-hover rounded"
                 title="Collapse sidebar"
               >
-                ◀
+                <PanelLeftClose size={14} />
               </button>
             </div>
           </div>
@@ -519,7 +520,7 @@ export default function FileBrowser({ apiHost, sessionName, onFocusTerminal }: P
                     className="text-text-tertiary hover:text-text-secondary px-1"
                     title="Show file tree"
                   >
-                    ▶
+                    <ChevronRight size={16} />
                   </button>
                 )}
                 {renderBreadcrumb(selectedFile.path)}
@@ -579,7 +580,7 @@ export default function FileBrowser({ apiHost, sessionName, onFocusTerminal }: P
                   className="text-text-tertiary hover:text-text-secondary px-1"
                   title="Show file tree"
                 >
-                  ▶
+                  <ChevronRight size={16} />
                 </button>
               </div>
             )}
@@ -604,7 +605,7 @@ export default function FileBrowser({ apiHost, sessionName, onFocusTerminal }: P
           }}
           title="Send selected text to terminal (no Enter)"
         >
-          &#x25B7;
+          <Play size={18} />
         </button>
       )}
     </div>
