@@ -248,11 +248,69 @@ export default function PromptTemplates({
     return <div className="flex items-center justify-center h-full text-text-muted">Loading...</div>
   }
 
+  const editFormRef = (el: HTMLDivElement | null) => {
+    if (!el) return
+    const parent = el.closest('.overflow-y-auto')
+    if (!parent) return
+    const parentRect = parent.getBoundingClientRect()
+    const elRect = el.getBoundingClientRect()
+    const available = (parentRect.bottom - elRect.top) * 0.65 // use ~65% of available space
+    const textarea = el.querySelector('textarea')
+    if (textarea) {
+      textarea.style.height = `${Math.max(120, available)}px`
+    }
+  }
+
+  const renderInlineEditForm = (template: PromptTemplate, scope: 'project' | 'global') => (
+    <div key={template.id} ref={editFormRef} className="p-3 bg-bg-surface rounded border border-blue-500">
+      <div className="mb-2">
+        <input
+          type="text"
+          value={formName}
+          onChange={(e) => setFormName(e.target.value)}
+          placeholder="Template name"
+          autoFocus
+          className="w-full px-3 py-2 bg-input-bg text-text-primary rounded border border-input-border focus:outline-none focus:border-blue-500"
+        />
+      </div>
+      <div className="mb-2">
+        <textarea
+          value={formPrompt}
+          onChange={(e) => setFormPrompt(e.target.value)}
+          placeholder="Prompt text..."
+          className="w-full min-h-[120px] px-3 py-2 bg-input-bg text-text-primary rounded border border-input-border focus:outline-none focus:border-blue-500 resize-vertical"
+        />
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={handleSaveTemplate}
+          disabled={!formName.trim() || !formPrompt.trim()}
+          className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          Save
+        </button>
+        <button
+          type="button"
+          onClick={handleCancelEdit}
+          className="px-3 py-1.5 bg-control-bg text-text-tertiary text-sm rounded hover:bg-control-bg-hover hover:text-text-secondary transition-colors"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+
   const renderTemplateItem = (
     template: PromptTemplate,
     index: number,
     scope: 'project' | 'global'
   ) => {
+    // If this template is being edited inline, show the edit form
+    if (editMode && editingTemplate?.id === template.id && showForm === scope) {
+      return renderInlineEditForm(template, scope)
+    }
+
     const isDragging = dragScope === scope && dragIndex === index
     const isDragOver = dragScope === scope && dragOverIndex === index && dragIndex !== index
 
@@ -263,8 +321,9 @@ export default function PromptTemplates({
         onDragStart={() => handleDragStart(index, scope)}
         onDragOver={(e) => handleDragOver(e, index, scope)}
         onDragEnd={handleDragEnd}
+        onClick={editMode ? () => handleEdit(template, scope) : undefined}
         className={`flex items-center gap-2 p-3 bg-bg-surface rounded border border-border-default group ${
-          editMode ? 'cursor-grab active:cursor-grabbing' : ''
+          editMode ? 'cursor-pointer hover:border-blue-500/50' : ''
         } ${isDragging ? 'opacity-50' : ''} ${isDragOver ? 'border-blue-500' : ''}`}
       >
         {editMode && <GripVertical size={16} className="text-text-muted select-none" />}
@@ -282,16 +341,9 @@ export default function PromptTemplates({
         </span>
         {editMode && (
           <>
-            <button
-              onClick={() => handleEdit(template, scope)}
-              className="text-sm text-text-muted hover:text-blue-400 transition-colors px-1"
-              title="Edit"
-            >
-              Edit
-            </button>
             {scope === 'project' ? (
               <button
-                onClick={() => handleCopyToGlobal(template)}
+                onClick={(e) => { e.stopPropagation(); handleCopyToGlobal(template) }}
                 className="text-sm text-text-muted hover:text-green-400 transition-colors px-1"
                 title="Move to Global"
               >
@@ -299,7 +351,7 @@ export default function PromptTemplates({
               </button>
             ) : (
               <button
-                onClick={() => handleCopyToProject(template)}
+                onClick={(e) => { e.stopPropagation(); handleCopyToProject(template) }}
                 className="text-sm text-text-muted hover:text-green-400 transition-colors px-1"
                 title="Copy to Project"
               >
@@ -307,7 +359,7 @@ export default function PromptTemplates({
               </button>
             )}
             <button
-              onClick={() => handleDelete(template.id, scope)}
+              onClick={(e) => { e.stopPropagation(); handleDelete(template.id, scope) }}
               className="text-sm text-text-muted hover:text-red-400 transition-colors px-1"
               title="Delete"
             >
@@ -355,44 +407,9 @@ export default function PromptTemplates({
               </button>
             )}
           </div>
-          {showForm === 'project' && (
-            <div className="mb-2 p-3 bg-bg-surface rounded border border-blue-500">
-              <div className="mb-2">
-                <input
-                  type="text"
-                  value={formName}
-                  onChange={(e) => setFormName(e.target.value)}
-                  placeholder="Template name (e.g. code_review)"
-                  autoFocus
-                  className="w-full px-3 py-2 bg-input-bg text-text-primary rounded border border-input-border focus:outline-none focus:border-blue-500"
-                />
-              </div>
-              <div className="mb-2">
-                <textarea
-                  value={formPrompt}
-                  onChange={(e) => setFormPrompt(e.target.value)}
-                  placeholder="Prompt text..."
-                  rows={3}
-                  className="w-full px-3 py-2 bg-input-bg text-text-primary rounded border border-input-border focus:outline-none focus:border-blue-500 resize-none"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleSaveTemplate}
-                  disabled={!formName.trim() || !formPrompt.trim()}
-                  className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  {editingTemplate ? 'Update' : 'Add'}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleCancelEdit}
-                  className="px-3 py-1.5 bg-control-bg text-text-tertiary text-sm rounded hover:bg-control-bg-hover hover:text-text-secondary transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
+          {showForm === 'project' && !editingTemplate && (
+            <div className="mb-2">
+              {renderInlineEditForm({ id: '', name: '', prompt: '' }, 'project')}
             </div>
           )}
           {projectTemplates.length === 0 && showForm !== 'project' ? (
@@ -420,44 +437,9 @@ export default function PromptTemplates({
               </button>
             )}
           </div>
-          {showForm === 'global' && (
-            <div className="mb-2 p-3 bg-bg-surface rounded border border-blue-500">
-              <div className="mb-2">
-                <input
-                  type="text"
-                  value={formName}
-                  onChange={(e) => setFormName(e.target.value)}
-                  placeholder="Template name (e.g. code_review)"
-                  autoFocus
-                  className="w-full px-3 py-2 bg-input-bg text-text-primary rounded border border-input-border focus:outline-none focus:border-blue-500"
-                />
-              </div>
-              <div className="mb-2">
-                <textarea
-                  value={formPrompt}
-                  onChange={(e) => setFormPrompt(e.target.value)}
-                  placeholder="Prompt text..."
-                  rows={3}
-                  className="w-full px-3 py-2 bg-input-bg text-text-primary rounded border border-input-border focus:outline-none focus:border-blue-500 resize-none"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleSaveTemplate}
-                  disabled={!formName.trim() || !formPrompt.trim()}
-                  className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  {editingTemplate ? 'Update' : 'Add'}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleCancelEdit}
-                  className="px-3 py-1.5 bg-control-bg text-text-tertiary text-sm rounded hover:bg-control-bg-hover hover:text-text-secondary transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
+          {showForm === 'global' && !editingTemplate && (
+            <div className="mb-2">
+              {renderInlineEditForm({ id: '', name: '', prompt: '' }, 'global')}
             </div>
           )}
           {globalTemplates.length === 0 && showForm !== 'global' ? (
