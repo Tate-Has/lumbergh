@@ -14,6 +14,11 @@ from git import InvalidGitRepositoryError, Repo
 from git.exc import GitCommandError
 
 
+def _sanitize(text: str) -> str:
+    """Replace surrogate characters that can't be encoded as UTF-8."""
+    return text.encode("utf-8", errors="surrogateescape").decode("utf-8", errors="replace")
+
+
 def gravatar_url(email: str, size: int = 40) -> str:
     """Generate a Gravatar URL for an email address. Uses d=blank so missing gravatars return a transparent PNG."""
     md5 = hashlib.md5(email.strip().lower().encode()).hexdigest()
@@ -174,7 +179,7 @@ def generate_untracked_file_diff(workdir: Path, path: str) -> tuple[FileDiff | N
 def get_file_content_at_ref(repo: Repo, ref: str, path: str) -> str | None:
     """Get file content at a specific git ref (commit, HEAD, etc.)."""
     try:
-        return repo.git.show(f"{ref}:{path}")
+        return _sanitize(repo.git.show(f"{ref}:{path}"))
     except GitCommandError:
         return None
 
@@ -198,7 +203,7 @@ def get_full_diff_with_untracked(cwd: Path) -> dict:
     # Get diff of working tree against HEAD
     if repo.head.is_valid():
         try:
-            diff_text = repo.git.diff("HEAD")
+            diff_text = _sanitize(repo.git.diff("HEAD"))
             if diff_text:
                 parsed_files, stats = parse_diff_output(diff_text)
                 for f in parsed_files:
@@ -493,7 +498,7 @@ def get_commit_diff(cwd: Path, commit_hash: str) -> dict | None:
     # Get the diff
     try:
         if commit.parents:
-            diff_text = repo.git.diff(f"{commit_hash}^..{commit_hash}")
+            diff_text = _sanitize(repo.git.diff(f"{commit_hash}^..{commit_hash}"))
         else:
             # First commit - show all files as added
             diff_text = repo.git.show(commit_hash, format="")
