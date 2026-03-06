@@ -3,6 +3,7 @@ import { MoreVertical, Monitor, Cloud } from 'lucide-react'
 import type { GraphData } from '../diff/types'
 import { computeGraphLayout, laneColor } from './graphLayout'
 import { relativeDate } from '../../utils/relativeDate'
+import dayjs from 'dayjs'
 
 const ROW_HEIGHT = 38
 const LANE_WIDTH = 28
@@ -513,6 +514,35 @@ export default function GitGraph({ apiHost, sessionName, onSelectCommit, selecte
     return { labels, gaps }
   }, [nodes, rowToY, totalRows, graphData])
 
+  // Day separator positions — shows label at the first commit of each new day
+  const daySeparators = useMemo(() => {
+    const seps: { row: number; label: string }[] = []
+    let prevDay = ''
+    const today = dayjs().startOf('day')
+    const yesterday = today.subtract(1, 'day')
+    for (let row = 0; row < nodes.length; row++) {
+      const d = dayjs(nodes[row].commit.relativeDate)
+      const day = d.format('YYYY-MM-DD')
+      if (day !== prevDay) {
+        prevDay = day
+        let label: string
+        if (d.isSame(today, 'day')) {
+          label = 'Today'
+        } else if (d.isSame(yesterday, 'day')) {
+          label = 'Yesterday'
+        } else if (d.isAfter(today.subtract(7, 'day'))) {
+          label = d.format('dddd') // e.g. "Monday"
+        } else if (d.year() === today.year()) {
+          label = d.format('MMM D') // e.g. "Feb 28"
+        } else {
+          label = d.format('MMM D, YYYY')
+        }
+        seps.push({ row, label })
+      }
+    }
+    return seps
+  }, [nodes])
+
   const renderWipSvg = () => {
     if (!hasWip) return null
     const cx = SVG_PADDING_LEFT + headLane * LANE_WIDTH + LANE_WIDTH / 2
@@ -864,6 +894,23 @@ export default function GitGraph({ apiHost, sessionName, onSelectCommit, selecte
                 </span>
               </div>
             )}
+
+            {/* Day separators */}
+            {daySeparators.map(({ row, label }) => (
+              <div
+                key={`day-${row}`}
+                className="absolute flex items-center pointer-events-none"
+                style={{
+                  top: rowToY(row),
+                  height: ROW_HEIGHT,
+                  right: 8,
+                }}
+              >
+                <span className="text-[11px] font-medium text-text-muted/70 whitespace-nowrap">
+                  {label}
+                </span>
+              </div>
+            ))}
 
             {/* HTML rows for commit info */}
             {nodes.map((node, row) => {

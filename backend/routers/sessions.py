@@ -154,9 +154,9 @@ def create_tmux_session(name: str, workdir: Path) -> None:
             text=True,
         )
 
-    # Start claude
+    # Start claude (--continue resumes previous conversation if one exists)
     subprocess.run(
-        ["tmux", "send-keys", "-t", name, "claude", "Enter"],
+        ["tmux", "send-keys", "-t", name, "claude --continue", "Enter"],
         capture_output=True,
         text=True,
     )
@@ -490,9 +490,9 @@ async def reset_session(name: str):
             text=True,
         )
 
-    # Start claude
+    # Start claude (--continue resumes previous conversation if one exists)
     subprocess.run(
-        ["tmux", "send-keys", "-t", name, "claude", "Enter"],
+        ["tmux", "send-keys", "-t", name, "claude --continue", "Enter"],
         capture_output=True,
         text=True,
     )
