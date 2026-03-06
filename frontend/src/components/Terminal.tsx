@@ -534,6 +534,26 @@ export default function Terminal({
               >
                 Fit
               </button>
+              <button
+                onClick={() => {
+                  sendRef.current('\x1b[A')
+                }}
+                disabled={!isConnected}
+                className="px-2 py-1 text-xs bg-control-bg hover:bg-control-bg-hover disabled:opacity-50 rounded"
+                title="Send Up Arrow"
+              >
+                <ChevronUp size={16} />
+              </button>
+              <button
+                onClick={() => {
+                  sendRef.current('\x1b[B')
+                }}
+                disabled={!isConnected}
+                className="px-2 py-1 text-xs bg-control-bg hover:bg-control-bg-hover disabled:opacity-50 rounded"
+                title="Send Down Arrow"
+              >
+                <ChevronDown size={16} />
+              </button>
               {['1', '2', '3', '4', 'yes'].map((text) => (
                 <button
                   key={text}

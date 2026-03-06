@@ -232,6 +232,12 @@ async def send_to_session(session_name: str, body: SendInput):
         if result.returncode != 0:
             raise HTTPException(status_code=500, detail=result.stderr)
 
+    # Buffer the message for AI commit context
+    if body.send_enter:
+        from message_buffer import message_buffer
+
+        message_buffer.add(session_name, body.text)
+
     return {"status": "sent"}
 
 

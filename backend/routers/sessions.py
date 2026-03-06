@@ -666,6 +666,8 @@ async def session_git_commit(name: str, body: CommitInput):
         from diff_cache import diff_cache
         diff_cache.invalidate(name)
         _files_cache.pop(name, None)
+        from message_buffer import message_buffer
+        message_buffer.clear(name)
         return result
     except HTTPException:
         raise
@@ -1149,6 +1151,26 @@ async def session_get_file(name: str, file_path: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# --- Message Buffer Endpoints ---
+
+
+@router.get("/{name}/message-buffer")
+async def session_get_message_buffer(name: str):
+    """Get buffered user messages for a session."""
+    from message_buffer import message_buffer
+
+    return {"messages": message_buffer.get_messages(name)}
+
+
+@router.delete("/{name}/message-buffer")
+async def session_clear_message_buffer(name: str):
+    """Clear buffered user messages for a session."""
+    from message_buffer import message_buffer
+
+    message_buffer.clear(name)
+    return {"status": "cleared"}
+
+
 # --- Session-scoped AI Endpoints ---
 
 
@@ -1186,12 +1208,18 @@ async def session_generate_commit_message(name: str):
         if not template:
             raise HTTPException(status_code=500, detail="No commit message prompt template found")
 
+        # Get user instruction context
+        from message_buffer import message_buffer
+
+        user_messages = message_buffer.get_formatted(name)
+
         # Render the prompt
         prompt = render_prompt(
             template,
             {
                 "git_diff": all_diffs,
                 "file_summary": file_summary,
+                "user_messages": user_messages,
             },
         )
 

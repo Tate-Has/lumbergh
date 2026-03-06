@@ -46,6 +46,11 @@ EXAMPLES:
 - refactor(providers): extract base class for AI providers
 - chore: update dependencies
 
+{{#if user_messages}}
+User instructions that led to these changes:
+{{user_messages}}
+{{/if}}
+
 {{#if file_summary}}
 Files changed:
 {{file_summary}}
