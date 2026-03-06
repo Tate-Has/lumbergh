@@ -808,16 +808,6 @@ export default function GitGraph({ apiHost, sessionName, onSelectCommit, selecte
                   </div>
                 )
               })()}
-              {/* Gap counts between branches */}
-              {branchEntries.gaps.map(({ y, count }) => (
-                <div
-                  key={`gap-${y}`}
-                  className="absolute left-0 right-0 flex items-center justify-center text-xs text-text-muted pointer-events-none"
-                  style={{ top: y - 10, height: 20 }}
-                >
-                  {count}
-                </div>
-              ))}
             </div>
 
             {/* Drag handle for branch panel resize */}
