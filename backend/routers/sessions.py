@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 import libtmux
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import FileResponse
 from tinydb import Query
 
 from constants import IGNORE_DIRS, REPO_SEARCH_SKIP_DIRS
@@ -1149,6 +1150,22 @@ async def session_get_file(name: str, file_path: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{name}/files/{file_path:path}/raw")
+async def session_get_file_raw(name: str, file_path: str):
+    """Serve raw file bytes from the session's working directory."""
+    workdir = get_session_workdir(name)
+    full_path = workdir / file_path
+
+    if not validate_path_within_root(full_path, workdir):
+        raise HTTPException(status_code=403, detail="Access denied")
+    if not full_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+    if not full_path.is_file():
+        raise HTTPException(status_code=400, detail="Path is not a file")
+
+    return FileResponse(full_path)
 
 
 # --- Message Buffer Endpoints ---

@@ -100,6 +100,13 @@ interface FileContent {
   path: string
 }
 
+const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico', '.bmp', '.avif'])
+
+function isImagePath(path: string): boolean {
+  const ext = path.slice(path.lastIndexOf('.')).toLowerCase()
+  return IMAGE_EXTENSIONS.has(ext)
+}
+
 interface Props {
   apiHost: string
   sessionName?: string
@@ -547,7 +554,15 @@ export default function FileBrowser({ apiHost, sessionName, onFocusTerminal }: P
                 <span className="text-text-muted text-xs">{selectedFile.language}</span>
               </div>
             </div>
-            {showMarkdownPreview && selectedFile.path.endsWith('.md') ? (
+            {isImagePath(selectedFile.path) ? (
+              <div className="flex-1 overflow-auto flex items-center justify-center p-4 bg-[repeating-conic-gradient(#80808018_0%_25%,transparent_0%_50%)] bg-[length:20px_20px]">
+                <img
+                  src={`http://${apiHost}${sessionName ? `/api/sessions/${sessionName}/files/${encodeURIComponent(selectedFile.path)}/raw` : `/api/files/${encodeURIComponent(selectedFile.path)}/raw`}`}
+                  alt={selectedFile.path}
+                  className="max-w-full max-h-full object-contain"
+                />
+              </div>
+            ) : showMarkdownPreview && selectedFile.path.endsWith('.md') ? (
               <div className="flex-1 overflow-auto p-4 md:p-8">
                 <div className="max-w-4xl mx-auto">
                   <MarkdownPreview

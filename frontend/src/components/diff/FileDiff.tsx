@@ -6,6 +6,13 @@ import { extractDiffContent, getFileStats, getLangFromPath } from './utils'
 import MarkdownViewer from '../MarkdownViewer'
 import { useTheme } from '../../hooks/useTheme'
 
+const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico', '.bmp', '.avif'])
+
+function isImagePath(path: string): boolean {
+  const ext = path.slice(path.lastIndexOf('.')).toLowerCase()
+  return IMAGE_EXTENSIONS.has(ext)
+}
+
 interface Props {
   file: DiffFile
   onBack: () => void
@@ -181,34 +188,46 @@ const FileDiff = memo(function FileDiff({
       </div>
 
       {/* Diff viewer */}
-      <div className="flex-1 overflow-auto relative diff-font-size-override" ref={contentRef} style={{ color: 'unset', '--diff-font-size': `${fontSize}px` } as React.CSSProperties}>
-        {hasSelection && sessionName && (
-          <button
-            onMouseDown={(e) => {
-              e.preventDefault()
-              handleSendToTerminal()
-            }}
-            className="z-10 text-lg bg-blue-600 hover:bg-blue-500 text-white rounded px-1.5 py-0.5"
-            style={{ position: 'absolute', top: buttonPos.top, right: 16 }}
-            title="Send selected text to terminal (no Enter)"
-          >
-            <Play size={18} />
-          </button>
-        )}
-        {hunks.length > 0 ? (
-          <DiffView
-            data={diffViewData}
-            diffViewMode={DiffModeEnum.Unified}
-            diffViewTheme={theme}
-            diffViewHighlight
-            diffViewWrap
-          />
-        ) : (
-          <div className="flex items-center justify-center h-full text-text-muted">
-            No diff content for this file
-          </div>
-        )}
-      </div>
+      {isImagePath(file.path) ? (
+        <div className="flex-1 overflow-auto flex items-center justify-center gap-8 p-4 bg-[repeating-conic-gradient(#80808018_0%_25%,transparent_0%_50%)] bg-[length:20px_20px]">
+          {apiHost && sessionName && (
+            <img
+              src={`http://${apiHost}/api/sessions/${sessionName}/files/${encodeURIComponent(file.path)}/raw`}
+              alt={file.path}
+              className="max-w-full max-h-full object-contain"
+            />
+          )}
+        </div>
+      ) : (
+        <div className="flex-1 overflow-auto relative diff-font-size-override" ref={contentRef} style={{ color: 'unset', '--diff-font-size': `${fontSize}px` } as React.CSSProperties}>
+          {hasSelection && sessionName && (
+            <button
+              onMouseDown={(e) => {
+                e.preventDefault()
+                handleSendToTerminal()
+              }}
+              className="z-10 text-lg bg-blue-600 hover:bg-blue-500 text-white rounded px-1.5 py-0.5"
+              style={{ position: 'absolute', top: buttonPos.top, right: 16 }}
+              title="Send selected text to terminal (no Enter)"
+            >
+              <Play size={18} />
+            </button>
+          )}
+          {hunks.length > 0 ? (
+            <DiffView
+              data={diffViewData}
+              diffViewMode={DiffModeEnum.Unified}
+              diffViewTheme={theme}
+              diffViewHighlight
+              diffViewWrap
+            />
+          ) : (
+            <div className="flex items-center justify-center h-full text-text-muted">
+              No diff content for this file
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Markdown preview modal */}
       {showMarkdownPreview && isMarkdown && (
