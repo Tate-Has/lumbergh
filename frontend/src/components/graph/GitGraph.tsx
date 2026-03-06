@@ -9,6 +9,14 @@ const LANE_WIDTH = 28
 const NODE_RADIUS = 12
 const HEAD_RADIUS = 12
 const SVG_PADDING_LEFT = 14
+const DEFAULT_BRANCH_PANEL_WIDTH = 180
+const MIN_BRANCH_PANEL_WIDTH = 80
+const MAX_BRANCH_PANEL_WIDTH = 400
+const BRANCH_PANEL_STORAGE_KEY = 'lumbergh:branchPanelWidth'
+const DEFAULT_GRAPH_PANEL_WIDTH = 120
+const MIN_GRAPH_PANEL_WIDTH = 40
+const MAX_GRAPH_PANEL_WIDTH = 500
+const GRAPH_PANEL_STORAGE_KEY = 'lumbergh:graphPanelWidth'
 const WIP_COLOR = '#ffb74d' // orange for WIP
 
 function getInitials(author: string, email?: string): string {
@@ -47,6 +55,72 @@ export default function GitGraph({ apiHost, sessionName, onSelectCommit, selecte
   const menuRef = useRef<HTMLDivElement>(null)
   const branchMenuRef = useRef<HTMLDivElement>(null)
   const didAutoSelect = useRef(false)
+
+  // Draggable branch panel width
+  const [branchPanelWidth, setBranchPanelWidth] = useState(() => {
+    const saved = localStorage.getItem(BRANCH_PANEL_STORAGE_KEY)
+    return saved ? Math.max(MIN_BRANCH_PANEL_WIDTH, Math.min(MAX_BRANCH_PANEL_WIDTH, Number(saved))) : DEFAULT_BRANCH_PANEL_WIDTH
+  })
+  const isDraggingPanel = useRef(false)
+
+  const handlePanelDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    isDraggingPanel.current = true
+    const startX = e.clientX
+    const startWidth = branchPanelWidth
+    const containerLeft = containerRef.current?.getBoundingClientRect().left ?? 0
+
+    const onMove = (ev: MouseEvent) => {
+      if (!isDraggingPanel.current) return
+      const newWidth = Math.max(MIN_BRANCH_PANEL_WIDTH, Math.min(MAX_BRANCH_PANEL_WIDTH, startWidth + (ev.clientX - startX)))
+      setBranchPanelWidth(newWidth)
+    }
+    const onUp = () => {
+      isDraggingPanel.current = false
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      // Persist
+      setBranchPanelWidth((w) => { localStorage.setItem(BRANCH_PANEL_STORAGE_KEY, String(w)); return w })
+    }
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }, [branchPanelWidth])
+
+  // Draggable graph panel width
+  const [graphPanelWidth, setGraphPanelWidth] = useState(() => {
+    const saved = localStorage.getItem(GRAPH_PANEL_STORAGE_KEY)
+    return saved ? Math.max(MIN_GRAPH_PANEL_WIDTH, Math.min(MAX_GRAPH_PANEL_WIDTH, Number(saved))) : DEFAULT_GRAPH_PANEL_WIDTH
+  })
+  const isDraggingGraph = useRef(false)
+
+  const handleGraphDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    isDraggingGraph.current = true
+    const startX = e.clientX
+    const startWidth = graphPanelWidth
+
+    const onMove = (ev: MouseEvent) => {
+      if (!isDraggingGraph.current) return
+      const newWidth = Math.max(MIN_GRAPH_PANEL_WIDTH, Math.min(MAX_GRAPH_PANEL_WIDTH, startWidth + (ev.clientX - startX)))
+      setGraphPanelWidth(newWidth)
+    }
+    const onUp = () => {
+      isDraggingGraph.current = false
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      setGraphPanelWidth((w) => { localStorage.setItem(GRAPH_PANEL_STORAGE_KEY, String(w)); return w })
+    }
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }, [graphPanelWidth])
 
   // Fetch configured commit limit from settings
   useEffect(() => {
@@ -365,6 +439,44 @@ export default function GitGraph({ apiHost, sessionName, onSelectCommit, selecte
     return headNode?.lane ?? 0
   }, [nodes])
 
+  // Compute branch label positions for left panel
+  const branchEntries = useMemo(() => {
+    const labels: { row: number; refs: { name: string; local: boolean; remote: boolean }[]; }[] = []
+    for (let row = 0; row < nodes.length; row++) {
+      if (nodes[row].commit.refs.length > 0) {
+        labels.push({ row, refs: nodes[row].commit.refs })
+      }
+    }
+    // Gap counts between labeled rows
+    const gaps: { y: number; count: number }[] = []
+    const labelRows = labels.map(l => l.row)
+    // Gap before first label
+    if (labelRows.length > 0 && labelRows[0] > 0) {
+      const topY = rowToY(0)
+      const bottomY = rowToY(labelRows[0])
+      gaps.push({ y: topY + (bottomY - topY) / 2, count: labelRows[0] })
+    }
+    for (let i = 0; i < labelRows.length - 1; i++) {
+      const count = labelRows[i + 1] - labelRows[i] - 1
+      if (count > 0) {
+        const topY = rowToY(labelRows[i]) + ROW_HEIGHT
+        const bottomY = rowToY(labelRows[i + 1])
+        gaps.push({ y: topY + (bottomY - topY) / 2, count })
+      }
+    }
+    // Gap after last label
+    if (labelRows.length > 0) {
+      const lastRow = labelRows[labelRows.length - 1]
+      const remaining = nodes.length - lastRow - 1
+      if (remaining > 0) {
+        const topY = rowToY(lastRow) + ROW_HEIGHT
+        const endY = totalRows * ROW_HEIGHT
+        gaps.push({ y: topY + (endY - topY) / 2, count: remaining })
+      }
+    }
+    return { labels, gaps }
+  }, [nodes, rowToY, totalRows])
+
   const renderWipSvg = () => {
     if (!hasWip) return null
     const cx = SVG_PADDING_LEFT + headLane * LANE_WIDTH + LANE_WIDTH / 2
@@ -549,23 +661,122 @@ export default function GitGraph({ apiHost, sessionName, onSelectCommit, selecte
           </div>
         ) : (
           <div className="relative" style={{ height: totalRows * ROW_HEIGHT }}>
-            {/* SVG layer for lines and dots */}
-            <svg
-              className="absolute top-0 left-0"
-              width={svgWidth}
-              height={totalRows * ROW_HEIGHT}
-              style={{ pointerEvents: 'none' }}
+            {/* Branch panel - left column */}
+            <div
+              className="absolute top-0 left-0 bottom-0 border-r border-border-default/50"
+              style={{ width: branchPanelWidth }}
             >
-              {renderWipSvg()}
-              {renderEdges()}
-              {renderNodes()}
-            </svg>
+              {branchEntries.labels.map(({ row, refs }) => (
+                <div
+                  key={row}
+                  className="absolute left-0 right-0 flex flex-col justify-center gap-0.5 px-2 overflow-hidden"
+                  style={{ top: rowToY(row), height: ROW_HEIGHT }}
+                >
+                  {refs.map((ref) => {
+                    const isCurrent = ref.name === graphData?.head?.branch
+                    const isMenuOpen = menuBranch?.name === ref.name && menuBranch?.commitHash === nodes[row].commit.hash
+                    return (
+                      <button
+                        key={ref.name}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (isMenuOpen) {
+                            setMenuBranch(null)
+                          } else {
+                            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                            const containerRect = containerRef.current?.getBoundingClientRect()
+                            setMenuBranch({
+                              name: ref.name,
+                              local: ref.local,
+                              remote: ref.remote,
+                              commitHash: nodes[row].commit.hash,
+                              commitShortHash: nodes[row].commit.shortHash,
+                              x: rect.left - (containerRect?.left ?? 0),
+                              y: rect.bottom - (containerRect?.top ?? 0) + (containerRef.current?.scrollTop ?? 0),
+                            })
+                            setMenuCommit(null)
+                          }
+                        }}
+                        className={`inline-flex items-center gap-1 px-2 py-1 text-base rounded font-medium leading-none cursor-pointer transition-colors max-w-full ${
+                          isMenuOpen
+                            ? 'bg-blue-500/40 text-blue-200 ring-1 ring-blue-400/70'
+                            : isCurrent
+                              ? 'bg-blue-500/25 text-blue-300 ring-1 ring-blue-400/50 hover:bg-blue-500/35'
+                              : 'bg-bg-surface text-text-tertiary ring-1 ring-border-default hover:bg-control-bg-hover hover:text-text-secondary'
+                        }`}
+                      >
+                        <span className="truncate">{ref.name}</span>
+                        <span className="ml-auto flex items-center gap-0.5 shrink-0">
+                          {ref.local && <Monitor size={12} className="opacity-70" />}
+                          {ref.remote && <Cloud size={12} className="opacity-70" />}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              ))}
+              {/* Detached HEAD indicator */}
+              {nodes.some(n => n.isHead && n.commit.refs.length === 0) && (() => {
+                const headIdx = nodes.findIndex(n => n.isHead)
+                if (headIdx === -1) return null
+                return (
+                  <div
+                    className="absolute left-0 right-0 flex items-center px-2"
+                    style={{ top: rowToY(headIdx), height: ROW_HEIGHT }}
+                  >
+                    <span className="px-1.5 py-0.5 text-xs rounded font-medium leading-none bg-yellow-500/20 text-yellow-300 ring-1 ring-yellow-500/40">
+                      HEAD
+                    </span>
+                  </div>
+                )
+              })()}
+              {/* Gap counts between branches */}
+              {branchEntries.gaps.map(({ y, count }) => (
+                <div
+                  key={`gap-${y}`}
+                  className="absolute left-0 right-0 flex items-center justify-center text-xs text-text-muted pointer-events-none"
+                  style={{ top: y - 10, height: 20 }}
+                >
+                  {count}
+                </div>
+              ))}
+            </div>
+
+            {/* Drag handle for branch panel resize */}
+            <div
+              onMouseDown={handlePanelDragStart}
+              className="absolute top-0 bottom-0 z-10 w-1 cursor-col-resize hover:bg-blue-500/40 active:bg-blue-500/60 transition-colors"
+              style={{ left: branchPanelWidth - 2 }}
+            />
+
+            {/* Graph area (clipped to graphPanelWidth) */}
+            <div
+              className="absolute top-0 bottom-0 overflow-hidden"
+              style={{ left: branchPanelWidth + 4, width: graphPanelWidth }}
+            >
+              <svg
+                width={svgWidth}
+                height={totalRows * ROW_HEIGHT}
+                style={{ pointerEvents: 'none' }}
+              >
+                {renderWipSvg()}
+                {renderEdges()}
+                {renderNodes()}
+              </svg>
+            </div>
+
+            {/* Drag handle for graph panel resize */}
+            <div
+              onMouseDown={handleGraphDragStart}
+              className="absolute top-0 bottom-0 z-10 w-1 cursor-col-resize hover:bg-blue-500/40 active:bg-blue-500/60 transition-colors"
+              style={{ left: branchPanelWidth + graphPanelWidth + 2 }}
+            />
 
             {/* WIP row */}
             {hasWip && graphData?.workingChanges && (
               <div
                 onClick={() => onSelectCommit?.(null)}
-                className={`absolute left-0 right-0 flex items-center gap-2 px-1 border-b border-orange-500/20 cursor-pointer ${
+                className={`absolute right-0 flex items-center gap-2 px-1 border-b border-orange-500/20 cursor-pointer ${
                   selectedCommit === null
                     ? 'bg-orange-500/[0.2] border-l-2 border-l-orange-400'
                     : 'bg-orange-500/[0.1] hover:bg-orange-500/[0.16]'
@@ -573,7 +784,8 @@ export default function GitGraph({ apiHost, sessionName, onSelectCommit, selecte
                 style={{
                   top: headRow * ROW_HEIGHT,
                   height: ROW_HEIGHT,
-                  paddingLeft: svgWidth + 4,
+                  left: branchPanelWidth + graphPanelWidth + 8,
+                  paddingLeft: 4,
                 }}
               >
                 <span className="px-1.5 py-0.5 text-xs rounded font-semibold leading-none bg-orange-500/25 text-orange-300 ring-1 ring-orange-400/50 shrink-0">
@@ -592,7 +804,7 @@ export default function GitGraph({ apiHost, sessionName, onSelectCommit, selecte
               <div
                 key={node.commit.hash}
                 onClick={() => onSelectCommit?.(node.commit.hash)}
-                className={`absolute left-0 right-0 flex items-center gap-2 px-1 cursor-pointer group ${
+                className={`absolute right-0 flex items-center gap-2 px-1 cursor-pointer group ${
                   isSelected
                     ? 'bg-blue-500/[0.25] border-l-2 border-l-blue-400'
                     : node.isHead
@@ -604,62 +816,10 @@ export default function GitGraph({ apiHost, sessionName, onSelectCommit, selecte
                 style={{
                   top: rowToY(row),
                   height: ROW_HEIGHT,
-                  paddingLeft: svgWidth + 4,
+                  left: branchPanelWidth + graphPanelWidth + 8,
+                  paddingLeft: 4,
                 }}
               >
-                {/* Ref badges */}
-                {node.commit.refs.length > 0 && (
-                  <div className="flex gap-1 shrink-0">
-                    {node.commit.refs.map((ref) => {
-                      const isCurrent = graphData?.head?.branch === ref.name
-                      const isMenuOpen = menuBranch?.name === ref.name && menuBranch?.commitHash === node.commit.hash
-                      return (
-                        <button
-                          key={ref.name}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            if (isMenuOpen) {
-                              setMenuBranch(null)
-                            } else {
-                              const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-                              const containerRect = containerRef.current?.getBoundingClientRect()
-                              setMenuBranch({
-                                name: ref.name,
-                                local: ref.local,
-                                remote: ref.remote,
-                                commitHash: node.commit.hash,
-                                commitShortHash: node.commit.shortHash,
-                                x: rect.left - (containerRect?.left ?? 0),
-                                y: rect.bottom - (containerRect?.top ?? 0) + (containerRef.current?.scrollTop ?? 0),
-                              })
-                              setMenuCommit(null)
-                            }
-                          }}
-                          className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs rounded font-medium leading-none cursor-pointer transition-colors ${
-                            isMenuOpen
-                              ? 'bg-blue-500/40 text-blue-200 ring-1 ring-blue-400/70'
-                              : isCurrent
-                                ? 'bg-blue-500/25 text-blue-300 ring-1 ring-blue-400/50 hover:bg-blue-500/35'
-                                : 'bg-bg-surface text-text-tertiary ring-1 ring-border-default hover:bg-control-bg-hover hover:text-text-secondary'
-                          }`}
-                        >
-                          {ref.name}
-                          {ref.local && (
-                            <Monitor size={12} className="ml-0.5 opacity-70" />
-                          )}
-                          {ref.remote && (
-                            <Cloud size={12} className="ml-0.5 opacity-70" />
-                          )}
-                        </button>
-                      )
-                    })}
-                  </div>
-                )}
-                {node.isHead && node.commit.refs.length === 0 && (
-                  <span className="px-1.5 py-0.5 text-xs rounded font-medium leading-none bg-yellow-500/20 text-yellow-300 ring-1 ring-yellow-500/40 shrink-0">
-                    HEAD
-                  </span>
-                )}
                 {/* Commit message */}
                 <span className={`text-base truncate min-w-0 ${
                   node.onCurrentBranch ? 'text-text-primary' : 'text-text-tertiary'
