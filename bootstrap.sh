@@ -4,6 +4,39 @@
 
 cd "$(dirname "$0")"
 
+# Check required dependencies
+has_missing=false
+for cmd in tmux git uv npm; do
+    if ! command -v "$cmd" &>/dev/null; then
+        has_missing=true
+        echo "Missing: $cmd"
+        case "$cmd" in
+            tmux)
+                echo "  Install: sudo apt install tmux  (or: brew install tmux)"
+                ;;
+            git)
+                echo "  Install: sudo apt install git  (or: brew install git)"
+                ;;
+            uv)
+                echo "  Install: curl -LsSf https://astral.sh/uv/install.sh | sh"
+                echo "  More info: https://docs.astral.sh/uv/"
+                ;;
+            npm)
+                echo "  Recommended: install via nvm (Node Version Manager)"
+                echo "  Install nvm: curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash"
+                echo "  Then: nvm install --lts"
+                echo "  More info: https://github.com/nvm-sh/nvm"
+                ;;
+        esac
+        echo ""
+    fi
+done
+if [ "$has_missing" = true ]; then
+    echo "Install the missing tools above, then open a new shell (or run: source ~/.bashrc)"
+    echo "and re-run this script."
+    exit 1
+fi
+
 if tmux has-session -t 0 2>/dev/null; then
     echo "Session '0' already exists. Attach with: tmux at -t 0"
     exit 1

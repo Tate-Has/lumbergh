@@ -25,7 +25,7 @@ from git_utils import (
     stage_all_and_commit,
 )
 from models import CommitInput, SendInput, TmuxCommand
-from routers import ai, notes, sessions, settings, shared
+from routers import ai, notes, sessions, settings, shared, tmux
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +62,7 @@ app.include_router(sessions.router)
 app.include_router(sessions.directories_router)
 app.include_router(settings.router)
 app.include_router(shared.router)
+app.include_router(tmux.router)
 
 # Project root (parent of backend/)
 PROJECT_ROOT = Path(__file__).parent.parent

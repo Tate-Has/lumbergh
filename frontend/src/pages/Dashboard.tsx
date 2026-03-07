@@ -32,6 +32,8 @@ export default function Dashboard() {
   const [showSettingsModal, setShowSettingsModal] = useState(false)
   const [lbSharedInstalled, setLbSharedInstalled] = useState<boolean | null>(null)
   const [installingLbShared, setInstallingLbShared] = useState(false)
+  const [tmuxMouseEnabled, setTmuxMouseEnabled] = useState<boolean | null>(null)
+  const [enablingTmuxMouse, setEnablingTmuxMouse] = useState(false)
   const { theme, setTheme } = useTheme()
 
   const apiHost = getApiHost()
@@ -62,6 +64,36 @@ export default function Dashboard() {
     }
   }, [apiHost])
 
+  const checkTmuxMouse = useCallback(async () => {
+    try {
+      const res = await fetch(`http://${apiHost}/api/tmux/mouse-status`)
+      if (res.ok) {
+        const data = await res.json()
+        setTmuxMouseEnabled(data.enabled)
+      }
+    } catch {
+      // Silently fail - not critical
+    }
+  }, [apiHost])
+
+  const enableTmuxMouse = async (mode: 'full' | 'mouse_only') => {
+    setEnablingTmuxMouse(true)
+    try {
+      const res = await fetch(`http://${apiHost}/api/tmux/enable-mouse`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode }),
+      })
+      if (res.ok) {
+        setTmuxMouseEnabled(true)
+      }
+    } catch {
+      // Ignore errors
+    } finally {
+      setEnablingTmuxMouse(false)
+    }
+  }
+
   const installLbShared = async () => {
     setInstallingLbShared(true)
     try {
@@ -81,10 +113,11 @@ export default function Dashboard() {
   useEffect(() => {
     fetchSessions()
     checkLbSharedStatus()
+    checkTmuxMouse()
     // Poll for session updates every 10 seconds
     const interval = setInterval(fetchSessions, 10000)
     return () => clearInterval(interval)
-  }, [fetchSessions, checkLbSharedStatus])
+  }, [fetchSessions, checkLbSharedStatus, checkTmuxMouse])
 
   const handleDelete = async (name: string, cleanupWorktree?: boolean) => {
     try {
@@ -198,6 +231,34 @@ export default function Dashboard() {
           >
             {installingLbShared ? 'Installing...' : 'Enable'}
           </button>
+        </div>
+      )}
+
+      {/* Tmux mouse mode banner */}
+      {tmuxMouseEnabled === false && (
+        <div className="mx-4 mt-4 p-3 bg-yellow-900/50 border border-yellow-700 rounded-lg flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Info size={20} className="text-yellow-400 flex-shrink-0" />
+            <span className="text-sm text-text-secondary">
+              Tmux mouse mode is off — terminal scrolling and clicking won't work in the browser
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => enableTmuxMouse('mouse_only')}
+              disabled={enablingTmuxMouse}
+              className="px-3 py-1.5 text-sm bg-yellow-700 hover:bg-yellow-600 disabled:bg-yellow-800 rounded transition-colors"
+            >
+              Just enable mouse
+            </button>
+            <button
+              onClick={() => enableTmuxMouse('full')}
+              disabled={enablingTmuxMouse}
+              className="px-3 py-1.5 text-sm bg-yellow-600 hover:bg-yellow-500 disabled:bg-yellow-800 rounded transition-colors"
+            >
+              Install full config
+            </button>
+          </div>
         </div>
       )}
 
