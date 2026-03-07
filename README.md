@@ -4,6 +4,10 @@ A self-hosted web dashboard for supervising multiple Claude Code AI sessions run
 
 Think "micromanager for your AI interns."
 
+**[Documentation & Screenshots](https://voglster.github.io/lumbergh/)**
+
+![Lumbergh Dashboard](docs/screenshots/dashboard.png)
+
 ## Features
 
 - **Multi-session dashboard** — view and manage multiple Claude Code sessions at a glance
