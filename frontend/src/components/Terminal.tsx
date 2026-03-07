@@ -216,6 +216,7 @@ export default function Terminal({
       // Only fit when we have meaningful dimensions (not collapsed)
       if (width > 50 && height > 50) {
         fitAddon.fit()
+        term.focus()
         // Disconnect after successful initial fit
         initialFitObserver.disconnect()
       }
@@ -622,7 +623,7 @@ export default function Terminal({
       )}
 
       {/* Terminal container with focus click shield */}
-      <div className="flex-1 overflow-hidden relative">
+      <div className={`flex-1 overflow-hidden relative ${hasFocus ? 'border-2 border-blue-500/70' : 'border-2 border-transparent'}`}>
         {/* Floating connection indicator */}
         <div
           className={`absolute top-1 right-1 w-2 h-2 rounded-full z-10 ${
