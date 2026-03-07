@@ -535,7 +535,7 @@
   <!-- PREREQUISITES -->
   <section id="install" class="container">
     <h2><span class="num">1.</span> Prerequisites</h2>
-    <p>Lumbergh runs on Linux or macOS. You'll need a few standard tools:</p>
+    <p>Lumbergh runs on Linux, macOS, or <strong>Windows via WSL</strong>. You'll need a few standard tools:</p>
 
     <table class="prereqs">
       <thead>
@@ -568,6 +568,11 @@
     <div class="callout tip">
       <strong>Already have these?</strong>
       <p>Skip to the next step. The bootstrap script will check for you and tell you what's missing.</p>
+    </div>
+
+    <div class="callout">
+      <strong>Windows users: use WSL</strong>
+      <p>Lumbergh works great inside <a href="https://learn.microsoft.com/en-us/windows/wsl/install">WSL (Windows Subsystem for Linux)</a>. Install WSL with <code>wsl --install</code> from PowerShell, then follow the Linux instructions above inside your WSL terminal. Access the dashboard from your Windows browser at <code>http://localhost:5420</code> &mdash; WSL forwards ports automatically.</p>
     </div>
   </section>
 
