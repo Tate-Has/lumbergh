@@ -13,11 +13,11 @@ const SVG_PADDING_LEFT = 14
 const DEFAULT_BRANCH_PANEL_WIDTH = 180
 const MIN_BRANCH_PANEL_WIDTH = 80
 const MAX_BRANCH_PANEL_WIDTH = 400
-const BRANCH_PANEL_STORAGE_KEY = 'lumbergh:branchPanelWidth'
+const branchPanelStorageKey_PREFIX = 'lumbergh:branchPanelWidth'
 const DEFAULT_GRAPH_PANEL_WIDTH = 120
 const MIN_GRAPH_PANEL_WIDTH = 40
 const MAX_GRAPH_PANEL_WIDTH = 500
-const GRAPH_PANEL_STORAGE_KEY = 'lumbergh:graphPanelWidth'
+const graphPanelStorageKey_PREFIX = 'lumbergh:graphPanelWidth'
 const WIP_COLOR = '#ffb74d' // orange for WIP
 
 function getInitials(author: string, email?: string): string {
@@ -46,6 +46,8 @@ interface Props {
 }
 
 export default function GitGraph({ apiHost, sessionName, onSelectCommit, selectedCommit, refreshTrigger, resetTrigger, onGitAction }: Props) {
+  const branchPanelStorageKey = sessionName ? `${branchPanelStorageKey_PREFIX}:${sessionName}` : branchPanelStorageKey_PREFIX
+  const graphPanelStorageKey = sessionName ? `${graphPanelStorageKey_PREFIX}:${sessionName}` : graphPanelStorageKey_PREFIX
   const [graphData, setGraphData] = useState<GraphData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -62,7 +64,7 @@ export default function GitGraph({ apiHost, sessionName, onSelectCommit, selecte
 
   // Draggable branch panel width
   const [branchPanelWidth, setBranchPanelWidth] = useState(() => {
-    const saved = localStorage.getItem(BRANCH_PANEL_STORAGE_KEY)
+    const saved = localStorage.getItem(branchPanelStorageKey)
     return saved ? Math.max(MIN_BRANCH_PANEL_WIDTH, Math.min(MAX_BRANCH_PANEL_WIDTH, Number(saved))) : DEFAULT_BRANCH_PANEL_WIDTH
   })
   const isDraggingPanel = useRef(false)
@@ -89,7 +91,7 @@ export default function GitGraph({ apiHost, sessionName, onSelectCommit, selecte
       document.removeEventListener('touchend', onEnd)
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
-      setBranchPanelWidth((w) => { localStorage.setItem(BRANCH_PANEL_STORAGE_KEY, String(w)); return w })
+      setBranchPanelWidth((w) => { localStorage.setItem(branchPanelStorageKey, String(w)); return w })
     }
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
@@ -97,7 +99,7 @@ export default function GitGraph({ apiHost, sessionName, onSelectCommit, selecte
     document.addEventListener('mouseup', onEnd)
     document.addEventListener('touchmove', onTouchMove)
     document.addEventListener('touchend', onEnd)
-  }, [branchPanelWidth])
+  }, [branchPanelWidth, branchPanelStorageKey])
 
   const handlePanelDragStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
@@ -111,7 +113,7 @@ export default function GitGraph({ apiHost, sessionName, onSelectCommit, selecte
 
   // Draggable graph panel width
   const [graphPanelWidth, setGraphPanelWidth] = useState(() => {
-    const saved = localStorage.getItem(GRAPH_PANEL_STORAGE_KEY)
+    const saved = localStorage.getItem(graphPanelStorageKey)
     return saved ? Math.max(MIN_GRAPH_PANEL_WIDTH, Math.min(MAX_GRAPH_PANEL_WIDTH, Number(saved))) : DEFAULT_GRAPH_PANEL_WIDTH
   })
   const isDraggingGraph = useRef(false)
@@ -138,7 +140,7 @@ export default function GitGraph({ apiHost, sessionName, onSelectCommit, selecte
       document.removeEventListener('touchend', onEnd)
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
-      setGraphPanelWidth((w) => { localStorage.setItem(GRAPH_PANEL_STORAGE_KEY, String(w)); return w })
+      setGraphPanelWidth((w) => { localStorage.setItem(graphPanelStorageKey, String(w)); return w })
     }
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
@@ -146,7 +148,7 @@ export default function GitGraph({ apiHost, sessionName, onSelectCommit, selecte
     document.addEventListener('mouseup', onEnd)
     document.addEventListener('touchmove', onTouchMove)
     document.addEventListener('touchend', onEnd)
-  }, [graphPanelWidth])
+  }, [graphPanelWidth, graphPanelStorageKey])
 
   const handleGraphDragStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault()

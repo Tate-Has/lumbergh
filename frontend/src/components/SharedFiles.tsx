@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
-import { Play, SendHorizonal, FileText, Bookmark, Check, Trash2, Copy, X } from 'lucide-react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { Play, SendHorizonal, FileText, Bookmark, Check, Trash2, Copy, X, Trash } from 'lucide-react'
 import MarkdownViewer from './MarkdownViewer'
 
 interface SharedFile {
@@ -16,6 +16,37 @@ interface Props {
 }
 
 const SHARED_DIR = '~/.config/lumbergh/shared'
+
+type TimeGroup = 'Today' | 'Yesterday' | '2 Days Ago' | 'This Week' | 'Older'
+
+function getTimeGroup(modifiedTimestamp: number): TimeGroup {
+  const now = new Date()
+  const modified = new Date(modifiedTimestamp * 1000)
+
+  // Normalize to start of day
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const yesterdayStart = new Date(todayStart.getTime() - 86400000)
+  const twoDaysStart = new Date(todayStart.getTime() - 2 * 86400000)
+  const weekStart = new Date(todayStart.getTime() - 7 * 86400000)
+
+  if (modified >= todayStart) return 'Today'
+  if (modified >= yesterdayStart) return 'Yesterday'
+  if (modified >= twoDaysStart) return '2 Days Ago'
+  if (modified >= weekStart) return 'This Week'
+  return 'Older'
+}
+
+const GROUP_ORDER: TimeGroup[] = ['Today', 'Yesterday', '2 Days Ago', 'This Week', 'Older']
+
+function groupFilesByTime(files: SharedFile[]): { group: TimeGroup; files: SharedFile[] }[] {
+  const groups = new Map<TimeGroup, SharedFile[]>()
+  for (const file of files) {
+    const group = getTimeGroup(file.modified)
+    if (!groups.has(group)) groups.set(group, [])
+    groups.get(group)!.push(file)
+  }
+  return GROUP_ORDER.filter(g => groups.has(g)).map(g => ({ group: g, files: groups.get(g)! }))
+}
 
 export default function SharedFiles({
   apiHost,
@@ -82,6 +113,18 @@ export default function SharedFiles({
       setError(e instanceof Error ? e.message : 'Upload failed')
     } finally {
       setUploading(false)
+    }
+  }
+
+  const groupedFiles = useMemo(() => groupFilesByTime(files), [files])
+
+  const clearAll = async () => {
+    try {
+      const res = await fetch(`http://${apiHost}/api/shared/files`, { method: 'DELETE' })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      await fetchFiles()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to clear files')
     }
   }
 
@@ -286,7 +329,32 @@ export default function SharedFiles({
           </div>
         ) : (
           <div className="space-y-1">
-            {files.map((file) => (
+            {/* Clear All button */}
+            {files.length > 1 && (
+              <div className="flex justify-end mb-1">
+                <button
+                  onClick={clearAll}
+                  className="flex items-center gap-1 text-xs text-text-tertiary hover:text-red-400 px-2 py-1 rounded hover:bg-control-bg transition-colors"
+                  title="Delete all shared files"
+                >
+                  <Trash size={12} />
+                  Clear all
+                </button>
+              </div>
+            )}
+            {groupedFiles.map(({ group, files: groupFiles }) => (
+              <div key={group}>
+                {/* Time group separator (skip for Today — assumed) */}
+                {group !== 'Today' && (
+                  <div className="flex items-center gap-2 py-1.5 px-1">
+                    <div className="flex-1 h-px bg-border-subtle" />
+                    <span className="text-[11px] font-medium text-text-tertiary uppercase tracking-wider flex-shrink-0">
+                      {group}
+                    </span>
+                    <div className="flex-1 h-px bg-border-subtle" />
+                  </div>
+                )}
+                {groupFiles.map((file) => (
               <div
                 key={file.name}
                 className="relative flex items-center gap-2 p-2 bg-bg-surface rounded hover:bg-bg-surface-hover cursor-pointer"
@@ -428,6 +496,8 @@ export default function SharedFiles({
                     </div>
                   </div>
                 )}
+              </div>
+                ))}
               </div>
             ))}
           </div>
