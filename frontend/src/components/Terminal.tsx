@@ -227,11 +227,17 @@ export default function Terminal({
     })
 
     // Handle Shift+Enter to send newline (like Claude Code CLI)
+    // Must return false for ALL event types (keydown, keypress, keyup) to prevent
+    // xterm.js's _keyPress handler from also sending \r (carriage return/submit).
+    // When the custom handler blocks only keydown, xterm.js doesn't call preventDefault(),
+    // so the browser fires keypress which leaks through and sends \r to the terminal.
     term.attachCustomKeyEventHandler((event) => {
-      if (event.type === 'keydown' && event.key === 'Enter' && event.shiftKey) {
-        // Send newline character instead of carriage return
-        sendRef.current('\n')
-        return false // Prevent default handling
+      if (event.key === 'Enter' && event.shiftKey) {
+        if (event.type === 'keydown') {
+          // Send newline character instead of carriage return
+          sendRef.current('\n')
+        }
+        return false // Block all event types for Shift+Enter
       }
       return true // Allow default handling for other keys
     })
