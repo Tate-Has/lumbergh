@@ -376,9 +376,46 @@ def get_graph_log(cwd: Path, limit: int = 100) -> dict:
         except GitCommandError:
             pass
 
+    # Collect stash entries and build a set of stash-internal commit hashes
+    # A stash is a merge commit: parent[0] = original commit, parent[1] = index,
+    # optionally parent[2] = untracked files. We show one "stash" node per entry.
+    stash_hashes: set[str] = set()
+    stash_entries: list[dict] = []
+    try:
+        stash_list_output = repo.git.stash("list", "--format=%H %gd %gs")
+        for line in stash_list_output.strip().splitlines():
+            if not line:
+                continue
+            parts = line.split(" ", 2)
+            stash_hash = parts[0]
+            stash_ref = parts[1].rstrip(":") if len(parts) > 1 else "stash"
+            stash_msg = parts[2] if len(parts) > 2 else ""
+            stash_hashes.add(stash_hash)
+            try:
+                stash_commit = repo.commit(stash_hash)
+                # Mark internal parents (index, untracked) for filtering
+                for parent in stash_commit.parents[1:]:
+                    stash_hashes.add(parent.hexsha)
+                base_parent = stash_commit.parents[0].hexsha if stash_commit.parents else None
+                stash_entries.append({
+                    "hash": stash_hash,
+                    "ref": stash_ref,
+                    "message": stash_msg,
+                    "parent": base_parent,
+                    "date": stash_commit.committed_datetime.isoformat(),
+                    "author": stash_commit.author.name,
+                    "authorEmail": stash_commit.author.email or "",
+                })
+            except Exception:
+                pass
+    except GitCommandError:
+        pass
+
     # Collect commits (--all walks all refs, not just HEAD)
     commits = []
     for commit in repo.iter_commits(rev="--all", max_count=limit, topo_order=True):
+        if commit.hexsha in stash_hashes:
+            continue  # Skip stash-internal commits (WIP, index, untracked)
         email = commit.author.email or ""
         commits.append({
             "hash": commit.hexsha,
@@ -392,6 +429,29 @@ def get_graph_log(cwd: Path, limit: int = 100) -> dict:
             "refs": ref_map.get(commit.hexsha, []),
             "pushed": commit.hexsha not in unpushed_set,
         })
+
+    # Insert stash entries as single nodes, positioned after their base commit
+    for entry in stash_entries:
+        email = entry["authorEmail"]
+        stash_node = {
+            "hash": entry["hash"],
+            "shortHash": entry["hash"][:7],
+            "message": entry["message"],
+            "author": entry["author"],
+            "authorEmail": email,
+            "authorGravatar": gravatar_url(email) if email else None,
+            "relativeDate": entry["date"],
+            "parents": [entry["parent"]] if entry["parent"] else [],
+            "refs": [{"name": entry["ref"], "local": True, "remote": False, "stash": True}],
+            "pushed": True,
+            "stash": True,
+        }
+        # Insert right before the base parent commit so stash appears above it
+        insert_idx = next(
+            (i for i, c in enumerate(commits) if c["hash"] == entry["parent"]),
+            0,
+        )
+        commits.insert(insert_idx, stash_node)
 
     # Branch list
     branches = []

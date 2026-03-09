@@ -58,8 +58,9 @@ export interface GraphCommit {
   authorGravatar?: string
   relativeDate: string
   parents: string[]
-  refs: { name: string; local: boolean; remote: boolean; tag?: boolean }[]
+  refs: { name: string; local: boolean; remote: boolean; tag?: boolean; stash?: boolean }[]
   pushed?: boolean
+  stash?: boolean
 }
 
 export interface GraphData {

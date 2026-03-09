@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { MoreVertical, Monitor, Cloud } from 'lucide-react'
+import { MoreVertical, Monitor, Cloud, Archive } from 'lucide-react'
 import { getApiBase } from '../../config'
 import type { GraphData } from '../diff/types'
 import { computeGraphLayout, laneColor } from './graphLayout'
@@ -20,6 +20,7 @@ const MIN_GRAPH_PANEL_WIDTH = 40
 const MAX_GRAPH_PANEL_WIDTH = 500
 const graphPanelStorageKey_PREFIX = 'lumbergh:graphPanelWidth'
 const WIP_COLOR = '#ffb74d' // orange for WIP
+const STASH_COLOR = '#7c8a9e' // muted blue-gray for stash
 
 function getInitials(author: string, email?: string): string {
   if (author) {
@@ -716,6 +717,30 @@ export default function GitGraph({ sessionName, onSelectCommit, selectedCommit, 
         </>
       )
 
+      // Stash nodes get a distinctive box icon instead of avatar
+      if (node.commit.stash) {
+        const stashR = r - 2
+        return (
+          <g key={node.commit.hash} opacity={0.8}>
+            {/* Rounded rect background */}
+            <rect
+              x={cx - stashR}
+              y={cy - stashR}
+              width={stashR * 2}
+              height={stashR * 2}
+              rx={3}
+              fill={STASH_COLOR}
+              stroke={STASH_COLOR}
+              strokeWidth={1.5}
+            />
+            {/* Archive/box icon lines */}
+            <line x1={cx - 5} y1={cy - 3} x2={cx + 5} y2={cy - 3} stroke="white" strokeWidth={1.5} strokeLinecap="round" />
+            <line x1={cx - 3} y1={cy + 1} x2={cx + 3} y2={cy + 1} stroke="white" strokeWidth={1.5} strokeLinecap="round" />
+            <rect x={cx - 5} y={cy - 5} width={10} height={10} rx={1.5} fill="none" stroke="white" strokeWidth={1.2} />
+          </g>
+        )
+      }
+
       if (node.isHead) {
         return (
           <g key={node.commit.hash}>
@@ -774,7 +799,20 @@ export default function GitGraph({ sessionName, onSelectCommit, selectedCommit, 
                 const extraCount = refs.length - 1
                 const isExpanded = expandedRow === row
 
-                const renderBranchBadge = (ref: { name: string; local: boolean; remote: boolean }, commitRow: number) => {
+                const renderBranchBadge = (ref: { name: string; local: boolean; remote: boolean; stash?: boolean }, commitRow: number) => {
+                  // Stash badges: distinct style, no context menu
+                  if (ref.stash) {
+                    return (
+                      <span
+                        key={ref.name}
+                        className="inline-flex items-center gap-1 px-2 py-1 text-base rounded font-medium leading-none max-w-full bg-slate-600/30 text-slate-300 ring-1 ring-slate-500/40"
+                      >
+                        <Archive size={12} className="opacity-70 shrink-0" />
+                        <span className="truncate">{ref.name}</span>
+                      </span>
+                    )
+                  }
+
                   const refIsCurrent = ref.name === graphData?.head?.branch
                   const refIsMenuOpen = menuBranch?.name === ref.name && menuBranch?.commitHash === nodes[commitRow].commit.hash
                   return (
@@ -973,7 +1011,9 @@ export default function GitGraph({ sessionName, onSelectCommit, selectedCommit, 
               >
                 {/* Commit message */}
                 <span className={`text-base truncate min-w-0 ${
-                  node.onCurrentBranch ? 'text-text-primary' : 'text-text-tertiary'
+                  node.commit.stash
+                    ? 'text-slate-400 italic'
+                    : node.onCurrentBranch ? 'text-text-primary' : 'text-text-tertiary'
                 }`}>
                   {node.commit.message}
                 </span>
