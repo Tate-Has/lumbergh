@@ -128,6 +128,12 @@ class TodoMoveRequest(BaseModel):
     todo_index: int
 
 
+class RevertFileInput(BaseModel):
+    """Input for reverting a single file."""
+
+    path: str
+
+
 class StatusSummaryInput(BaseModel):
     """Input for generating a status summary."""
 

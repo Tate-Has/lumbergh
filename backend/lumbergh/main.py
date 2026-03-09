@@ -22,9 +22,10 @@ from lumbergh.git_utils import (
     get_porcelain_status,
     git_push,
     reset_to_head,
+    revert_file,
     stage_all_and_commit,
 )
-from lumbergh.models import CommitInput, SendInput, TmuxCommand
+from lumbergh.models import CommitInput, RevertFileInput, SendInput, TmuxCommand
 from lumbergh.routers import ai, notes, sessions, settings, shared, tmux
 
 logger = logging.getLogger(__name__)
@@ -152,6 +153,20 @@ async def git_reset():
         result = reset_to_head(PROJECT_ROOT)
         if "error" in result:
             raise HTTPException(status_code=500, detail=result["error"])
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/git/revert-file")
+async def git_revert_file(body: RevertFileInput):
+    """Revert a single file to HEAD (discard changes for one file)."""
+    try:
+        result = revert_file(PROJECT_ROOT, body.path)
+        if "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
         return result
     except HTTPException:
         raise

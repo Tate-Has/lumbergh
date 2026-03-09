@@ -36,6 +36,7 @@ const FileList = memo(function FileList({
   const [copiedSha, setCopiedSha] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const menuBtnRef = useRef<HTMLButtonElement>(null)
+  const [revertingFile, setRevertingFile] = useState<string | null>(null)
   const [commitResult, setCommitResult] = useState<{
     type: 'success' | 'error'
     message: string
@@ -186,6 +187,33 @@ const FileList = memo(function FileList({
       setCommitResult({ type: 'error', message: 'Failed to generate commit message' })
     } finally {
       setIsGenerating(false)
+      setTimeout(() => setCommitResult(null), 3000)
+    }
+  }
+
+  const handleRevertFile = async (filePath: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!confirm(`Revert "${filePath}"? This cannot be undone.`)) return
+    setRevertingFile(filePath)
+    setCommitResult(null)
+    try {
+      const res = await fetch(`${gitBaseUrl}/revert-file`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: filePath }),
+      })
+      const result = await res.json()
+      if (!res.ok) {
+        setCommitResult({ type: 'error', message: result.detail || 'Revert failed' })
+      } else {
+        setCommitResult({ type: 'success', message: result.message })
+        onRefresh()
+        onGitAction?.()
+      }
+    } catch {
+      setCommitResult({ type: 'error', message: `Failed to revert ${filePath}` })
+    } finally {
+      setRevertingFile(null)
       setTimeout(() => setCommitResult(null), 3000)
     }
   }
@@ -422,16 +450,26 @@ const FileList = memo(function FileList({
         {data.files.map((file) => {
           const stats = getFileStats(file.diff)
           return (
-            <button
+            <div
               key={file.path}
               onClick={() => onSelectFile(file.path)}
-              className="w-full flex items-center gap-3 px-3 py-2 hover:bg-bg-surface border-b border-border-default/50 text-left"
+              className="group w-full flex items-center gap-3 px-3 py-2 hover:bg-bg-surface border-b border-border-default/50 text-left cursor-pointer"
             >
               <span className="text-blue-400 font-mono text-sm truncate flex-1">{file.path}</span>
+              {isWorkingChanges && (
+                <button
+                  onClick={(e) => handleRevertFile(file.path, e)}
+                  disabled={revertingFile === file.path}
+                  className="opacity-0 group-hover:opacity-100 px-1 py-0.5 text-text-muted hover:text-red-400 disabled:text-text-muted transition-all"
+                  title={`Revert ${file.path}`}
+                >
+                  {revertingFile === file.path ? '...' : <Undo2 size={14} />}
+                </button>
+              )}
               <span className="text-green-400 text-xs">+{stats.additions}</span>
               <span className="text-red-400 text-xs">-{stats.deletions}</span>
               <ChevronRight size={14} className="text-text-muted" />
-            </button>
+            </div>
           )
         })}
       </div>

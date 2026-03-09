@@ -49,6 +49,7 @@ from lumbergh.git_utils import (
     remove_worktree,
     reset_to_commit,
     reset_to_head,
+    revert_file,
     reword_commit,
     stage_all_and_commit,
 )
@@ -60,6 +61,7 @@ from lumbergh.models import (
     CreateSessionRequest,
     PromptTemplateList,
     ResetToInput,
+    RevertFileInput,
     RewordInput,
     ScratchpadContent,
     SessionUpdate,
@@ -736,6 +738,25 @@ async def session_git_reset(name: str):
         result = reset_to_head(workdir)
         if "error" in result:
             raise HTTPException(status_code=500, detail=result["error"])
+        from lumbergh.diff_cache import diff_cache
+        diff_cache.invalidate(name)
+        _files_cache.pop(name, None)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{name}/git/revert-file")
+async def session_git_revert_file(name: str, body: RevertFileInput):
+    """Revert a single file in a session's workdir."""
+    workdir = get_session_workdir(name)
+
+    try:
+        result = revert_file(workdir, body.path)
+        if "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
         from lumbergh.diff_cache import diff_cache
         diff_cache.invalidate(name)
         _files_cache.pop(name, None)

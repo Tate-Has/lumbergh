@@ -879,6 +879,38 @@ def reset_to_head(cwd: Path) -> dict:
         return {"error": f"git reset failed: {e}"}
 
 
+def revert_file(cwd: Path, file_path: str) -> dict:
+    """Revert a single file to its HEAD state, or remove it if untracked."""
+    # Validate path: reject absolute paths and traversal
+    if file_path.startswith("/") or ".." in file_path.split("/"):
+        return {"error": "Invalid file path"}
+
+    resolved = (cwd / file_path).resolve()
+    if not str(resolved).startswith(str(cwd.resolve())):
+        return {"error": "Path escapes repository root"}
+
+    try:
+        repo = get_repo(cwd)
+    except InvalidGitRepositoryError:
+        return {"error": "Not a git repository"}
+
+    try:
+        # Check if file is untracked
+        if file_path in repo.untracked_files:
+            repo.git.clean("-f", "--", file_path)
+        else:
+            # Unstage first (in case it's staged), then restore from HEAD
+            repo.git.reset("HEAD", "--", file_path)
+            repo.git.checkout("HEAD", "--", file_path)
+
+        return {
+            "status": "reverted",
+            "message": f"Reverted: {file_path}",
+        }
+    except GitCommandError as e:
+        return {"error": f"Failed to revert file: {e}"}
+
+
 def _check_http_auth_warning(repo: "Repo", remote_name: str) -> str | None:
     """Check if a remote uses HTTP(S) without embedded credentials or a credential helper."""
     try:
