@@ -10,6 +10,10 @@ import os
 import subprocess
 import tempfile
 
+# Prevent git from prompting for credentials in the terminal.
+# HTTP repos that require auth will fail fast instead of blocking the server.
+os.environ.setdefault("GIT_TERMINAL_PROMPT", "0")
+
 from git import InvalidGitRepositoryError, Repo
 from git.exc import GitCommandError
 
@@ -698,6 +702,8 @@ def git_force_push(cwd: Path) -> dict:
         error_msg = str(e)
         if "stale info" in error_msg or "rejected" in error_msg:
             return {"error": "Force push rejected: remote has newer changes. Fetch first."}
+        if "Authentication failed" in error_msg or "could not read Username" in error_msg:
+            return {"error": "Force push failed: HTTP remote requires credentials. Switch to SSH or configure a credential helper."}
         return {"error": f"Force push failed: {e}"}
 
 
@@ -873,6 +879,37 @@ def reset_to_head(cwd: Path) -> dict:
         return {"error": f"git reset failed: {e}"}
 
 
+def _check_http_auth_warning(repo: "Repo", remote_name: str) -> str | None:
+    """Check if a remote uses HTTP(S) without embedded credentials or a credential helper."""
+    try:
+        remote = repo.remote(remote_name)
+        url = remote.url
+    except (ValueError, AttributeError):
+        return None
+
+    if not url.startswith(("http://", "https://")):
+        return None
+
+    # URL has embedded credentials (e.g. https://user:token@host) — no warning
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    if parsed.username:
+        return None
+
+    # Check if a credential helper is configured for this repo
+    try:
+        helper = repo.config_reader().get_value("credential", "helper", default="")
+        if helper:
+            return None
+    except Exception:
+        pass
+
+    return (
+        "This repo uses an HTTP remote without stored credentials. "
+        "Push/pull/fetch will fail. Switch to SSH or configure a credential helper."
+    )
+
+
 def get_remote_status(cwd: Path, fetch: bool = True) -> dict:
     """
     Get ahead/behind status relative to remote tracking branch.
@@ -905,7 +942,7 @@ def get_remote_status(cwd: Path, fetch: bool = True) -> dict:
             try:
                 repo.git.rev_parse("--verify", remote_ref)
             except GitCommandError:
-                return {
+                result = {
                     "branch": branch.name,
                     "remote": "origin",
                     "ahead": 0,
@@ -913,6 +950,10 @@ def get_remote_status(cwd: Path, fetch: bool = True) -> dict:
                     "noTracking": True,
                     "noRemoteBranch": True,
                 }
+                warning = _check_http_auth_warning(repo, "origin")
+                if warning:
+                    result["httpAuthWarning"] = warning
+                return result
         except ValueError:
             return {"error": "No remote configured", "ahead": 0, "behind": 0}
 
@@ -922,14 +963,23 @@ def get_remote_status(cwd: Path, fetch: bool = True) -> dict:
         tracking_ref = tracking.name
         remote_name = tracking.remote_name
 
+    # Check for HTTP auth issues before attempting fetch
+    http_warning = _check_http_auth_warning(repo, remote_name)
+
     # Fetch from remote if requested
+    fetch_failed = False
     if fetch:
         try:
             remote = repo.remote(remote_name)
             remote.fetch()
-        except GitCommandError:
-            # Fetch failed, continue with stale data
-            pass
+        except GitCommandError as e:
+            fetch_failed = True
+            error_msg = str(e)
+            if "Authentication failed" in error_msg or "could not read Username" in error_msg:
+                http_warning = (
+                    "Authentication failed for HTTP remote. "
+                    "Switch to SSH or configure a credential helper."
+                )
 
     # Count commits ahead/behind
     try:
@@ -941,13 +991,18 @@ def get_remote_status(cwd: Path, fetch: bool = True) -> dict:
         ahead = 0
         behind = 0
 
-    return {
+    result = {
         "branch": branch.name,
         "remote": remote_name,
         "tracking": tracking_ref,
         "ahead": ahead,
         "behind": behind,
     }
+    if http_warning:
+        result["httpAuthWarning"] = http_warning
+    if fetch_failed:
+        result["fetchFailed"] = True
+    return result
 
 
 def git_push(cwd: Path) -> dict:
@@ -1004,7 +1059,9 @@ def git_push(cwd: Path) -> dict:
         if "Could not read from remote repository" in error_msg:
             return {"error": "Push failed: Could not connect to remote repository"}
         if "Authentication failed" in error_msg or "Permission denied" in error_msg:
-            return {"error": "Push failed: Authentication error"}
+            return {"error": "Push failed: Authentication error. This HTTP remote has no stored credentials — switch to SSH or configure a credential helper."}
+        if "could not read Username" in error_msg:
+            return {"error": "Push failed: HTTP remote requires credentials. Switch to SSH or configure a credential helper."}
         return {"error": f"Push failed: {e}"}
 
 
@@ -1080,7 +1137,9 @@ def git_pull_rebase(cwd: Path) -> dict:
         if "Could not read from remote repository" in error_msg:
             return {"error": "Pull failed: Could not connect to remote repository"}
         if "Authentication failed" in error_msg or "Permission denied" in error_msg:
-            return {"error": "Pull failed: Authentication error"}
+            return {"error": "Pull failed: Authentication error. This HTTP remote has no stored credentials — switch to SSH or configure a credential helper."}
+        if "could not read Username" in error_msg:
+            return {"error": "Pull failed: HTTP remote requires credentials. Switch to SSH or configure a credential helper."}
         return {"error": f"Pull failed: {e}"}
 
     # Pull succeeded - restore stash if we stashed

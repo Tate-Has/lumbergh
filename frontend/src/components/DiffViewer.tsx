@@ -25,6 +25,8 @@ interface RemoteStatus {
   ahead: number
   behind: number
   error?: string
+  httpAuthWarning?: string
+  fetchFailed?: boolean
 }
 
 type ViewState =
@@ -433,6 +435,11 @@ const DiffViewer = memo(function DiffViewer({
               </button>
             </div>
             <div className="flex flex-col items-center justify-center flex-1 gap-6 p-6">
+              {remoteStatus?.httpAuthWarning && (
+                <div className="w-full max-w-md rounded bg-yellow-900/40 border border-yellow-600/50 px-4 py-3 text-sm text-yellow-300">
+                  {remoteStatus.httpAuthWarning}
+                </div>
+              )}
               {remoteStatus && remoteStatus.ahead > 0 && remoteStatus.behind > 0 ? (
                 // Diverged state - need to pull before push
                 <>
