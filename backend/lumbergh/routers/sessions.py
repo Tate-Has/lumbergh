@@ -343,6 +343,54 @@ async def update_session(name: str, body: SessionUpdate):
     return existing
 
 
+def _resolve_worktree_workdir(body: CreateSessionRequest) -> tuple[Path, str, str]:
+    """Validate worktree config and create the worktree.
+
+    Returns (workdir, parent_repo_str, branch).
+    Raises HTTPException on validation failure.
+    """
+    if not body.worktree:
+        raise HTTPException(status_code=400, detail="Worktree config required for worktree mode")
+
+    parent_repo = Path(body.worktree.parent_repo).expanduser().resolve()
+    if not parent_repo.exists():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Parent repository does not exist: {body.worktree.parent_repo}",
+        )
+    if not (parent_repo / ".git").exists() and not (parent_repo / ".git").is_file():
+        raise HTTPException(
+            status_code=400, detail=f"Not a git repository: {body.worktree.parent_repo}"
+        )
+
+    result = create_worktree(
+        repo_path=parent_repo,
+        branch=body.worktree.branch,
+        create_branch=body.worktree.create_branch,
+        base_branch=body.worktree.base_branch,
+    )
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+
+    return Path(result["path"]), str(parent_repo), body.worktree.branch
+
+
+def _resolve_direct_workdir(body: CreateSessionRequest) -> Path:
+    """Validate and resolve the working directory for direct mode.
+
+    Raises HTTPException on validation failure.
+    """
+    if not body.workdir:
+        raise HTTPException(status_code=400, detail="Working directory required for direct mode")
+
+    workdir = Path(body.workdir).expanduser().resolve()
+    if not workdir.exists():
+        raise HTTPException(status_code=400, detail=f"Directory does not exist: {body.workdir}")
+    if not workdir.is_dir():
+        raise HTTPException(status_code=400, detail=f"Path is not a directory: {body.workdir}")
+    return workdir
+
+
 @router.post("")
 async def create_session(body: CreateSessionRequest):
     """Create a new tmux session."""
@@ -359,54 +407,13 @@ async def create_session(body: CreateSessionRequest):
     if body.name in live:
         raise HTTPException(status_code=409, detail=f"Session '{body.name}' already exists")
 
-    # Handle worktree mode
-    session_type = body.mode
     worktree_parent_repo = None
     worktree_branch = None
 
     if body.mode == "worktree":
-        if not body.worktree:
-            raise HTTPException(
-                status_code=400, detail="Worktree config required for worktree mode"
-            )
-
-        parent_repo = Path(body.worktree.parent_repo).expanduser().resolve()
-        if not parent_repo.exists():
-            raise HTTPException(
-                status_code=400,
-                detail=f"Parent repository does not exist: {body.worktree.parent_repo}",
-            )
-        if not (parent_repo / ".git").exists() and not (parent_repo / ".git").is_file():
-            raise HTTPException(
-                status_code=400, detail=f"Not a git repository: {body.worktree.parent_repo}"
-            )
-
-        # Create the worktree
-        result = create_worktree(
-            repo_path=parent_repo,
-            branch=body.worktree.branch,
-            create_branch=body.worktree.create_branch,
-            base_branch=body.worktree.base_branch,
-        )
-
-        if "error" in result:
-            raise HTTPException(status_code=400, detail=result["error"])
-
-        workdir = Path(result["path"])
-        worktree_parent_repo = str(parent_repo)
-        worktree_branch = body.worktree.branch
+        workdir, worktree_parent_repo, worktree_branch = _resolve_worktree_workdir(body)
     else:
-        # Direct mode - workdir is required
-        if not body.workdir:
-            raise HTTPException(
-                status_code=400, detail="Working directory required for direct mode"
-            )
-
-        workdir = Path(body.workdir).expanduser().resolve()
-        if not workdir.exists():
-            raise HTTPException(status_code=400, detail=f"Directory does not exist: {body.workdir}")
-        if not workdir.is_dir():
-            raise HTTPException(status_code=400, detail=f"Path is not a directory: {body.workdir}")
+        workdir = _resolve_direct_workdir(body)
 
     # Check for existing session with same workdir
     workdir_str = str(workdir)

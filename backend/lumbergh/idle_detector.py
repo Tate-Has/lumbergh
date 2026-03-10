@@ -161,72 +161,64 @@ class IdleDetector:
 
         return IdleDetectionResult(self._current_state, confidence, reason)
 
+    def _match_patterns(
+        self, lines: list[str], patterns: list[re.Pattern]
+    ) -> re.Pattern | None:
+        """Return the first matching pattern across lines, or None."""
+        for line in lines:
+            for pattern in patterns:
+                if pattern.search(line):
+                    return pattern
+        return None
+
+    def _has_activity_indicators(self, lines: list[str]) -> bool:
+        """Check if any lines contain spinner, working, or idle indicators."""
+        for line in lines:
+            if any(char in line for char in self.SPINNER_CHARS):
+                return True
+            if any(p.search(line) for p in self.WORKING_PATTERNS):
+                return True
+            if any(p.search(line) for p in self.IDLE_PATTERNS):
+                return True
+        return False
+
     def _analyze_state(self) -> tuple[SessionState, float, str]:
         """
         Analyze buffer to determine current state.
 
-        Priority order:
-        1. ERROR patterns (rate limits, crashes) - highest
-        2. Shell prompt (Claude Code exited) - only if no working/idle indicators
-        3. Spinner on last line - WORKING
-        4. WORKING patterns in recent lines
-        5. IDLE patterns in recent lines
-        6. UNKNOWN - fallback
-
-        Returns:
-            Tuple of (state, confidence, reason)
+        Priority: ERROR > shell prompt > spinner > WORKING > IDLE > UNKNOWN
         """
         if not self._buffer:
             return SessionState.UNKNOWN, 0.0, "No data"
 
-        recent_lines = list(self._buffer)[-10:]  # Last 10 lines
+        recent_lines = list(self._buffer)[-10:]
         last_line = recent_lines[-1] if recent_lines else ""
 
-        for line in recent_lines:
-            for pattern in self.ERROR_PATTERNS:
-                if pattern.search(line):
-                    return SessionState.ERROR, 0.9, f"Error pattern: {pattern.pattern}"
+        # 1. Error patterns (highest priority)
+        match = self._match_patterns(recent_lines, self.ERROR_PATTERNS)
+        if match:
+            return SessionState.ERROR, 0.9, f"Error pattern: {match.pattern}"
 
-        has_working_or_idle = False
-        for line in recent_lines:
-            if any(char in line for char in self.SPINNER_CHARS):
-                has_working_or_idle = True
-                break
-            for pattern in self.WORKING_PATTERNS:
-                if pattern.search(line):
-                    has_working_or_idle = True
-                    break
-            if has_working_or_idle:
-                break
-            for pattern in self.IDLE_PATTERNS:
-                if pattern.search(line):
-                    has_working_or_idle = True
-                    break
-            if has_working_or_idle:
-                break
+        # 2. Shell prompt (only if no working/idle indicators)
+        if not self._has_activity_indicators(recent_lines):
+            match = self._match_patterns([last_line], self.SHELL_PROMPT_PATTERNS)
+            if match:
+                return SessionState.ERROR, 0.85, f"Shell prompt: {match.pattern}"
 
-        if not has_working_or_idle:
-            for pattern in self.SHELL_PROMPT_PATTERNS:
-                if pattern.search(last_line):
-                    return SessionState.ERROR, 0.85, f"Shell prompt: {pattern.pattern}"
-
-        # Check for spinner in last line (high confidence working)
+        # 3. Spinner on last line
         if any(char in last_line for char in self.SPINNER_CHARS):
             return SessionState.WORKING, 0.95, "Spinner detected"
 
-        # Check for working patterns in recent lines (working takes priority)
-        for line in recent_lines:
-            for pattern in self.WORKING_PATTERNS:
-                if pattern.search(line):
-                    return SessionState.WORKING, 0.85, f"Working pattern: {pattern.pattern}"
+        # 4. Working patterns
+        match = self._match_patterns(recent_lines, self.WORKING_PATTERNS)
+        if match:
+            return SessionState.WORKING, 0.85, f"Working pattern: {match.pattern}"
 
-        # Check for idle patterns in recent lines
-        for line in recent_lines:
-            for pattern in self.IDLE_PATTERNS:
-                if pattern.search(line):
-                    return SessionState.IDLE, 0.9, f"Idle pattern: {pattern.pattern}"
+        # 5. Idle patterns
+        match = self._match_patterns(recent_lines, self.IDLE_PATTERNS)
+        if match:
+            return SessionState.IDLE, 0.9, f"Idle pattern: {match.pattern}"
 
-        # Default to unknown if we can't determine
         return SessionState.UNKNOWN, 0.3, "Unable to determine"
 
     @staticmethod

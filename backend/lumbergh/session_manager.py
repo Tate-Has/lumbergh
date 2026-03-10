@@ -143,22 +143,48 @@ class SessionManager:
                 managed.pty.close()
                 del self._sessions[session_name]
 
+    async def _check_eof(
+        self, session_name: str, managed: ManagedSession, consecutive_eof: int
+    ) -> tuple[int, bool]:
+        """Handle EOF from PTY read. Returns (new_eof_count, should_break)."""
+        consecutive_eof += 1
+        if consecutive_eof < 3:
+            return consecutive_eof, False
+        loop = asyncio.get_event_loop()
+        is_alive = await loop.run_in_executor(None, managed.pty.is_alive)
+        if not is_alive:
+            logger.warning(f"Session {session_name} died, notifying clients")
+            await self._notify_session_dead(session_name)
+            return consecutive_eof, True
+        return consecutive_eof, False
+
+    async def _broadcast_data(self, managed: ManagedSession, data: bytes) -> None:
+        """Broadcast data to all connected clients, pruning disconnected ones."""
+        message = {
+            "type": "output",
+            "data": data.decode("utf-8", errors="replace"),
+        }
+        disconnected = []
+        for client in list(managed.clients):
+            try:
+                await client.send_json(message)
+            except Exception:
+                disconnected.append(client)
+        for client in disconnected:
+            managed.clients.discard(client)
+
     async def _broadcast_loop(self, session_name: str) -> None:
         """Read from PTY and broadcast to all connected clients.
 
-        Uses loop.add_reader (epoll) for zero-latency, zero-overhead fd watching
-        instead of polling with run_in_executor.
+        Uses loop.add_reader (epoll) for zero-latency, zero-overhead fd watching.
         """
+        managed = self._sessions.get(session_name)
+        if not managed or managed.pty.master_fd is None:
+            return
+
+        fd = managed.pty.master_fd
         loop = asyncio.get_event_loop()
         consecutive_eof = 0
-
-        if session_name not in self._sessions:
-            return
-        managed = self._sessions[session_name]
-        fd = managed.pty.master_fd
-        if fd is None:
-            return
-
         data_ready = asyncio.Event()
         loop.add_reader(fd, data_ready.set)
 
@@ -167,42 +193,22 @@ class SessionManager:
                 await data_ready.wait()
                 data_ready.clear()
 
-                if session_name not in self._sessions:
+                managed = self._sessions.get(session_name)
+                if not managed:
                     break
 
-                managed = self._sessions[session_name]
-
-                # Drain all available data from the fd
                 data = managed.pty.read()
-
-                # Handle EOF (empty bytes) - possible session death
                 if data == b"":
-                    consecutive_eof += 1
-                    if consecutive_eof >= 3:
-                        is_alive = await loop.run_in_executor(None, managed.pty.is_alive)
-                        if not is_alive:
-                            logger.warning(f"Session {session_name} died, notifying clients")
-                            await self._notify_session_dead(session_name)
-                            break
+                    consecutive_eof, should_break = await self._check_eof(
+                        session_name, managed, consecutive_eof
+                    )
+                    if should_break:
+                        break
                     continue
 
                 consecutive_eof = 0
-
                 if data:
-                    message = {
-                        "type": "output",
-                        "data": data.decode("utf-8", errors="replace"),
-                    }
-
-                    disconnected = []
-                    for client in list(managed.clients):
-                        try:
-                            await client.send_json(message)
-                        except Exception:
-                            disconnected.append(client)
-
-                    for client in disconnected:
-                        managed.clients.discard(client)
+                    await self._broadcast_data(managed, data)
 
         except asyncio.CancelledError:
             pass
