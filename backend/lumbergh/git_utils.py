@@ -1299,6 +1299,30 @@ class WorktreeInfo:
     is_main: bool = False
 
 
+def _parse_worktree_entry(entry: dict[str, str], repo_path: Path) -> WorktreeInfo | None:
+    """Convert a parsed worktree dict into a WorktreeInfo, or None if invalid."""
+    path = entry.get("path")
+    if not path:
+        return None
+    return WorktreeInfo(
+        path=path,
+        branch=entry.get("branch", "HEAD"),
+        commit=entry.get("commit", "")[:7],
+        is_main=path == str(repo_path),
+    )
+
+
+def _parse_worktree_line(line: str, current: dict[str, str]) -> None:
+    """Parse a single line from `git worktree list --porcelain` into current dict."""
+    if line.startswith("worktree "):
+        current["path"] = line[9:]
+    elif line.startswith("HEAD "):
+        current["commit"] = line[5:]
+    elif line.startswith("branch "):
+        branch_ref = line[7:]
+        current["branch"] = branch_ref.removeprefix("refs/heads/")
+
+
 def list_worktrees(repo_path: Path) -> list[WorktreeInfo]:
     """
     List all worktrees for a repository.
@@ -1311,48 +1335,27 @@ def list_worktrees(repo_path: Path) -> list[WorktreeInfo]:
     except InvalidGitRepositoryError:
         return []
 
-    worktrees = []
     try:
-        # Parse `git worktree list --porcelain` output
         output = repo.git.worktree("list", "--porcelain")
-        current_worktree: dict[str, str] = {}
-
-        for line in output.split("\n"):
-            if line.startswith("worktree "):
-                current_worktree["path"] = line[9:]
-            elif line.startswith("HEAD "):
-                current_worktree["commit"] = line[5:]
-            elif line.startswith("branch "):
-                # refs/heads/branch-name → branch-name
-                branch_ref = line[7:]
-                if branch_ref.startswith("refs/heads/"):
-                    current_worktree["branch"] = branch_ref[11:]
-                else:
-                    current_worktree["branch"] = branch_ref
-            elif line == "":
-                if current_worktree.get("path"):
-                    worktrees.append(
-                        WorktreeInfo(
-                            path=current_worktree.get("path", ""),
-                            branch=current_worktree.get("branch", "HEAD"),
-                            commit=current_worktree.get("commit", "")[:7],
-                            is_main=current_worktree.get("path") == str(repo_path),
-                        )
-                    )
-                current_worktree = {}
-
-        # Don't forget the last entry
-        if current_worktree.get("path"):
-            worktrees.append(
-                WorktreeInfo(
-                    path=current_worktree.get("path", ""),
-                    branch=current_worktree.get("branch", "HEAD"),
-                    commit=current_worktree.get("commit", "")[:7],
-                    is_main=current_worktree.get("path") == str(repo_path),
-                )
-            )
     except GitCommandError:
-        pass
+        return []
+
+    worktrees = []
+    current: dict[str, str] = {}
+
+    for line in output.split("\n"):
+        if line == "":
+            wt = _parse_worktree_entry(current, repo_path)
+            if wt:
+                worktrees.append(wt)
+            current = {}
+        else:
+            _parse_worktree_line(line, current)
+
+    # Don't forget the last entry (no trailing blank line)
+    wt = _parse_worktree_entry(current, repo_path)
+    if wt:
+        worktrees.append(wt)
 
     return worktrees
 
