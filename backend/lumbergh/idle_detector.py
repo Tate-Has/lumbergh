@@ -50,7 +50,7 @@ class IdleDetector:
 
     # Patterns indicating idle state (waiting for user input)
     IDLE_PATTERNS = [
-        re.compile(r"❯"),  # Claude Code prompt character
+        re.compile(r"\u276f"),  # Claude Code prompt character (❯)
         re.compile(r"Do you want to proceed\?"),
         re.compile(r"Esc to cancel"),
         re.compile(r"\? for shortcuts"),
@@ -74,7 +74,7 @@ class IdleDetector:
     ]
 
     # Pattern for Claude Code prompt (idle state) - not used anymore but kept for reference
-    PROMPT_PATTERN = re.compile(r"^[❯>]\s*$")
+    PROMPT_PATTERN = re.compile(r"^[\u276f>]\s*$")
 
     # Hysteresis settings
     STATE_CHANGE_DELAY_MS = 500  # Must be stable for this long before reporting

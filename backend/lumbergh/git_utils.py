@@ -516,7 +516,7 @@ def get_commit_log(cwd: Path, limit: int = 20) -> list[dict]:
     if not repo.head.is_valid():
         return []
 
-    commits = [
+    return [
         {
             "hash": commit.hexsha,
             "shortHash": commit.hexsha[:7],
@@ -526,8 +526,6 @@ def get_commit_log(cwd: Path, limit: int = 20) -> list[dict]:
         }
         for commit in repo.iter_commits(max_count=limit)
     ]
-
-    return commits
 
 
 def get_commit_info(cwd: Path, commit_hash: str) -> dict | None:

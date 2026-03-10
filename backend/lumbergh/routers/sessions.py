@@ -1324,7 +1324,7 @@ async def session_generate_commit_message(name: str):
 @router.post("/{name}/status-summary")
 async def session_status_summary(name: str, body: StatusSummaryInput):
     """Generate a short status summary for a session based on the current task."""
-    from datetime import datetime
+    from datetime import UTC, datetime
 
     from lumbergh.ai.prompts import STATUS_SUMMARY_PROMPT
     from lumbergh.ai.providers import get_provider
@@ -1352,7 +1352,7 @@ async def session_status_summary(name: str, body: StatusSummaryInput):
         status_table.insert(
             {
                 "status": summary,
-                "statusUpdatedAt": datetime.utcnow().isoformat(),
+                "statusUpdatedAt": datetime.now(tz=UTC).isoformat(),
             }
         )
 

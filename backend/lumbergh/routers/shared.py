@@ -3,7 +3,7 @@ Shared folder router - Cross-project context sharing via ~/.config/lumbergh/shar
 """
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
@@ -151,7 +151,7 @@ async def upload_file(file: UploadFile):
         raise HTTPException(status_code=400, detail="No filename provided")
 
     # Generate timestamped filename: screenshot_2026-02-16_193045.png
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    timestamp = datetime.now(tz=UTC).strftime("%Y-%m-%d_%H%M%S")
 
     # Get extension from original filename
     original_ext = Path(file.filename).suffix.lower() or ".png"

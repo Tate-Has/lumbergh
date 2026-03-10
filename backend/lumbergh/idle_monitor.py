@@ -8,7 +8,7 @@ independent of whether any WebSocket clients are connected.
 import asyncio
 import logging
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 
 import libtmux
 
@@ -151,7 +151,7 @@ class IdleMonitor:
             state_table.insert(
                 {
                     "state": state.value,
-                    "updatedAt": datetime.utcnow().isoformat(),
+                    "updatedAt": datetime.now(tz=UTC).isoformat(),
                 }
             )
 
