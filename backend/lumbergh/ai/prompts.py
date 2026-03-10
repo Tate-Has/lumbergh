@@ -97,9 +97,7 @@ def get_global_ai_prompts() -> list[dict]:
 
     # Add defaults for any tasks not in stored
     result = list(stored)
-    for default in defaults:
-        if default["task"] not in stored_tasks:
-            result.append(default)
+    result.extend(default for default in defaults if default["task"] not in stored_tasks)
 
     return result
 

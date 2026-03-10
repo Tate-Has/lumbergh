@@ -217,7 +217,9 @@ async def get_project_prompts(project_path: str) -> list[AIPrompt]:
 
 
 @router.post("/prompts/project")
-async def save_project_prompts_endpoint(project_path: str, prompt_list: AIPromptList) -> list[AIPrompt]:
+async def save_project_prompts_endpoint(
+    project_path: str, prompt_list: AIPromptList
+) -> list[AIPrompt]:
     """Save AI prompts for a specific project."""
     prompts = [p.model_dump() for p in prompt_list.prompts]
     saved = save_project_ai_prompts(Path(project_path), prompts)

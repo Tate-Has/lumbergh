@@ -172,13 +172,13 @@ class TmuxPtySession:
             None: No data available yet (non-blocking)
         """
         if self.master_fd is None:
-            return b''  # Already closed
+            return b""  # Already closed
         try:
             return os.read(self.master_fd, 4096)
         except BlockingIOError:
             return None  # No data yet
         except OSError:
-            return b''  # PTY died
+            return b""  # PTY died
 
     def is_alive(self) -> bool:
         """Check if the underlying tmux session still exists."""
@@ -220,7 +220,7 @@ class TmuxPtySession:
 
         try:
             # Wait for either task to complete (usually due to disconnect)
-            done, pending = await asyncio.wait(
+            _done, pending = await asyncio.wait(
                 [read_task, write_task],
                 return_when=asyncio.FIRST_COMPLETED,
             )

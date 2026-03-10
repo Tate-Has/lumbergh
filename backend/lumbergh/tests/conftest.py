@@ -58,7 +58,7 @@ def mock_git_repo(temp_dir):
         capture_output=True,
     )
 
-    yield repo_path
+    return repo_path
 
 
 @pytest.fixture
@@ -72,4 +72,4 @@ def mock_git_repo_with_changes(mock_git_repo):
     # Add untracked file
     (mock_git_repo / "new_file.txt").write_text("This is a new file.\n")
 
-    yield mock_git_repo
+    return mock_git_repo

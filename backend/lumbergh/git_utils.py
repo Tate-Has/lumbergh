@@ -101,8 +101,7 @@ def get_porcelain_status(cwd: Path) -> list[dict]:
             files.append({"path": path, "status": _get_diff_status(diff, staged=False)})
 
     # Untracked files
-    for path in repo.untracked_files:
-        files.append({"path": path, "status": "untracked"})
+    files.extend({"path": path, "status": "untracked"} for path in repo.untracked_files)
 
     return files
 
@@ -217,12 +216,14 @@ def get_full_diff_with_untracked(cwd: Path) -> dict:
                         new_content = (workdir / f.path).read_text(errors="replace")
                     except Exception:
                         new_content = None
-                    files.append({
-                        "path": f.path,
-                        "diff": f.diff,
-                        "oldContent": old_content,
-                        "newContent": new_content,
-                    })
+                    files.append(
+                        {
+                            "path": f.path,
+                            "diff": f.diff,
+                            "oldContent": old_content,
+                            "newContent": new_content,
+                        }
+                    )
                 total_stats.additions += stats.additions
                 total_stats.deletions += stats.deletions
         except GitCommandError:
@@ -236,12 +237,14 @@ def get_full_diff_with_untracked(cwd: Path) -> dict:
                 new_content = (workdir / untracked_path).read_text(errors="replace")
             except Exception:
                 new_content = None
-            files.append({
-                "path": file_diff.path,
-                "diff": file_diff.diff,
-                "oldContent": None,
-                "newContent": new_content,
-            })
+            files.append(
+                {
+                    "path": file_diff.path,
+                    "diff": file_diff.diff,
+                    "oldContent": None,
+                    "newContent": new_content,
+                }
+            )
             total_stats.additions += stats.additions
 
     return {
@@ -324,22 +327,26 @@ def get_graph_log(cwd: Path, limit: int = 100) -> dict:
                     continue  # already handled by local ref at same commit
                 commit_seen.add(branch_name)
                 local_at_same = local_branch_hash.get(branch_name) == hexsha
-                enriched.append({
-                    "name": branch_name,
-                    "local": local_at_same,
-                    "remote": True,
-                })
+                enriched.append(
+                    {
+                        "name": branch_name,
+                        "local": local_at_same,
+                        "remote": True,
+                    }
+                )
             else:
                 # Local branch
                 if name in commit_seen:
                     continue
                 commit_seen.add(name)
                 remote_at_same = remote_branch_hash.get(name) == hexsha
-                enriched.append({
-                    "name": name,
-                    "local": True,
-                    "remote": remote_at_same,
-                })
+                enriched.append(
+                    {
+                        "name": name,
+                        "local": True,
+                        "remote": remote_at_same,
+                    }
+                )
         if enriched:
             ref_map.setdefault(hexsha, []).extend(enriched)
 
@@ -400,15 +407,17 @@ def get_graph_log(cwd: Path, limit: int = 100) -> dict:
                 for parent in stash_commit.parents[1:]:
                     stash_hashes.add(parent.hexsha)
                 base_parent = stash_commit.parents[0].hexsha if stash_commit.parents else None
-                stash_entries.append({
-                    "hash": stash_hash,
-                    "ref": stash_ref,
-                    "message": stash_msg,
-                    "parent": base_parent,
-                    "date": stash_commit.committed_datetime.isoformat(),
-                    "author": stash_commit.author.name,
-                    "authorEmail": stash_commit.author.email or "",
-                })
+                stash_entries.append(
+                    {
+                        "hash": stash_hash,
+                        "ref": stash_ref,
+                        "message": stash_msg,
+                        "parent": base_parent,
+                        "date": stash_commit.committed_datetime.isoformat(),
+                        "author": stash_commit.author.name,
+                        "authorEmail": stash_commit.author.email or "",
+                    }
+                )
             except Exception:  # noqa: S110 - skip malformed stash entries
                 pass
     except GitCommandError:
@@ -420,18 +429,20 @@ def get_graph_log(cwd: Path, limit: int = 100) -> dict:
         if commit.hexsha in stash_hashes:
             continue  # Skip stash-internal commits (WIP, index, untracked)
         email = commit.author.email or ""
-        commits.append({
-            "hash": commit.hexsha,
-            "shortHash": commit.hexsha[:7],
-            "message": commit.summary,
-            "author": commit.author.name,
-            "authorEmail": email,
-            "authorGravatar": gravatar_url(email) if email else None,
-            "relativeDate": commit.committed_datetime.isoformat(),
-            "parents": [p.hexsha for p in commit.parents],
-            "refs": ref_map.get(commit.hexsha, []),
-            "pushed": commit.hexsha not in unpushed_set,
-        })
+        commits.append(
+            {
+                "hash": commit.hexsha,
+                "shortHash": commit.hexsha[:7],
+                "message": commit.summary,
+                "author": commit.author.name,
+                "authorEmail": email,
+                "authorGravatar": gravatar_url(email) if email else None,
+                "relativeDate": commit.committed_datetime.isoformat(),
+                "parents": [p.hexsha for p in commit.parents],
+                "refs": ref_map.get(commit.hexsha, []),
+                "pushed": commit.hexsha not in unpushed_set,
+            }
+        )
 
     # Insert stash entries as single nodes, positioned after their base commit
     for entry in stash_entries:
@@ -457,13 +468,14 @@ def get_graph_log(cwd: Path, limit: int = 100) -> dict:
         commits.insert(insert_idx, stash_node)
 
     # Branch list
-    branches = []
-    for branch in repo.branches:
-        branches.append({
+    branches = [
+        {
             "name": branch.name,
             "hash": branch.commit.hexsha,
             "current": not repo.head.is_detached and branch.name == head_branch,
-        })
+        }
+        for branch in repo.branches
+    ]
 
     # Working directory changes (for WIP node)
     working_changes = None
@@ -471,8 +483,10 @@ def get_graph_log(cwd: Path, limit: int = 100) -> dict:
         status = get_porcelain_status(cwd)
         working_changes = {
             "files": len(status),
-            "staged": sum(1 for f in status if f["status"] in ("added", "modified", "renamed", "deleted")),
-            "unstaged": sum(1 for f in status if f["status"] in ("untracked",)),
+            "staged": sum(
+                1 for f in status if f["status"] in ("added", "modified", "renamed", "deleted")
+            ),
+            "unstaged": sum(1 for f in status if f["status"] == "untracked"),
         }
 
     return {
@@ -502,17 +516,16 @@ def get_commit_log(cwd: Path, limit: int = 20) -> list[dict]:
     if not repo.head.is_valid():
         return []
 
-    commits = []
-    for commit in repo.iter_commits(max_count=limit):
-        commits.append(
-            {
-                "hash": commit.hexsha,
-                "shortHash": commit.hexsha[:7],
-                "message": commit.summary,
-                "author": commit.author.name,
-                "relativeDate": commit.committed_datetime.isoformat(),
-            }
-        )
+    commits = [
+        {
+            "hash": commit.hexsha,
+            "shortHash": commit.hexsha[:7],
+            "message": commit.summary,
+            "author": commit.author.name,
+            "relativeDate": commit.committed_datetime.isoformat(),
+        }
+        for commit in repo.iter_commits(max_count=limit)
+    ]
 
     return commits
 
@@ -580,12 +593,14 @@ def get_commit_diff(cwd: Path, commit_hash: str) -> dict | None:
             old_content = get_file_content_at_ref(repo, parent_ref, f.path) if parent_ref else None
             # Get new content from this commit
             new_content = get_file_content_at_ref(repo, commit_hash, f.path)
-            files.append({
-                "path": f.path,
-                "diff": f.diff,
-                "oldContent": old_content,
-                "newContent": new_content,
-            })
+            files.append(
+                {
+                    "path": f.path,
+                    "diff": f.diff,
+                    "oldContent": old_content,
+                    "newContent": new_content,
+                }
+            )
         stats = parsed_stats
 
     return {
@@ -702,7 +717,9 @@ def git_force_push(cwd: Path) -> dict:
         if "stale info" in error_msg or "rejected" in error_msg:
             return {"error": "Force push rejected: remote has newer changes. Fetch first."}
         if "Authentication failed" in error_msg or "could not read Username" in error_msg:
-            return {"error": "Force push failed: HTTP remote requires credentials. Switch to SSH or configure a credential helper."}
+            return {
+                "error": "Force push failed: HTTP remote requires credentials. Switch to SSH or configure a credential helper."
+            }
         return {"error": f"Force push failed: {e}"}
 
 
@@ -816,14 +833,13 @@ def get_branches(cwd: Path) -> dict:
     current_branch = get_current_branch(cwd)
 
     # Local branches
-    local_branches = []
-    for branch in repo.branches:
-        local_branches.append(
-            {
-                "name": branch.name,
-                "current": branch.name == current_branch,
-            }
-        )
+    local_branches = [
+        {
+            "name": branch.name,
+            "current": branch.name == current_branch,
+        }
+        for branch in repo.branches
+    ]
 
     # Remote branches
     remote_branches = []
@@ -877,7 +893,8 @@ def checkout_branch(cwd: Path, branch: str, reset_to: str | None = None) -> dict
         return {
             "status": "success",
             "branch": current_branch,
-            "message": f"Switched to branch '{current_branch}'" + (f" and reset to {reset_to[:7]}" if reset_to else ""),
+            "message": f"Switched to branch '{current_branch}'"
+            + (f" and reset to {reset_to[:7]}" if reset_to else ""),
         }
     except GitCommandError as e:
         return {"error": str(e)}
@@ -963,6 +980,7 @@ def _check_http_auth_warning(repo: "Repo", remote_name: str) -> str | None:
 
     # URL has embedded credentials (e.g. https://user:token@host) — no warning
     from urllib.parse import urlparse
+
     parsed = urlparse(url)
     if parsed.username:
         return None
@@ -1130,9 +1148,13 @@ def git_push(cwd: Path) -> dict:
         if "Could not read from remote repository" in error_msg:
             return {"error": "Push failed: Could not connect to remote repository"}
         if "Authentication failed" in error_msg or "Permission denied" in error_msg:
-            return {"error": "Push failed: Authentication error. This HTTP remote has no stored credentials — switch to SSH or configure a credential helper."}
+            return {
+                "error": "Push failed: Authentication error. This HTTP remote has no stored credentials — switch to SSH or configure a credential helper."
+            }
         if "could not read Username" in error_msg:
-            return {"error": "Push failed: HTTP remote requires credentials. Switch to SSH or configure a credential helper."}
+            return {
+                "error": "Push failed: HTTP remote requires credentials. Switch to SSH or configure a credential helper."
+            }
         return {"error": f"Push failed: {e}"}
 
 
@@ -1208,9 +1230,13 @@ def git_pull_rebase(cwd: Path) -> dict:
         if "Could not read from remote repository" in error_msg:
             return {"error": "Pull failed: Could not connect to remote repository"}
         if "Authentication failed" in error_msg or "Permission denied" in error_msg:
-            return {"error": "Pull failed: Authentication error. This HTTP remote has no stored credentials — switch to SSH or configure a credential helper."}
+            return {
+                "error": "Pull failed: Authentication error. This HTTP remote has no stored credentials — switch to SSH or configure a credential helper."
+            }
         if "could not read Username" in error_msg:
-            return {"error": "Pull failed: HTTP remote requires credentials. Switch to SSH or configure a credential helper."}
+            return {
+                "error": "Pull failed: HTTP remote requires credentials. Switch to SSH or configure a credential helper."
+            }
         return {"error": f"Pull failed: {e}"}
 
     # Pull succeeded - restore stash if we stashed
@@ -1245,6 +1271,7 @@ def sanitize_branch_for_path(branch: str) -> str:
     Converts `feat/login` → `feat-login`, `fix/bug#123` → `fix-bug-123`, etc.
     """
     import re
+
     # Replace slashes and other special chars with hyphens
     sanitized = re.sub(r"[/\\#@:~^]", "-", branch)
     # Remove any other non-alphanumeric chars except hyphen and underscore
@@ -1564,7 +1591,9 @@ def reword_commit(cwd: Path, commit_hash: str, message: str) -> dict:
 
     # Non-HEAD: require clean working tree
     if repo.is_dirty(untracked_files=True):
-        return {"error": "Working tree is dirty. Commit or stash changes before rewording non-HEAD commits."}
+        return {
+            "error": "Working tree is dirty. Commit or stash changes before rewording non-HEAD commits."
+        }
 
     # Verify commit is an ancestor of HEAD
     try:
@@ -1580,7 +1609,9 @@ def reword_commit(cwd: Path, commit_hash: str, message: str) -> dict:
 
     # Write new message to a temp file, then use a script that copies it
     try:
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, prefix='lumbergh-reword-') as f:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".txt", delete=False, prefix="lumbergh-reword-"
+        ) as f:
             f.write(message)
             msg_file = f.name
 
@@ -1588,7 +1619,7 @@ def reword_commit(cwd: Path, commit_hash: str, message: str) -> dict:
 
         env = {
             "GIT_SEQUENCE_EDITOR": seq_editor_script,
-            "GIT_EDITOR": f'sh -c \'{editor_script}\'',
+            "GIT_EDITOR": f"sh -c '{editor_script}'",
         }
 
         # Run rebase interactively on the parent of the target commit
@@ -1655,14 +1686,15 @@ def get_branches_for_worktree(repo_path: Path) -> dict:
 
     current_branch = get_current_branch(repo_path)
 
-    branches = []
-    for branch in repo.branches:
-        branches.append({
+    branches = [
+        {
             "name": branch.name,
             "available": branch.name not in used_branches,
             "inWorktree": branch.name in used_branches,
             "current": branch.name == current_branch,
-        })
+        }
+        for branch in repo.branches
+    ]
 
     return {
         "branches": branches,

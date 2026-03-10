@@ -98,9 +98,7 @@ class DiffCache:
             except Exception:  # noqa: S112 - skip sessions without workdir
                 continue
             try:
-                result = await asyncio.to_thread(
-                    get_full_diff_with_untracked, workdir
-                )
+                result = await asyncio.to_thread(get_full_diff_with_untracked, workdir)
                 self._cache[session_name] = result
             except Exception as e:
                 logger.warning(f"Diff cache: failed for {session_name}: {e}")

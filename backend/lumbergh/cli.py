@@ -12,6 +12,7 @@ def run():
     args = parser.parse_args()
 
     import uvicorn
+
     uvicorn.run("lumbergh.main:app", host=args.host, port=args.port, reload=args.reload)
 
 

@@ -27,7 +27,9 @@ async def mouse_status():
     try:
         result = subprocess.run(
             ["tmux", "show-option", "-gv", "mouse"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         if result.returncode == 0:
             enabled = result.stdout.strip() == "on"
@@ -63,7 +65,9 @@ async def enable_mouse(body: EnableMouseRequest):
         mouse_line = "set -g mouse on"
         if TMUX_CONF.exists():
             content = TMUX_CONF.read_text()
-            lines = [line.strip() for line in content.splitlines() if not line.strip().startswith("#")]
+            lines = [
+                line.strip() for line in content.splitlines() if not line.strip().startswith("#")
+            ]
             if mouse_line in lines:
                 # Already present, just source it
                 pass
@@ -76,7 +80,9 @@ async def enable_mouse(body: EnableMouseRequest):
     # Apply immediately
     subprocess.run(
         ["tmux", "source-file", str(TMUX_CONF)],
-        capture_output=True, text=True, timeout=5,
+        capture_output=True,
+        text=True,
+        timeout=5,
     )
 
     return {"status": "enabled"}

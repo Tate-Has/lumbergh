@@ -106,9 +106,7 @@ class IdleMonitor:
         loop = asyncio.get_event_loop()
 
         # Capture current pane content
-        content = await loop.run_in_executor(
-            None, capture_pane_content, session_name
-        )
+        content = await loop.run_in_executor(None, capture_pane_content, session_name)
 
         if not content:
             return
@@ -127,7 +125,9 @@ class IdleMonitor:
             if session_name not in self._working_since:
                 self._working_since[session_name] = time.time()
             elif time.time() - self._working_since[session_name] > self.STALL_THRESHOLD_SECONDS:
-                result = IdleDetectionResult(SessionState.STALLED, result.confidence, "Working too long")
+                result = IdleDetectionResult(
+                    SessionState.STALLED, result.confidence, "Working too long"
+                )
         else:
             self._working_since.pop(session_name, None)
 
@@ -148,10 +148,12 @@ class IdleMonitor:
             session_db = get_session_data_db(session_name)
             state_table = session_db.table("idle_state")
             state_table.truncate()
-            state_table.insert({
-                "state": state.value,
-                "updatedAt": datetime.utcnow().isoformat(),
-            })
+            state_table.insert(
+                {
+                    "state": state.value,
+                    "updatedAt": datetime.utcnow().isoformat(),
+                }
+            )
 
         try:
             await loop.run_in_executor(None, _save)

@@ -13,9 +13,9 @@ from enum import Enum
 
 class SessionState(Enum):
     UNKNOWN = "unknown"
-    IDLE = "idle"      # Waiting for user input
+    IDLE = "idle"  # Waiting for user input
     WORKING = "working"
-    ERROR = "error"      # Claude Code exited, crashed, or hit a rate limit
+    ERROR = "error"  # Claude Code exited, crashed, or hit a rate limit
     STALLED = "stalled"  # Working for too long without progress
 
 
@@ -68,9 +68,9 @@ class IdleDetector:
 
     # Shell prompt patterns (Claude Code exited, user is back at their shell)
     SHELL_PROMPT_PATTERNS = [
-        re.compile(r"[\$%#]\s*$"),                    # Ends with $ % or #
-        re.compile(r"@.*[\$%#]\s*$"),                  # user@host$
-        re.compile(r"^\s*\w+@[\w.-]+[:\s]"),           # user@hostname:
+        re.compile(r"[\$%#]\s*$"),  # Ends with $ % or #
+        re.compile(r"@.*[\$%#]\s*$"),  # user@host$
+        re.compile(r"^\s*\w+@[\w.-]+[:\s]"),  # user@hostname:
     ]
 
     # Pattern for Claude Code prompt (idle state) - not used anymore but kept for reference
@@ -232,5 +232,7 @@ class IdleDetector:
     @staticmethod
     def _strip_ansi(text: str) -> str:
         """Remove ANSI escape codes from text."""
-        ansi_pattern = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b[PX^_][^\x1b]*\x1b\\")
+        ansi_pattern = re.compile(
+            r"\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b[PX^_][^\x1b]*\x1b\\"
+        )
         return ansi_pattern.sub("", text)

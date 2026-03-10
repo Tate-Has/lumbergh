@@ -74,7 +74,9 @@ class SessionManager:
                     if session_meta and session_meta.get("workdir"):
                         workdir = Path(session_meta["workdir"])
                         if workdir.exists():
-                            logger.info(f"Auto-recreating tmux session: {session_name} in {workdir}")
+                            logger.info(
+                                f"Auto-recreating tmux session: {session_name} in {workdir}"
+                            )
                             try:
                                 create_tmux_session(session_name, workdir)
                             except RuntimeError as create_err:
@@ -106,10 +108,7 @@ class SessionManager:
             loop = asyncio.get_event_loop()
             content = await loop.run_in_executor(None, capture_pane_content, session_name)
             if content:
-                await websocket.send_json({
-                    "type": "output",
-                    "data": content
-                })
+                await websocket.send_json({"type": "output", "data": content})
                 logger.info(f"Sent initial pane capture to client ({len(content)} chars)")
         except Exception as e:
             logger.warning(f"Failed to send initial pane capture: {e}")
@@ -177,7 +176,7 @@ class SessionManager:
                 data = managed.pty.read()
 
                 # Handle EOF (empty bytes) - possible session death
-                if data == b'':
+                if data == b"":
                     consecutive_eof += 1
                     if consecutive_eof >= 3:
                         is_alive = await loop.run_in_executor(None, managed.pty.is_alive)

@@ -366,13 +366,20 @@ async def create_session(body: CreateSessionRequest):
 
     if body.mode == "worktree":
         if not body.worktree:
-            raise HTTPException(status_code=400, detail="Worktree config required for worktree mode")
+            raise HTTPException(
+                status_code=400, detail="Worktree config required for worktree mode"
+            )
 
         parent_repo = Path(body.worktree.parent_repo).expanduser().resolve()
         if not parent_repo.exists():
-            raise HTTPException(status_code=400, detail=f"Parent repository does not exist: {body.worktree.parent_repo}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Parent repository does not exist: {body.worktree.parent_repo}",
+            )
         if not (parent_repo / ".git").exists() and not (parent_repo / ".git").is_file():
-            raise HTTPException(status_code=400, detail=f"Not a git repository: {body.worktree.parent_repo}")
+            raise HTTPException(
+                status_code=400, detail=f"Not a git repository: {body.worktree.parent_repo}"
+            )
 
         # Create the worktree
         result = create_worktree(
@@ -391,7 +398,9 @@ async def create_session(body: CreateSessionRequest):
     else:
         # Direct mode - workdir is required
         if not body.workdir:
-            raise HTTPException(status_code=400, detail="Working directory required for direct mode")
+            raise HTTPException(
+                status_code=400, detail="Working directory required for direct mode"
+            )
 
         workdir = Path(body.workdir).expanduser().resolve()
         if not workdir.exists():
@@ -672,9 +681,11 @@ async def session_git_commit(name: str, body: CommitInput):
         if "error" in result:
             raise HTTPException(status_code=500, detail=result["error"])
         from lumbergh.diff_cache import diff_cache
+
         diff_cache.invalidate(name)
         _files_cache.pop(name, None)
         from lumbergh.message_buffer import message_buffer
+
         message_buffer.clear(name)
         return result
     except HTTPException:
@@ -721,6 +732,7 @@ async def session_git_checkout(name: str, body: CheckoutInput):
             status_code = 409 if "pending changes" in result["error"] else 400
             raise HTTPException(status_code=status_code, detail=result["error"])
         from lumbergh.diff_cache import diff_cache
+
         diff_cache.invalidate(name)
         _files_cache.pop(name, None)
         return result
@@ -740,6 +752,7 @@ async def session_git_reset(name: str):
         if "error" in result:
             raise HTTPException(status_code=500, detail=result["error"])
         from lumbergh.diff_cache import diff_cache
+
         diff_cache.invalidate(name)
         _files_cache.pop(name, None)
         return result
@@ -759,6 +772,7 @@ async def session_git_revert_file(name: str, body: RevertFileInput):
         if "error" in result:
             raise HTTPException(status_code=400, detail=result["error"])
         from lumbergh.diff_cache import diff_cache
+
         diff_cache.invalidate(name)
         _files_cache.pop(name, None)
         return result
@@ -794,6 +808,7 @@ async def session_git_amend(name: str, body: AmendInput):
         if "error" in result:
             raise HTTPException(status_code=400, detail=result["error"])
         from lumbergh.diff_cache import diff_cache
+
         diff_cache.invalidate(name)
         _files_cache.pop(name, None)
         return result
@@ -829,6 +844,7 @@ async def session_git_stash(name: str):
         if "error" in result:
             raise HTTPException(status_code=400, detail=result["error"])
         from lumbergh.diff_cache import diff_cache
+
         diff_cache.invalidate(name)
         _files_cache.pop(name, None)
         return result
@@ -848,6 +864,7 @@ async def session_git_stash_pop(name: str, ref: str | None = None):
         if "error" in result:
             raise HTTPException(status_code=400, detail=result["error"])
         from lumbergh.diff_cache import diff_cache
+
         diff_cache.invalidate(name)
         _files_cache.pop(name, None)
         return result
@@ -867,6 +884,7 @@ async def session_git_stash_drop(name: str, ref: str | None = None):
         if "error" in result:
             raise HTTPException(status_code=400, detail=result["error"])
         from lumbergh.diff_cache import diff_cache
+
         diff_cache.invalidate(name)
         _files_cache.pop(name, None)
         return result
@@ -886,6 +904,7 @@ async def session_git_pull(name: str):
         if "error" in result:
             raise HTTPException(status_code=400, detail=result["error"])
         from lumbergh.diff_cache import diff_cache
+
         diff_cache.invalidate(name)
         _files_cache.pop(name, None)
         return result
@@ -921,6 +940,7 @@ async def session_git_reset_to(name: str, body: ResetToInput):
         if "error" in result:
             raise HTTPException(status_code=400, detail=result["error"])
         from lumbergh.diff_cache import diff_cache
+
         diff_cache.invalidate(name)
         _files_cache.pop(name, None)
         return result
@@ -940,6 +960,7 @@ async def session_git_reword(name: str, body: RewordInput):
         if "error" in result:
             raise HTTPException(status_code=400, detail=result["error"])
         from lumbergh.diff_cache import diff_cache
+
         diff_cache.invalidate(name)
         _files_cache.pop(name, None)
         return result
@@ -981,7 +1002,9 @@ async def save_session_todos(name: str, todo_list: TodoList):
     try:
         session_db = get_session_data_db(name)
         todos_table = session_db.table("todos")
-        todos = [{"text": t.text, "done": t.done, "description": t.description} for t in todo_list.todos]
+        todos = [
+            {"text": t.text, "done": t.done, "description": t.description} for t in todo_list.todos
+        ]
         save_single_document_items(todos_table, todos)
         return {"todos": todos}
     except Exception as e:
@@ -1244,8 +1267,7 @@ async def session_generate_commit_message(name: str):
 
         # Build file summary
         file_summary = "\n".join(
-            f"- {f['path']} ({f.get('additions', 0)}+/{f.get('deletions', 0)}-)"
-            for f in files
+            f"- {f['path']} ({f.get('additions', 0)}+/{f.get('deletions', 0)}-)" for f in files
         )
 
         # Combine all diffs (truncate if too long)
@@ -1327,10 +1349,12 @@ async def session_status_summary(name: str, body: StatusSummaryInput):
         session_db = get_session_data_db(name)
         status_table = session_db.table("status")
         status_table.truncate()
-        status_table.insert({
-            "status": summary,
-            "statusUpdatedAt": datetime.utcnow().isoformat(),
-        })
+        status_table.insert(
+            {
+                "status": summary,
+                "statusUpdatedAt": datetime.utcnow().isoformat(),
+            }
+        )
 
         return {"status": summary}
 

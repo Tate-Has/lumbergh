@@ -339,10 +339,7 @@ async def session_stream(websocket: WebSocket, session_name: str):
     except ValueError as e:
         # Session doesn't exist (e.g., killed externally)
         try:
-            await websocket.send_json({
-                "type": "session_not_found",
-                "message": str(e)
-            })
+            await websocket.send_json({"type": "session_not_found", "message": str(e)})
         except Exception:  # noqa: S110 - best-effort error notification
             pass
         return

@@ -84,14 +84,15 @@ async def list_shared_files():
     if not SHARED_DIR.exists():
         return {"files": []}
 
-    files = []
-    for f in sorted(SHARED_DIR.iterdir()):
-        if f.is_file():
-            files.append({
-                "name": f.name,
-                "size": f.stat().st_size,
-                "modified": f.stat().st_mtime,
-            })
+    files = [
+        {
+            "name": f.name,
+            "size": f.stat().st_size,
+            "modified": f.stat().st_mtime,
+        }
+        for f in sorted(SHARED_DIR.iterdir())
+        if f.is_file()
+    ]
 
     return {"files": files}
 
