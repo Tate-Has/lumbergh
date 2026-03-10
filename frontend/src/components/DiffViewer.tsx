@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, memo } from 'react'
 import '@git-diff-view/react/styles/diff-view.css'
-import { RefreshCw, ArrowLeft, ArrowRight, ArrowUp, ArrowDown, ArrowDownUp, X } from 'lucide-react'
+import { RefreshCw, ArrowLeft, ArrowRight, ArrowUp, ArrowDown, ArrowDownUp, X, CloudDownload } from 'lucide-react'
 import { getApiBase } from '../config'
 import { FileList, FileDiff, BranchSelector } from './diff'
 import type { DiffData, CommitDiff } from './diff'
@@ -236,13 +236,12 @@ const DiffViewer = memo(function DiffViewer({
     }
   }, [view, fetchCommitDiff])
 
-  // Fetch remote status when there are no changes (for push button)
-  const hasNoChanges = !workingData || workingData.files.length === 0
+  // Fetch remote status whenever viewing working changes
   useEffect(() => {
-    if (hasNoChanges && view.level === 'changes' && !view.commit) {
+    if (view.level === 'changes' && !view.commit) {
       fetchRemoteStatus()
     }
-  }, [hasNoChanges, view, fetchRemoteStatus])
+  }, [view, fetchRemoteStatus])
 
   // Handle navigation
   const handleSelectFile = (file: string) => {
@@ -427,12 +426,21 @@ const DiffViewer = memo(function DiffViewer({
                   <BranchSelector gitBaseUrl={gitBaseUrl} onBranchChange={handleRefresh} />
                 )}
               </div>
-              <button
-                onClick={handleRefresh}
-                className="px-2 py-1 bg-control-bg hover:bg-control-bg-hover rounded text-sm"
-              >
-                <RefreshCw size={16} />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={fetchRemoteStatus}
+                  className="px-2 py-1 bg-control-bg hover:bg-control-bg-hover rounded text-sm transition-colors"
+                  title="Fetch from remote"
+                >
+                  <CloudDownload size={16} />
+                </button>
+                <button
+                  onClick={handleRefresh}
+                  className="px-2 py-1 bg-control-bg hover:bg-control-bg-hover rounded text-sm"
+                >
+                  <RefreshCw size={16} />
+                </button>
+              </div>
             </div>
             <div className="flex flex-col items-center justify-center flex-1 gap-6 p-6">
               {remoteStatus?.httpAuthWarning && (
@@ -609,7 +617,11 @@ const DiffViewer = memo(function DiffViewer({
         commit={getCurrentCommitInfo()}
         onSendToTerminal={sessionName ? handleSendToTerminal : undefined}
         onGitAction={onGitAction}
-      onExpand={handleExpand}
+        onExpand={handleExpand}
+        remoteStatus={remoteStatus}
+        onFetch={fetchRemoteStatus}
+        onPull={handlePull}
+        isPulling={isPulling}
       />
     )
   }

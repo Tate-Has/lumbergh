@@ -1,10 +1,20 @@
 import { useState, useEffect, useRef, memo } from 'react'
-import { Play, RefreshCw, Undo2, ChevronRight, MoreHorizontal, Maximize2 } from 'lucide-react'
+import { Play, RefreshCw, Undo2, ChevronRight, MoreHorizontal, Maximize2, ArrowDown, CloudDownload } from 'lucide-react'
 import { getApiBase } from '../../config'
 import { relativeDate } from '../../utils/relativeDate'
 import type { DiffData } from './types'
 import { getFileStats } from './utils'
 import BranchSelector from './BranchSelector'
+
+interface RemoteStatus {
+  branch?: string
+  remote?: string
+  ahead: number
+  behind: number
+  error?: string
+  httpAuthWarning?: string
+  fetchFailed?: boolean
+}
 
 interface Props {
   data: DiffData
@@ -15,6 +25,10 @@ interface Props {
   onSendToTerminal?: (text: string, sendEnter: boolean) => void
   onGitAction?: () => void
   onExpand?: () => void
+  remoteStatus?: RemoteStatus | null
+  onFetch?: () => void
+  onPull?: () => void
+  isPulling?: boolean
 }
 
 const FileList = memo(function FileList({
@@ -26,6 +40,10 @@ const FileList = memo(function FileList({
   onSendToTerminal,
   onGitAction,
   onExpand,
+  remoteStatus,
+  onFetch,
+  onPull,
+  isPulling,
 }: Props) {
   const [commitMessage, setCommitMessage] = useState('')
   const [isCommitting, setIsCommitting] = useState(false)
@@ -321,6 +339,25 @@ const FileList = memo(function FileList({
         <div className="flex items-center gap-3 shrink-0 ml-2">
           <span className="text-green-400 text-sm">+{data.stats.additions}</span>
           <span className="text-red-400 text-sm">-{data.stats.deletions}</span>
+          {isWorkingChanges && remoteStatus && remoteStatus.behind > 0 && onPull ? (
+            <button
+              onClick={onPull}
+              disabled={isPulling}
+              className="flex items-center gap-1 px-2 py-1 bg-yellow-600/80 hover:bg-yellow-500/80 disabled:bg-control-bg-hover disabled:cursor-not-allowed rounded text-sm text-white transition-colors"
+              title={`${remoteStatus.behind} commit${remoteStatus.behind > 1 ? 's' : ''} behind ${remoteStatus.remote || 'origin'} — click to pull`}
+            >
+              <ArrowDown size={14} />
+              <span className="text-xs">{remoteStatus.behind}</span>
+            </button>
+          ) : isWorkingChanges && onFetch ? (
+            <button
+              onClick={onFetch}
+              className="px-2 py-1 bg-control-bg hover:bg-control-bg-hover rounded text-sm transition-colors"
+              title="Fetch from remote"
+            >
+              <CloudDownload size={16} />
+            </button>
+          ) : null}
           <button
             onClick={onRefresh}
             className="px-2 py-1 bg-control-bg hover:bg-control-bg-hover rounded text-sm"
