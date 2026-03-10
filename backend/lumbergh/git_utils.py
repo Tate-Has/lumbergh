@@ -1379,6 +1379,16 @@ def validate_branch_for_worktree(repo_path: Path, branch: str) -> dict:
     return {"valid": True}
 
 
+def _classify_worktree_error(e: GitCommandError, branch: str) -> str:
+    """Turn a GitCommandError into a user-friendly message."""
+    error_str = str(e)
+    if "already exists" in error_str:
+        return f"Branch '{branch}' already exists"
+    if "is not a valid branch name" in error_str:
+        return f"Invalid branch name: {branch}"
+    return f"Failed to create worktree: {e}"
+
+
 def create_worktree(
     repo_path: Path,
     branch: str,
@@ -1421,24 +1431,17 @@ def create_worktree(
         return {"error": f"Worktree path already exists: {worktree_path}"}
 
     try:
+        args = ["add"]
         if create_branch:
-            # Create new branch and worktree
+            args.extend(["-b", branch, str(worktree_path)])
             if base_branch:
-                repo.git.worktree("add", "-b", branch, str(worktree_path), base_branch)
-            else:
-                repo.git.worktree("add", "-b", branch, str(worktree_path))
+                args.append(base_branch)
         else:
-            # Use existing branch
-            repo.git.worktree("add", str(worktree_path), branch)
-
+            args.extend([str(worktree_path), branch])
+        repo.git.worktree(*args)
         return {"path": str(worktree_path)}
     except GitCommandError as e:
-        error_str = str(e)
-        if "already exists" in error_str:
-            return {"error": f"Branch '{branch}' already exists"}
-        if "is not a valid branch name" in error_str:
-            return {"error": f"Invalid branch name: {branch}"}
-        return {"error": f"Failed to create worktree: {e}"}
+        return {"error": _classify_worktree_error(e, branch)}
 
 
 def remove_worktree(repo_path: Path, worktree_path: Path, force: bool = False) -> dict:
@@ -1542,19 +1545,64 @@ def reset_to_commit(cwd: Path, commit_hash: str, mode: str = "hard") -> dict:
         return {"error": f"git reset --{mode} failed: {e}"}
 
 
+def _reword_head(repo: Repo, message: str) -> dict:
+    """Reword the HEAD commit via simple amend."""
+    try:
+        repo.git.commit("--amend", "--only", "-m", message)
+        return {"status": "reworded", "hash": repo.head.commit.hexsha[:7], "message": message}
+    except GitCommandError as e:
+        return {"error": f"Amend failed: {e}"}
+
+
+def _abort_rebase(cwd: Path) -> None:
+    """Attempt to abort an in-progress rebase."""
+    subprocess.run(["git", "rebase", "--abort"], cwd=str(cwd), capture_output=True, timeout=10)
+
+
+def _reword_via_rebase(cwd: Path, repo: Repo, commit_hash: str, message: str) -> dict:
+    """Reword a non-HEAD commit via interactive rebase with automated editors."""
+    short = repo.commit(commit_hash).hexsha[:7]
+    seq_editor = f"sed -i 's/^pick {short}/reword {short}/' \"$1\""
+
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".txt", delete=False, prefix="lumbergh-reword-"
+    ) as f:
+        f.write(message)
+        msg_file = f.name
+
+    env = {
+        "GIT_SEQUENCE_EDITOR": seq_editor,
+        "GIT_EDITOR": f"sh -c 'cp {msg_file} \"$1\"'",
+    }
+
+    try:
+        result = subprocess.run(
+            ["git", "rebase", "-i", f"{commit_hash}^"],
+            cwd=str(cwd),
+            capture_output=True,
+            text=True,
+            env={**os.environ, **env},
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        _abort_rebase(cwd)
+        return {"error": "Rebase timed out"}
+    finally:
+        Path(msg_file).unlink(missing_ok=True)
+
+    if result.returncode != 0:
+        _abort_rebase(cwd)
+        return {"error": f"Rebase failed: {result.stderr.strip()}"}
+
+    return {"status": "reworded", "hash": repo.head.commit.hexsha[:7], "message": message}
+
+
 def reword_commit(cwd: Path, commit_hash: str, message: str) -> dict:
     """
     Reword (edit the message of) a commit.
 
     For HEAD: uses `git commit --amend -m <message>` (no staging changes).
     For non-HEAD: uses `git rebase` with GIT_SEQUENCE_EDITOR to automate the reword.
-
-    Guards:
-    - Rejects if working tree is dirty (for non-HEAD commits)
-    - Rejects if commit is not an ancestor of HEAD on the current branch
-
-    Returns:
-        Dict with status, hash, message on success, or error on failure
     """
     try:
         repo = get_repo(cwd)
@@ -1563,107 +1611,28 @@ def reword_commit(cwd: Path, commit_hash: str, message: str) -> dict:
 
     if not repo.head.is_valid():
         return {"error": "No commits to reword"}
-
     if repo.head.is_detached:
         return {"error": "Cannot reword: HEAD is detached"}
 
-    # Resolve the commit
     try:
         target = repo.commit(commit_hash)
     except Exception:
         return {"error": f"Commit not found: {commit_hash}"}
 
-    head_commit = repo.head.commit
+    if target.hexsha == repo.head.commit.hexsha:
+        return _reword_head(repo, message)
 
-    # Check if this is HEAD
-    is_head = target.hexsha == head_commit.hexsha
-
-    if is_head:
-        # Simple amend — only change the message, don't stage anything
-        try:
-            repo.git.commit("--amend", "--only", "-m", message)
-            return {
-                "status": "reworded",
-                "hash": repo.head.commit.hexsha[:7],
-                "message": message,
-            }
-        except GitCommandError as e:
-            return {"error": f"Amend failed: {e}"}
-
-    # Non-HEAD: require clean working tree
     if repo.is_dirty(untracked_files=True):
         return {
             "error": "Working tree is dirty. Commit or stash changes before rewording non-HEAD commits."
         }
 
-    # Verify commit is an ancestor of HEAD
     try:
         repo.git.merge_base("--is-ancestor", commit_hash, "HEAD")
     except GitCommandError:
         return {"error": "Commit is not an ancestor of HEAD on the current branch"}
 
-    # Use rebase with automated editors
-    # GIT_SEQUENCE_EDITOR: replaces "pick <hash>" with "reword <hash>"
-    # GIT_EDITOR: writes the new message to the file git provides
-    short = target.hexsha[:7]
-    seq_editor_script = f"sed -i 's/^pick {short}/reword {short}/' \"$1\""
-
-    # Write new message to a temp file, then use a script that copies it
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".txt", delete=False, prefix="lumbergh-reword-"
-        ) as f:
-            f.write(message)
-            msg_file = f.name
-
-        editor_script = f'cp {msg_file} "$1"'
-
-        env = {
-            "GIT_SEQUENCE_EDITOR": seq_editor_script,
-            "GIT_EDITOR": f"sh -c '{editor_script}'",
-        }
-
-        # Run rebase interactively on the parent of the target commit
-        parent_ref = f"{commit_hash}^"
-        result = subprocess.run(
-            ["git", "rebase", "-i", parent_ref],
-            cwd=str(cwd),
-            capture_output=True,
-            text=True,
-            env={**os.environ, **env},
-            timeout=30,
-        )
-
-        # Clean up temp file
-        Path(msg_file).unlink(missing_ok=True)
-
-        if result.returncode != 0:
-            # Try to abort rebase if it failed
-            subprocess.run(
-                ["git", "rebase", "--abort"],
-                cwd=str(cwd),
-                capture_output=True,
-                timeout=10,
-            )
-            return {"error": f"Rebase failed: {result.stderr.strip()}"}
-
-        # Refresh repo state
-        new_head = repo.head.commit
-        return {
-            "status": "reworded",
-            "hash": new_head.hexsha[:7],
-            "message": message,
-        }
-    except subprocess.TimeoutExpired:
-        subprocess.run(
-            ["git", "rebase", "--abort"],
-            cwd=str(cwd),
-            capture_output=True,
-            timeout=10,
-        )
-        return {"error": "Rebase timed out"}
-    except Exception as e:
-        return {"error": f"Reword failed: {e}"}
+    return _reword_via_rebase(cwd, repo, commit_hash, message)
 
 
 def get_branches_for_worktree(repo_path: Path) -> dict:
