@@ -9,8 +9,6 @@ import subprocess
 import uuid
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
-
 import libtmux
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
@@ -70,6 +68,8 @@ from lumbergh.models import (
     TodoList,
     TodoMoveRequest,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 directories_router = APIRouter(prefix="/api/directories", tags=["directories"])
@@ -232,7 +232,7 @@ def get_session_status(name: str) -> dict:
         if idle_docs:
             result["idleState"] = idle_docs[0].get("state")
             result["idleStateUpdatedAt"] = idle_docs[0].get("updatedAt")
-    except Exception:
+    except Exception:  # noqa: S110 - idle state is optional metadata
         pass
     return result
 
@@ -302,8 +302,8 @@ async def touch_session(name: str):
     """Update lastUsedAt timestamp for a session."""
     from datetime import UTC, datetime
 
-    Session = Query()
-    existing = sessions_table.get(Session.name == name)
+    session_q = Query()
+    existing = sessions_table.get(session_q.name == name)
 
     if not existing:
         # Check if it's an orphan tmux session
@@ -313,7 +313,7 @@ async def touch_session(name: str):
         existing = {"name": name}
 
     existing["lastUsedAt"] = datetime.now(UTC).isoformat()
-    sessions_table.upsert(existing, Session.name == name)
+    sessions_table.upsert(existing, session_q.name == name)
 
     return {"ok": True}
 
@@ -321,8 +321,8 @@ async def touch_session(name: str):
 @router.patch("/{name}")
 async def update_session(name: str, body: SessionUpdate):
     """Update session metadata (e.g., displayName)."""
-    Session = Query()
-    existing = sessions_table.get(Session.name == name)
+    session_q = Query()
+    existing = sessions_table.get(session_q.name == name)
 
     if not existing:
         # Check if it's an orphan tmux session
@@ -338,7 +338,7 @@ async def update_session(name: str, body: SessionUpdate):
     if body.description is not None:
         existing["description"] = body.description
 
-    sessions_table.upsert(existing, Session.name == name)
+    sessions_table.upsert(existing, session_q.name == name)
 
     return existing
 
@@ -423,7 +423,7 @@ async def create_session(body: CreateSessionRequest):
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    Session = Query()
+    session_q = Query()
     session_data = {
         "name": body.name,
         "workdir": str(workdir),
@@ -435,7 +435,7 @@ async def create_session(body: CreateSessionRequest):
     if worktree_branch:
         session_data["worktree_branch"] = worktree_branch
 
-    sessions_table.upsert(session_data, Session.name == body.name)
+    sessions_table.upsert(session_data, session_q.name == body.name)
 
     live = get_live_sessions()
     live_info = live.get(body.name, {})
@@ -541,8 +541,8 @@ async def delete_session(name: str, cleanup_worktree: bool = False):
         result = remove_worktree(Path(worktree_parent_repo), Path(workdir), force=True)
         worktree_removed = result.get("status") == "removed"
 
-    Session = Query()
-    sessions_table.remove(Session.name == name)
+    session_q = Query()
+    sessions_table.remove(session_q.name == name)
 
     return {
         "status": "deleted",
@@ -569,10 +569,10 @@ def get_session_workdir(name: str) -> Path:
         if result.returncode == 0 and result.stdout.strip():
             path = Path(result.stdout.strip())
             # Persist so future calls skip the tmux subprocess
-            Session = Query()
-            sessions_table.upsert({"name": name, "workdir": str(path)}, Session.name == name)
+            session_q = Query()
+            sessions_table.upsert({"name": name, "workdir": str(path)}, session_q.name == name)
             return path
-    except Exception:
+    except Exception:  # noqa: S110 - fallthrough to 404
         pass
 
     raise HTTPException(status_code=404, detail=f"Session '{name}' not found or has no workdir")
@@ -955,8 +955,7 @@ async def session_git_remote_status(name: str, fetch: bool = True):
     workdir = get_session_workdir(name)
 
     try:
-        result = get_remote_status(workdir, fetch=fetch)
-        return result
+        return get_remote_status(workdir, fetch=fetch)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

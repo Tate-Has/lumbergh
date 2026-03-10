@@ -275,5 +275,5 @@ class TmuxPtySession:
 
         except WebSocketDisconnect:
             pass
-        except Exception:
+        except Exception:  # noqa: S110 - cleanup on disconnect
             pass

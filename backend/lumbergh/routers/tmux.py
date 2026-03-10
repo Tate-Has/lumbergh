@@ -63,7 +63,7 @@ async def enable_mouse(body: EnableMouseRequest):
         mouse_line = "set -g mouse on"
         if TMUX_CONF.exists():
             content = TMUX_CONF.read_text()
-            lines = [l.strip() for l in content.splitlines() if not l.strip().startswith("#")]
+            lines = [line.strip() for line in content.splitlines() if not line.strip().startswith("#")]
             if mouse_line in lines:
                 # Already present, just source it
                 pass

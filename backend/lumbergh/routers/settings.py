@@ -50,8 +50,8 @@ DEFAULTS = {
 
 
 class AIProviderConfig(BaseModel):
-    baseUrl: str | None = None
-    apiKey: str | None = None
+    baseUrl: str | None = None  # noqa: N815 - API field name
+    apiKey: str | None = None  # noqa: N815 - API field name
     model: str | None = None
 
 
@@ -61,8 +61,8 @@ class AISettings(BaseModel):
 
 
 class SettingsUpdate(BaseModel):
-    repoSearchDir: str | None = None
-    gitGraphCommits: int | None = None
+    repoSearchDir: str | None = None  # noqa: N815 - API field name
+    gitGraphCommits: int | None = None  # noqa: N815 - API field name
     ai: AISettings | None = None
 
 

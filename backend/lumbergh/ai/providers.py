@@ -226,26 +226,25 @@ def get_provider(ai_settings: dict) -> AIProvider:
             base_url=config.get("baseUrl", "http://localhost:11434"),
             model=config.get("model", "llama3.2"),
         )
-    elif provider_name == "openai":
+    if provider_name == "openai":
         return OpenAIProvider(
             api_key=config.get("apiKey", ""),
             model=config.get("model", "gpt-4o"),
         )
-    elif provider_name == "anthropic":
+    if provider_name == "anthropic":
         return AnthropicProvider(
             api_key=config.get("apiKey", ""),
             model=config.get("model", "claude-sonnet-4-20250514"),
         )
-    elif provider_name == "google":
+    if provider_name == "google":
         return GoogleAIProvider(
             api_key=config.get("apiKey", ""),
             model=config.get("model", "gemini-3-flash-preview"),
         )
-    elif provider_name == "openai_compatible":
+    if provider_name == "openai_compatible":
         return OpenAICompatibleProvider(
             base_url=config.get("baseUrl", ""),
             api_key=config.get("apiKey", ""),
             model=config.get("model", "default"),
         )
-    else:
-        raise ValueError(f"Unknown AI provider: {provider_name}")
+    raise ValueError(f"Unknown AI provider: {provider_name}")

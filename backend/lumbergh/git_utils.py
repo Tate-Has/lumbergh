@@ -2,13 +2,12 @@
 Git utilities for the Lumbergh backend using GitPython.
 """
 
-from dataclasses import dataclass
-from pathlib import Path
-
 import hashlib
 import os
 import subprocess
 import tempfile
+from dataclasses import dataclass
+from pathlib import Path
 
 # Prevent git from prompting for credentials in the terminal.
 # HTTP repos that require auth will fail fast instead of blocking the server.
@@ -289,7 +288,7 @@ def get_graph_log(cwd: Path, limit: int = 100) -> dict:
             continue  # stash entries are not branches
         try:
             hexsha = ref.commit.hexsha
-        except Exception:
+        except Exception:  # noqa: S112 - skip refs that can't resolve
             continue
         raw_refs.setdefault(hexsha, []).append((name, kind))
 
@@ -410,7 +409,7 @@ def get_graph_log(cwd: Path, limit: int = 100) -> dict:
                     "author": stash_commit.author.name,
                     "authorEmail": stash_commit.author.email or "",
                 })
-            except Exception:
+            except Exception:  # noqa: S110 - skip malformed stash entries
                 pass
     except GitCommandError:
         pass
@@ -973,7 +972,7 @@ def _check_http_auth_warning(repo: "Repo", remote_name: str) -> str | None:
         helper = repo.config_reader().get_value("credential", "helper", default="")
         if helper:
             return None
-    except Exception:
+    except Exception:  # noqa: S110 - credential check is best-effort
         pass
 
     return (

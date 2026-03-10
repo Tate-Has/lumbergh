@@ -53,7 +53,7 @@ class AIPrompt(BaseModel):
     task: str
     name: str
     template: str
-    isDefault: bool = False
+    isDefault: bool = False  # noqa: N815 - API field name
 
 
 class AIPromptList(BaseModel):
@@ -93,7 +93,7 @@ async def get_ai_status() -> ProviderStatus:
     if provider_name == "ollama" and available and isinstance(provider, OllamaProvider):
         try:
             result.models = await provider.list_models()
-        except Exception:
+        except Exception:  # noqa: S110 - model listing is optional
             pass
 
     return result

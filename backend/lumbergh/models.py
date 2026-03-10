@@ -117,7 +117,7 @@ class CreateSessionRequest(BaseModel):
 class SessionUpdate(BaseModel):
     """Request to update session metadata."""
 
-    displayName: str | None = None
+    displayName: str | None = None  # noqa: N815 - API field name
     description: str | None = None
 
 

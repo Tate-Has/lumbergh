@@ -95,7 +95,7 @@ class DiffCache:
         for session_name in self._active_sessions():
             try:
                 workdir = get_session_workdir(session_name)
-            except Exception:
+            except Exception:  # noqa: S112 - skip sessions without workdir
                 continue
             try:
                 result = await asyncio.to_thread(

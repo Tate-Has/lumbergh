@@ -212,7 +212,7 @@ class SessionManager:
         finally:
             try:
                 loop.remove_reader(fd)
-            except Exception:
+            except Exception:  # noqa: S110 - cleanup is best-effort
                 pass
 
     async def _notify_session_dead(self, session_name: str) -> None:
@@ -227,7 +227,7 @@ class SessionManager:
         for client in list(managed.clients):
             try:
                 await client.send_json(message)
-            except Exception:
+            except Exception:  # noqa: S110 - best-effort notification
                 pass
 
     async def handle_client_message(
@@ -257,7 +257,7 @@ class SessionManager:
                     if client is not sender:
                         try:
                             await client.send_json(sync_msg)
-                        except Exception:
+                        except Exception:  # noqa: S110 - best-effort sync
                             pass
 
     def get_session(self, session_name: str) -> ManagedSession | None:

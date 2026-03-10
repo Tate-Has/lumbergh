@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI):  # noqa: ARG001 - required by FastAPI
     """App lifespan handler - runs on startup/shutdown."""
     from lumbergh.diff_cache import diff_cache
     from lumbergh.idle_monitor import idle_monitor
@@ -343,7 +343,7 @@ async def session_stream(websocket: WebSocket, session_name: str):
                 "type": "session_not_found",
                 "message": str(e)
             })
-        except Exception:
+        except Exception:  # noqa: S110 - best-effort error notification
             pass
         return
     except WebSocketDisconnect:
@@ -351,7 +351,7 @@ async def session_stream(websocket: WebSocket, session_name: str):
     except Exception as e:
         try:
             await websocket.send_json({"type": "error", "message": str(e)})
-        except Exception:
+        except Exception:  # noqa: S110 - best-effort error notification
             pass
     finally:
         # Unregister client - PTY closes only when last client disconnects
