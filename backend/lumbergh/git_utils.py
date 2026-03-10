@@ -253,13 +253,187 @@ def get_full_diff_with_untracked(cwd: Path) -> dict:
     }
 
 
-def get_graph_log(cwd: Path, limit: int = 100) -> dict:
-    """
-    Get commit graph data for metro-style visualization.
+def _classify_ref(name: str) -> tuple[str, str]:
+    """Classify a git ref, returning (cleaned_name, kind)."""
+    if name.startswith("refs/heads/"):
+        return name[11:], "local"
+    if name.startswith("refs/remotes/"):
+        return name[13:], "remote"
+    if name.startswith("refs/tags/"):
+        return name[10:], "tag"
+    if name.startswith("origin/"):
+        return name, "remote"
+    return name, "local"
 
-    Returns:
-        Dict with commits (including parents and refs), branches, and HEAD info
-    """
+
+def _build_raw_refs(repo: Repo) -> dict[str, list[tuple[str, str]]]:
+    """Build hash -> [(name, kind)] map from all repo refs."""
+    raw_refs: dict[str, list[tuple[str, str]]] = {}
+    for ref in repo.refs:
+        name, kind = _classify_ref(ref.name)
+        if name == "origin/HEAD" or name.startswith("refs/stash"):
+            continue
+        try:
+            hexsha = ref.commit.hexsha
+        except Exception:  # noqa: S112 - skip refs that can't resolve
+            continue
+        raw_refs.setdefault(hexsha, []).append((name, kind))
+    return raw_refs
+
+
+def _build_branch_lookups(
+    raw_refs: dict[str, list[tuple[str, str]]],
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Build local and remote branch-name -> hash lookups."""
+    local: dict[str, str] = {}
+    remote: dict[str, str] = {}
+    for hexsha, entries in raw_refs.items():
+        for name, kind in entries:
+            if kind == "remote" and name.startswith("origin/"):
+                remote[name[7:]] = hexsha
+            elif kind == "local" and name != "HEAD":
+                local[name] = hexsha
+    return local, remote
+
+
+def _enrich_ref_entry(
+    name: str,
+    kind: str,
+    hexsha: str,
+    commit_seen: set[str],
+    local_branch_hash: dict[str, str],
+    remote_branch_hash: dict[str, str],
+) -> dict | None:
+    """Convert a raw ref entry into an enriched ref dict, or None to skip."""
+    if kind == "tag":
+        return {"name": name, "local": False, "remote": False, "tag": True}
+    if name == "HEAD" or name.startswith("HEAD -> "):
+        return None
+    if kind == "remote":
+        if not name.startswith("origin/"):
+            return None
+        branch_name = name[7:]
+        if branch_name == "HEAD" or branch_name in commit_seen:
+            return None
+        commit_seen.add(branch_name)
+        return {
+            "name": branch_name,
+            "local": local_branch_hash.get(branch_name) == hexsha,
+            "remote": True,
+        }
+
+    # Local branch
+    if name in commit_seen:
+        return None
+    commit_seen.add(name)
+    return {"name": name, "local": True, "remote": remote_branch_hash.get(name) == hexsha}
+
+
+def _build_ref_map(
+    raw_refs: dict[str, list[tuple[str, str]]],
+    local_branch_hash: dict[str, str],
+    remote_branch_hash: dict[str, str],
+) -> dict[str, list[dict]]:
+    """Build hash -> [enriched ref dicts] map."""
+    ref_map: dict[str, list[dict]] = {}
+    seen_per_commit: dict[str, set[str]] = {}
+    for hexsha, entries in raw_refs.items():
+        commit_seen = seen_per_commit.setdefault(hexsha, set())
+        enriched = [
+            e
+            for name, kind in entries
+            if (
+                e := _enrich_ref_entry(
+                    name, kind, hexsha, commit_seen, local_branch_hash, remote_branch_hash
+                )
+            )
+        ]
+        if enriched:
+            ref_map.setdefault(hexsha, []).extend(enriched)
+    return ref_map
+
+
+def _get_unpushed_commits(repo: Repo, head_branch: str | None) -> set[str]:
+    """Determine which commits on the current branch haven't been pushed."""
+    if not head_branch or repo.head.is_detached:
+        return set()
+    try:
+        tracking = repo.active_branch.tracking_branch()
+        tracking_ref = tracking.name if tracking else None
+
+        if not tracking_ref:
+            tracking_ref = f"origin/{head_branch}"
+            try:
+                repo.git.rev_parse("--verify", tracking_ref)
+            except GitCommandError:
+                tracking_ref = None
+
+        if tracking_ref:
+            output = repo.git.rev_list(f"{tracking_ref}..{head_branch}").strip()
+        else:
+            output = repo.git.rev_list(head_branch).strip()
+
+        return set(output.splitlines()) if output else set()
+    except GitCommandError:
+        return set()
+
+
+def _collect_stash_entries(repo: Repo) -> tuple[set[str], list[dict]]:
+    """Collect stash entries and their internal commit hashes."""
+    stash_hashes: set[str] = set()
+    stash_entries: list[dict] = []
+    try:
+        stash_list_output = repo.git.stash("list", "--format=%H %gd %gs")
+    except GitCommandError:
+        return stash_hashes, stash_entries
+
+    for line in stash_list_output.strip().splitlines():
+        if not line:
+            continue
+        parts = line.split(" ", 2)
+        stash_hash = parts[0]
+        stash_hashes.add(stash_hash)
+        try:
+            stash_commit = repo.commit(stash_hash)
+            for parent in stash_commit.parents[1:]:
+                stash_hashes.add(parent.hexsha)
+            stash_entries.append(
+                {
+                    "hash": stash_hash,
+                    "ref": parts[1].rstrip(":") if len(parts) > 1 else "stash",
+                    "message": parts[2] if len(parts) > 2 else "",
+                    "parent": stash_commit.parents[0].hexsha if stash_commit.parents else None,
+                    "date": stash_commit.committed_datetime.isoformat(),
+                    "author": stash_commit.author.name,
+                    "authorEmail": stash_commit.author.email or "",
+                }
+            )
+        except Exception:  # noqa: S110 - skip malformed stash entries
+            pass
+
+    return stash_hashes, stash_entries
+
+
+def _stash_entry_to_node(entry: dict) -> dict:
+    """Convert a stash entry dict into a commit-like node for the graph."""
+    email = entry["authorEmail"]
+    return {
+        "hash": entry["hash"],
+        "shortHash": entry["hash"][:7],
+        "message": entry["message"],
+        "author": entry["author"],
+        "authorEmail": email,
+        "authorGravatar": gravatar_url(email) if email else None,
+        "relativeDate": entry["date"],
+        "parents": [entry["parent"]] if entry["parent"] else [],
+        "refs": [{"name": entry["ref"], "local": True, "remote": False, "stash": True}],
+        "pushed": True,
+        "stash": True,
+    }
+
+
+def get_graph_log(cwd: Path, limit: int = 100) -> dict:
+    """Get commit graph data for metro-style visualization."""
     try:
         repo = get_repo(cwd)
     except InvalidGitRepositoryError:
@@ -268,87 +442,10 @@ def get_graph_log(cwd: Path, limit: int = 100) -> dict:
     if not repo.head.is_valid():
         return {"commits": [], "branches": [], "head": None}
 
-    # Build hash → ref names map, tracking local vs remote vs tag
-    # Each entry: (name, kind) where kind is 'local', 'remote', or 'tag'
-    raw_refs: dict[str, list[tuple[str, str]]] = {}
-    for ref in repo.refs:
-        name = ref.name
-        kind = "local"
-        if name.startswith("refs/heads/"):
-            name = name[11:]
-        elif name.startswith("refs/remotes/"):
-            name = name[13:]
-            kind = "remote"
-        elif name.startswith("refs/tags/"):
-            name = name[10:]
-            kind = "tag"
-        elif name.startswith("origin/"):
-            # RemoteReference without refs/remotes/ prefix (e.g. origin/HEAD)
-            kind = "remote"
-        if name == "origin/HEAD":
-            continue  # symref to default branch, not a real branch
-        if name.startswith("refs/stash"):
-            continue  # stash entries are not branches
-        try:
-            hexsha = ref.commit.hexsha
-        except Exception:  # noqa: S112 - skip refs that can't resolve
-            continue
-        raw_refs.setdefault(hexsha, []).append((name, kind))
-
-    # Build a lookup: branch_name → hash for local and remote refs
-    local_branch_hash: dict[str, str] = {}
-    remote_branch_hash: dict[str, str] = {}
-    for hexsha, entries in raw_refs.items():
-        for name, kind in entries:
-            if kind == "remote" and name.startswith("origin/"):
-                remote_branch_hash[name[7:]] = hexsha
-            elif kind == "local" and name != "HEAD":
-                local_branch_hash[name] = hexsha
-
-    # Build enriched ref_map: hash → list of { name, local, remote }
-    ref_map: dict[str, list[dict]] = {}
-    seen_per_commit: dict[str, set[str]] = {}
-    for hexsha, entries in raw_refs.items():
-        enriched = []
-        commit_seen = seen_per_commit.setdefault(hexsha, set())
-        for name, kind in entries:
-            if kind == "tag":
-                enriched.append({"name": name, "local": False, "remote": False, "tag": True})
-                continue
-            if name == "HEAD" or name.startswith("HEAD -> "):
-                continue
-            if kind == "remote":
-                if not name.startswith("origin/"):
-                    continue  # skip non-origin remotes for now
-                branch_name = name[7:]
-                if branch_name == "HEAD":
-                    continue
-                if branch_name in commit_seen:
-                    continue  # already handled by local ref at same commit
-                commit_seen.add(branch_name)
-                local_at_same = local_branch_hash.get(branch_name) == hexsha
-                enriched.append(
-                    {
-                        "name": branch_name,
-                        "local": local_at_same,
-                        "remote": True,
-                    }
-                )
-            else:
-                # Local branch
-                if name in commit_seen:
-                    continue
-                commit_seen.add(name)
-                remote_at_same = remote_branch_hash.get(name) == hexsha
-                enriched.append(
-                    {
-                        "name": name,
-                        "local": True,
-                        "remote": remote_at_same,
-                    }
-                )
-        if enriched:
-            ref_map.setdefault(hexsha, []).extend(enriched)
+    # Build ref maps
+    raw_refs = _build_raw_refs(repo)
+    local_branch_hash, remote_branch_hash = _build_branch_lookups(raw_refs)
+    ref_map = _build_ref_map(raw_refs, local_branch_hash, remote_branch_hash)
 
     # HEAD info
     head_hash = repo.head.commit.hexsha
@@ -359,115 +456,38 @@ def get_graph_log(cwd: Path, limit: int = 100) -> dict:
         except TypeError:
             pass
 
-    # Determine unpushed commits for the current branch
-    unpushed_set: set[str] = set()
-    if head_branch and not repo.head.is_detached:
-        try:
-            tracking = repo.active_branch.tracking_branch()
-            if tracking:
-                tracking_ref = tracking.name
-            else:
-                # Try origin/<branch> as fallback
-                tracking_ref = f"origin/{head_branch}"
-                try:
-                    repo.git.rev_parse("--verify", tracking_ref)
-                except GitCommandError:
-                    tracking_ref = None
+    unpushed_set = _get_unpushed_commits(repo, head_branch)
+    stash_hashes, stash_entries = _collect_stash_entries(repo)
 
-            if tracking_ref:
-                unpushed_hashes = repo.git.rev_list(f"{tracking_ref}..{head_branch}").strip()
-                if unpushed_hashes:
-                    unpushed_set = set(unpushed_hashes.splitlines())
-            else:
-                # No remote tracking at all — treat all commits as unpushed
-                all_hashes = repo.git.rev_list(head_branch).strip()
-                if all_hashes:
-                    unpushed_set = set(all_hashes.splitlines())
-        except GitCommandError:
-            pass
-
-    # Collect stash entries and build a set of stash-internal commit hashes
-    # A stash is a merge commit: parent[0] = original commit, parent[1] = index,
-    # optionally parent[2] = untracked files. We show one "stash" node per entry.
-    stash_hashes: set[str] = set()
-    stash_entries: list[dict] = []
-    try:
-        stash_list_output = repo.git.stash("list", "--format=%H %gd %gs")
-        for line in stash_list_output.strip().splitlines():
-            if not line:
-                continue
-            parts = line.split(" ", 2)
-            stash_hash = parts[0]
-            stash_ref = parts[1].rstrip(":") if len(parts) > 1 else "stash"
-            stash_msg = parts[2] if len(parts) > 2 else ""
-            stash_hashes.add(stash_hash)
-            try:
-                stash_commit = repo.commit(stash_hash)
-                # Mark internal parents (index, untracked) for filtering
-                for parent in stash_commit.parents[1:]:
-                    stash_hashes.add(parent.hexsha)
-                base_parent = stash_commit.parents[0].hexsha if stash_commit.parents else None
-                stash_entries.append(
-                    {
-                        "hash": stash_hash,
-                        "ref": stash_ref,
-                        "message": stash_msg,
-                        "parent": base_parent,
-                        "date": stash_commit.committed_datetime.isoformat(),
-                        "author": stash_commit.author.name,
-                        "authorEmail": stash_commit.author.email or "",
-                    }
-                )
-            except Exception:  # noqa: S110 - skip malformed stash entries
-                pass
-    except GitCommandError:
-        pass
-
-    # Collect commits (--all walks all refs, not just HEAD)
-    commits = []
-    for commit in repo.iter_commits(rev="--all", max_count=limit, topo_order=True):
-        if commit.hexsha in stash_hashes:
-            continue  # Skip stash-internal commits (WIP, index, untracked)
-        email = commit.author.email or ""
-        commits.append(
-            {
-                "hash": commit.hexsha,
-                "shortHash": commit.hexsha[:7],
-                "message": commit.summary,
-                "author": commit.author.name,
-                "authorEmail": email,
-                "authorGravatar": gravatar_url(email) if email else None,
-                "relativeDate": commit.committed_datetime.isoformat(),
-                "parents": [p.hexsha for p in commit.parents],
-                "refs": ref_map.get(commit.hexsha, []),
-                "pushed": commit.hexsha not in unpushed_set,
-            }
-        )
-
-    # Insert stash entries as single nodes, positioned after their base commit
-    for entry in stash_entries:
-        email = entry["authorEmail"]
-        stash_node = {
-            "hash": entry["hash"],
-            "shortHash": entry["hash"][:7],
-            "message": entry["message"],
-            "author": entry["author"],
-            "authorEmail": email,
-            "authorGravatar": gravatar_url(email) if email else None,
-            "relativeDate": entry["date"],
-            "parents": [entry["parent"]] if entry["parent"] else [],
-            "refs": [{"name": entry["ref"], "local": True, "remote": False, "stash": True}],
-            "pushed": True,
-            "stash": True,
+    # Collect commits
+    commits = [
+        {
+            "hash": commit.hexsha,
+            "shortHash": commit.hexsha[:7],
+            "message": commit.summary,
+            "author": commit.author.name,
+            "authorEmail": commit.author.email or "",
+            "authorGravatar": gravatar_url(commit.author.email or "")
+            if commit.author.email
+            else None,
+            "relativeDate": commit.committed_datetime.isoformat(),
+            "parents": [p.hexsha for p in commit.parents],
+            "refs": ref_map.get(commit.hexsha, []),
+            "pushed": commit.hexsha not in unpushed_set,
         }
-        # Insert right before the base parent commit so stash appears above it
+        for commit in repo.iter_commits(rev="--all", max_count=limit, topo_order=True)
+        if commit.hexsha not in stash_hashes
+    ]
+
+    # Insert stash nodes before their parent commits
+    for entry in stash_entries:
+        stash_node = _stash_entry_to_node(entry)
         insert_idx = next(
             (i for i, c in enumerate(commits) if c["hash"] == entry["parent"]),
             0,
         )
         commits.insert(insert_idx, stash_node)
 
-    # Branch list
     branches = [
         {
             "name": branch.name,
@@ -477,7 +497,6 @@ def get_graph_log(cwd: Path, limit: int = 100) -> dict:
         for branch in repo.branches
     ]
 
-    # Working directory changes (for WIP node)
     working_changes = None
     if repo.is_dirty(untracked_files=True):
         status = get_porcelain_status(cwd)
@@ -1040,8 +1059,11 @@ def _fetch_remote(repo: Repo, remote_name: str) -> tuple[bool, str | None]:
     except GitCommandError as e:
         error_msg = str(e)
         if "Authentication failed" in error_msg or "could not read Username" in error_msg:
-            return (True, "Authentication failed for HTTP remote. "
-                    "Switch to SSH or configure a credential helper.")
+            return (
+                True,
+                "Authentication failed for HTTP remote. "
+                "Switch to SSH or configure a credential helper.",
+            )
         return (True, None)
 
 
