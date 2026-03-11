@@ -1,8 +1,29 @@
 """CLI entry point for Lumbergh."""
 
 import argparse
+import shutil
+import sys
 
 from lumbergh._version import __version__
+
+REQUIRED_TOOLS = {
+    "tmux": "sudo apt install tmux  (or: brew install tmux)",
+    "git": "sudo apt install git  (or: brew install git)",
+}
+
+
+def _check_dependencies():
+    """Check that required system tools are installed."""
+    missing = []
+    for cmd, install_hint in REQUIRED_TOOLS.items():
+        if shutil.which(cmd) is None:
+            missing.append((cmd, install_hint))
+    if missing:
+        print("Lumbergh requires the following tools:\n", file=sys.stderr)
+        for cmd, hint in missing:
+            print(f"  {cmd} — install with: {hint}", file=sys.stderr)
+        print(file=sys.stderr)
+        sys.exit(1)
 
 
 def run():
@@ -13,6 +34,8 @@ def run():
     parser.add_argument("--port", "-p", type=int, default=8420, help="Port to bind to")
     parser.add_argument("--reload", action="store_true", help="Enable auto-reload for development")
     args = parser.parse_args()
+
+    _check_dependencies()
 
     import uvicorn
 

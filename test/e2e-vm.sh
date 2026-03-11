@@ -1,18 +1,18 @@
 #!/bin/bash
 # E2E VM smoke test for Lumbergh
-# Spins up a disposable QEMU VM with Debian 12, installs deps via cloud-init,
-# clones the repo, starts services via bootstrap.sh, and verifies they respond.
+# Spins up a disposable QEMU VM with Debian 12, installs pylumbergh from PyPI,
+# starts the server, and verifies it responds.
 set -euo pipefail
 
 CACHE_DIR="$HOME/.cache/lumbergh-e2e"
 DEBIAN_IMG="debian-12-generic-amd64.qcow2"
 DEBIAN_URL="https://cloud.debian.org/images/cloud/bookworm/latest/${DEBIAN_IMG}"
-HOST_BACKEND_PORT=18420
-HOST_FRONTEND_PORT=15420
+HOST_PORT=18420
 POLL_INTERVAL=10
 POLL_TIMEOUT=360  # 6 minutes
 QEMU_MEM="2G"
 QEMU_CPUS="2"
+INSTALL_PRE="${INSTALL_PRE:-}"  # set to "--pre" to test alpha builds
 
 TMPDIR_RUN=""
 QEMU_PID=""
@@ -92,7 +92,7 @@ instance-id: lumbergh-e2e
 local-hostname: lumbergh-e2e
 EOF
 
-cat > "$TMPDIR_RUN/user-data" <<'USERDATA'
+cat > "$TMPDIR_RUN/user-data" <<USERDATA
 #cloud-config
 users:
   - name: test
@@ -103,12 +103,11 @@ users:
 
 package_update: true
 packages:
-  - tmux
   - git
-  - curl
+  - tmux
   - python3
+  - python3-pip
   - python3-venv
-  - ca-certificates
 
 runcmd:
   - - bash
@@ -117,40 +116,13 @@ runcmd:
       set -eux
       export HOME=/home/test
       export USER=test
-      cd /home/test
 
-      # Install uv
-      curl -LsSf https://astral.sh/uv/install.sh | sudo -u test bash
-      export PATH="/home/test/.local/bin:$PATH"
+      # Install pylumbergh from PyPI
+      sudo -u test python3 -m pip install --break-system-packages pylumbergh ${INSTALL_PRE}
 
-      # Install nvm + Node LTS
-      sudo -u test bash -c 'curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash'
-      export NVM_DIR="/home/test/.nvm"
-      # nvm.sh is not compatible with set -eu, temporarily relax
-      set +eu
-      source "$NVM_DIR/nvm.sh"
-      set -eu
-      nvm install --lts
+      # Start lumbergh (log output for debugging)
+      sudo -u test bash -c '/home/test/.local/bin/lumbergh --host 0.0.0.0 --port 8420 > /tmp/lumbergh.log 2>&1 &'
 
-      # Clone repo
-      sudo -u test git clone --depth 1 https://github.com/voglster/lumbergh.git /home/test/lumbergh
-      cd /home/test/lumbergh
-
-      # npm install in frontend
-      cd frontend
-      npm install
-      cd ..
-
-      # Make scripts executable
-      chmod +x bootstrap.sh backend/start.sh frontend/start.sh
-
-      # Run bootstrap.sh as the test user
-      # This creates tmux session with claude/backend/frontend windows
-      # claude window will fail (not installed) - that's expected
-      # xdg-open will fail (headless) - that's expected
-      sudo -u test bash -c 'set +eu; source /home/test/.nvm/nvm.sh; set -eu; export PATH="/home/test/.local/bin:$PATH"; cd /home/test/lumbergh && ./bootstrap.sh' || true
-
-      # Signal that setup is complete
       echo "LUMBERGH_SETUP_COMPLETE" > /tmp/setup-done
 USERDATA
 
@@ -172,24 +144,22 @@ qemu-system-x86_64 \
     -nographic \
     -drive file="$TMPDIR_RUN/overlay.qcow2",if=virtio \
     -drive file="$TMPDIR_RUN/seed.iso",if=virtio,media=cdrom \
-    -netdev user,id=net0,hostfwd=tcp::${HOST_BACKEND_PORT}-:8420,hostfwd=tcp::${HOST_FRONTEND_PORT}-:5420 \
+    -netdev user,id=net0,hostfwd=tcp::${HOST_PORT}-:8420 \
     -device virtio-net-pci,netdev=net0 \
     > "$QEMU_LOG" 2>&1 &
 
 QEMU_PID=$!
 echo "QEMU started (PID $QEMU_PID)"
 echo "Log: $QEMU_LOG"
-echo "Port mapping: host:$HOST_BACKEND_PORT -> vm:8420, host:$HOST_FRONTEND_PORT -> vm:5420"
+echo "Port mapping: host:$HOST_PORT -> vm:8420"
 
 # ── Phase 4: Poll & Verify ──────────────────────────────────────────────
 
 echo ""
 echo "=== Phase 4: Poll & Verify ==="
-echo "Waiting for services (timeout: ${POLL_TIMEOUT}s, interval: ${POLL_INTERVAL}s)..."
+echo "Waiting for service (timeout: ${POLL_TIMEOUT}s, interval: ${POLL_INTERVAL}s)..."
 
 elapsed=0
-backend_ok=false
-frontend_ok=false
 
 while [[ $elapsed -lt $POLL_TIMEOUT ]]; do
     # Check QEMU is still alive
@@ -201,27 +171,12 @@ while [[ $elapsed -lt $POLL_TIMEOUT ]]; do
         exit 1
     fi
 
-    # Check backend
-    if [[ "$backend_ok" != "true" ]]; then
-        if curl -sf "http://localhost:${HOST_BACKEND_PORT}/api/sessions" -o /dev/null 2>/dev/null; then
-            backend_ok=true
-            echo "  [${elapsed}s] Backend: UP"
-        fi
-    fi
-
-    # Check frontend
-    if [[ "$frontend_ok" != "true" ]]; then
-        if curl -sf "http://localhost:${HOST_FRONTEND_PORT}/" -o /dev/null 2>/dev/null; then
-            frontend_ok=true
-            echo "  [${elapsed}s] Frontend: UP"
-        fi
-    fi
-
-    # Both up?
-    if [[ "$backend_ok" == "true" && "$frontend_ok" == "true" ]]; then
+    # Check backend (serves both API and frontend now)
+    if curl -sf "http://localhost:${HOST_PORT}/api/sessions" -o /dev/null 2>/dev/null; then
+        echo "  [${elapsed}s] Lumbergh: UP"
         echo ""
         echo "========================================="
-        echo "  PASS - Both services responding"
+        echo "  PASS - Service responding"
         echo "========================================="
         exit 0
     fi
@@ -231,7 +186,7 @@ while [[ $elapsed -lt $POLL_TIMEOUT ]]; do
 
     # Progress indicator every 30s
     if [[ $((elapsed % 30)) -eq 0 ]]; then
-        echo "  [${elapsed}s] Waiting... (backend: $backend_ok, frontend: $frontend_ok)"
+        echo "  [${elapsed}s] Waiting..."
     fi
 done
 
@@ -240,8 +195,6 @@ echo ""
 echo "========================================="
 echo "  FAIL - Timeout after ${POLL_TIMEOUT}s"
 echo "========================================="
-echo "  Backend:  $backend_ok"
-echo "  Frontend: $frontend_ok"
 echo ""
 echo "--- Last 50 lines of QEMU log ---"
 tail -50 "$QEMU_LOG"
