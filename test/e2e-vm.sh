@@ -102,7 +102,8 @@ if [[ -z "$INSTALL_FROM_PYPI" ]]; then
     rm -rf "$PROJECT_DIR/backend/lumbergh/frontend_dist"
     cp -r "$PROJECT_DIR/frontend/dist" "$PROJECT_DIR/backend/lumbergh/frontend_dist"
 
-    # Build the wheel using uv (pyproject.toml is in backend/)
+    # Copy README for PyPI long description, then build wheel
+    cp "$PROJECT_DIR/README.md" "$PROJECT_DIR/backend/README.md"
     (cd "$PROJECT_DIR/backend" && uv build --wheel --out-dir "$TMPDIR_RUN/dist" 2>&1 | tail -3)
     WHEEL_PATH=$(ls "$TMPDIR_RUN"/dist/*.whl 2>/dev/null | head -1)
 
