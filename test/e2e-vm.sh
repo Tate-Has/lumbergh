@@ -278,13 +278,18 @@ if [[ -n "$E2E_SERVER_MODE" ]]; then
     echo "========================================="
     echo ""
     echo "Run tests with:"
-    echo "  pytest test/e2e/ --base-url=http://localhost:${HOST_PORT} -v"
-    echo "  pytest test/e2e-ui/ --base-url=http://localhost:${HOST_PORT} -v"
+    echo "  uv run --with httpx --with pytest pytest test/e2e/ --base-url=http://localhost:${HOST_PORT} -v"
+    echo "  uv run --with httpx --with playwright --with pytest-bdd --with pytest pytest test/e2e-ui/ --base-url=http://localhost:${HOST_PORT} -v"
     echo ""
     echo "Press Ctrl+C to stop the VM."
-    # Override trap to exit immediately on Ctrl+C
+    # Use a sleep loop so signals are delivered between iterations
+    # (bash's `wait` on a background process can swallow signals)
     trap 'echo ""; echo "Shutting down..."; kill "$QEMU_PID" 2>/dev/null; wait "$QEMU_PID" 2>/dev/null; rm -rf "$TMPDIR_RUN"; exit 0' INT TERM
-    wait "$QEMU_PID"
+    while kill -0 "$QEMU_PID" 2>/dev/null; do
+        sleep 1
+    done
+    echo "QEMU process exited unexpectedly."
+    exit 1
 fi
 
 # ── Phase 5: Run E2E Tests ────────────────────────────────────────────
@@ -294,12 +299,11 @@ echo "=== Phase 5: E2E Tests ==="
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Install test dependencies
-pip3 install -q -r "$SCRIPT_DIR/e2e/requirements.txt"
-
 # Run pytest against the VM (|| true to capture exit code under set -e)
 E2E_EXIT=0
-python3 -m pytest "$SCRIPT_DIR/e2e/" -v --tb=short --base-url="http://localhost:${HOST_PORT}" -x || E2E_EXIT=$?
+uv run --with httpx --with pytest \
+    python3 -m pytest "$SCRIPT_DIR/e2e/" -v --tb=short \
+    --base-url="http://localhost:${HOST_PORT}" -x || E2E_EXIT=$?
 
 if [[ $E2E_EXIT -ne 0 ]]; then
     echo ""
@@ -317,15 +321,16 @@ echo "  PASS - API E2E tests passed"
 echo ""
 echo "=== Phase 6: UI E2E Tests (Playwright) ==="
 
-# Install Playwright test dependencies
-pip3 install -q -r "$SCRIPT_DIR/e2e-ui/requirements.txt"
-
-# Install Chromium browser for Playwright (only if not cached)
-python3 -m playwright install --with-deps chromium 2>&1 | tail -5
+# Install Chromium browser for Playwright
+# First install system deps (needs sudo), then download the browser binary
+uv run --with playwright python3 -m playwright install-deps chromium 2>&1 | tail -5 || true
+uv run --with playwright python3 -m playwright install chromium 2>&1 | tail -5
 
 # Run Playwright BDD tests against the VM
 UI_EXIT=0
-python3 -m pytest "$SCRIPT_DIR/e2e-ui/" -v --tb=short --base-url="http://localhost:${HOST_PORT}" -x || UI_EXIT=$?
+uv run --with httpx --with playwright --with pytest-bdd --with pytest \
+    python3 -m pytest "$SCRIPT_DIR/e2e-ui/" -v --tb=short \
+    --base-url="http://localhost:${HOST_PORT}" -x || UI_EXIT=$?
 
 if [[ $UI_EXIT -eq 0 ]]; then
     echo ""
