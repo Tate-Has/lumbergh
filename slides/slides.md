@@ -299,13 +299,12 @@ class: text-center
 <div class="mt-4">
 
 ```bash
-git clone https://github.com/voglster/lumbergh
-cd lumbergh && ./bootstrap.sh
+uv tool install pylumbergh && lumbergh
 ```
 
 </div>
 
-<p class="mt-4 opacity-70">Checks prerequisites, installs deps, opens the dashboard.<br>No Docker. No database. No config files.</p>
+<p class="mt-4 opacity-70">One command. Installs from PyPI, starts on localhost:8420.<br>No Docker. No database. No config files.</p>
 
 <div class="mt-8 flex justify-center gap-12">
 
@@ -327,7 +326,7 @@ h1 {
 </style>
 
 <!--
-Two commands. The bootstrap script checks for Python, Node, and tmux, installs dependencies with uv and npm, and opens the dashboard. No Docker, no database migrations, no config files to create. If you're already running Claude Code in tmux, it'll pick up your existing sessions automatically.
+One command. Install from PyPI with uv or pip, run lumbergh, open localhost:8420. No Docker, no database migrations, no config files to create. Just needs tmux and git on your system. If you're already running Claude Code in tmux, it picks up your existing sessions automatically.
 
 Star the repo, file issues, PRs welcome. Thanks!
 -->
