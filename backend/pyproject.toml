@@ -1,5 +1,5 @@
 [project]
-name = "lumbergh"
+name = "pylumbergh"
 dynamic = ["version"]
 description = "Tmux session supervisor backend"
 requires-python = ">=3.11"

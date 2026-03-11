@@ -20,6 +20,6 @@ cp -r frontend/dist backend/lumbergh/frontend_dist
 
 # Build Python package
 echo "Building Python package..."
-cd backend && python -m build
+cd backend && uv build
 
 echo "Done! Package is in backend/dist/"
