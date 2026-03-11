@@ -121,7 +121,7 @@ runcmd:
       sudo -u test python3 -m pip install --break-system-packages pylumbergh ${INSTALL_PRE}
 
       # Start lumbergh (log output for debugging)
-      sudo -u test bash -c '/home/test/.local/bin/lumbergh --host 0.0.0.0 --port 8420 > /tmp/lumbergh.log 2>&1 &'
+      sudo -u test bash -c '/home/test/.local/bin/lumbergh > /tmp/lumbergh.log 2>&1 &'
 
       echo "LUMBERGH_SETUP_COMPLETE" > /tmp/setup-done
 USERDATA
