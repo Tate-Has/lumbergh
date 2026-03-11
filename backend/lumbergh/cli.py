@@ -2,10 +2,13 @@
 
 import argparse
 
+from lumbergh._version import __version__
+
 
 def run():
     """Run the Lumbergh server."""
     parser = argparse.ArgumentParser(description="Lumbergh - AI Session Supervisor")
+    parser.add_argument("--version", action="version", version=f"lumbergh {__version__}")
     parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
     parser.add_argument("--port", "-p", type=int, default=8420, help="Port to bind to")
     parser.add_argument("--reload", action="store_true", help="Enable auto-reload for development")
