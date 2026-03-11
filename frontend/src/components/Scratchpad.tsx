@@ -151,6 +151,7 @@ export default function Scratchpad({ sessionName, onFocusTerminal }: ScratchpadP
         onSelect={handleSelect}
         onBlur={() => setHasSelection(false)}
         placeholder="Type your notes here..."
+        data-testid="scratchpad-textarea"
         className="h-full w-full bg-bg-surface text-text-secondary border border-border-default rounded p-3 resize-none focus:outline-none focus:border-border-subtle font-mono text-sm"
       />
     </div>

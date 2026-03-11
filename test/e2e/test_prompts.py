@@ -3,7 +3,11 @@
 import uuid
 
 
-def test_project_prompts_initially_empty(client, test_session):
+def test_project_prompts_reset_and_empty(client, test_session):
+    # Clear any leftover prompts from previous runs (project data is keyed by workdir)
+    client.post(f"/api/sessions/{test_session}/prompts", json={"templates": []})
+    client.post("/api/global/prompts", json={"templates": []})
+
     r = client.get(f"/api/sessions/{test_session}/prompts")
     assert r.status_code == 200
     assert r.json()["templates"] == []

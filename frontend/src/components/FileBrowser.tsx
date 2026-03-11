@@ -372,7 +372,7 @@ export default function FileBrowser({ sessionName, onFocusTerminal }: Props) {
 
       if (entry.type === 'directory') {
         return (
-          <div key={entry.path}>
+          <div key={entry.path} data-testid="file-entry">
             <button
               onClick={() => toggleDir(entry.path)}
               className="w-full flex items-center gap-2 px-2 py-1 hover:bg-bg-surface text-left"
@@ -395,6 +395,7 @@ export default function FileBrowser({ sessionName, onFocusTerminal }: Props) {
         <button
           key={entry.path}
           onClick={() => fetchFileContent(entry.path)}
+          data-testid="file-entry"
           className={`w-full flex items-center gap-2 px-2 py-1 hover:bg-bg-surface text-left ${
             selectedFile?.path === entry.path ? 'bg-control-bg' : ''
           }`}
@@ -534,7 +535,7 @@ export default function FileBrowser({ sessionName, onFocusTerminal }: Props) {
       )}
 
       {/* File content viewer */}
-      <div className="flex-1 overflow-auto relative">
+      <div className="flex-1 overflow-auto relative" data-testid="file-preview">
         {loadingFile ? (
           <div className="flex items-center justify-center h-full text-text-muted">
             Loading file...

@@ -202,12 +202,14 @@ export default function Dashboard() {
           <button
             onClick={() => setShowSettingsModal(true)}
             title="Settings"
+            data-testid="settings-btn"
             className="p-2 text-text-tertiary hover:text-text-primary hover:bg-control-bg rounded transition-colors"
           >
             <Settings size={20} />
           </button>
           <button
             onClick={() => setShowCreateModal(true)}
+            data-testid="new-session-btn"
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded transition-colors"
           >
             <Plus size={16} />
@@ -298,13 +300,14 @@ export default function Dashboard() {
                   </h2>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     {aliveSessions.map((session) => (
-                      <SessionCard
-                        key={session.name}
-                        session={session}
-                        onDelete={handleDelete}
-                        onUpdate={handleUpdate}
-                        onReset={handleReset}
-                      />
+                      <div key={session.name} data-testid={`session-card-${session.name}`}>
+                        <SessionCard
+                          session={session}
+                          onDelete={handleDelete}
+                          onUpdate={handleUpdate}
+                          onReset={handleReset}
+                        />
+                      </div>
                     ))}
                   </div>
                 </section>
@@ -318,13 +321,14 @@ export default function Dashboard() {
                   </h2>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     {deadSessions.map((session) => (
-                      <SessionCard
-                        key={session.name}
-                        session={session}
-                        onDelete={handleDelete}
-                        onUpdate={handleUpdate}
-                        onReset={handleReset}
-                      />
+                      <div key={session.name} data-testid={`session-card-${session.name}`}>
+                        <SessionCard
+                          session={session}
+                          onDelete={handleDelete}
+                          onUpdate={handleUpdate}
+                          onReset={handleReset}
+                        />
+                      </div>
                     ))}
                   </div>
                 </section>

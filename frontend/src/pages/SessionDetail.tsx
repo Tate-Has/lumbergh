@@ -230,7 +230,7 @@ export default function SessionDetail() {
   ]
 
   const renderTerminal = () => (
-    <div className="h-full">
+    <div className="h-full" data-testid="terminal-container">
       {name ? (
         <Terminal
           sessionName={name}
@@ -252,6 +252,7 @@ export default function SessionDetail() {
       {/* Panel switcher */}
       <div className="flex gap-1 p-2 bg-bg-surface border-b border-border-default">
         <button
+          data-testid="tab-git"
           onClick={() => {
             setRightPanel('git')
             setGitTabResetTrigger((n) => n + 1)
@@ -271,6 +272,7 @@ export default function SessionDetail() {
           )}
         </button>
         <button
+          data-testid="tab-files"
           onClick={() => setRightPanel('files')}
           className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
             rightPanel === 'files'
@@ -281,6 +283,7 @@ export default function SessionDetail() {
           Files
         </button>
         <button
+          data-testid="tab-todo"
           onClick={() => setRightPanel('todos')}
           className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
             rightPanel === 'todos'
@@ -291,6 +294,7 @@ export default function SessionDetail() {
           Todo
         </button>
         <button
+          data-testid="tab-prompts"
           onClick={() => setRightPanel('prompts')}
           className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
             rightPanel === 'prompts'
@@ -301,6 +305,7 @@ export default function SessionDetail() {
           Prompts
         </button>
         <button
+          data-testid="tab-shared"
           onClick={() => setRightPanel('shared')}
           className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
             rightPanel === 'shared'
@@ -388,6 +393,7 @@ export default function SessionDetail() {
             {mobileTabs.map((tab) => (
               <button
                 key={tab.id}
+                data-testid={`tab-${tab.id === 'todos' ? 'todo' : tab.id}`}
                 onClick={() => {
                   setMobileTab(tab.id)
                   if (tab.id === 'git') setGitTabResetTrigger((n) => n + 1)

@@ -425,6 +425,7 @@ const FileList = memo(function FileList({
                 disabled={
                   !commitMessage.trim() || isCommitting || isPushing || isGenerating || isResetting
                 }
+                data-testid="commit-btn"
                 className="px-3 py-2 bg-green-600 hover:bg-green-500 disabled:bg-control-bg-hover disabled:cursor-not-allowed text-text-primary text-sm rounded transition-colors"
                 title="Commit & push (Ctrl/Cmd+Shift+Enter)"
               >
@@ -517,6 +518,7 @@ const FileList = memo(function FileList({
             <div
               key={file.path}
               onClick={() => onSelectFile(file.path)}
+              data-testid="diff-file-item"
               className="group w-full flex items-center gap-3 px-3 py-2 hover:bg-bg-surface border-b border-border-default/50 text-left cursor-pointer"
             >
               <span className="text-blue-400 font-mono text-sm truncate flex-1">{file.path}</span>

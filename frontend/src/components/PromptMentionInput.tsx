@@ -15,6 +15,7 @@ interface PromptMentionInputProps {
   autoFocus?: boolean
   onBlur?: () => void
   onKeyDown?: (e: React.KeyboardEvent) => void
+  'data-testid'?: string
 }
 
 export default function PromptMentionInput({
@@ -29,6 +30,7 @@ export default function PromptMentionInput({
   autoFocus = false,
   onBlur,
   onKeyDown,
+  'data-testid': dataTestId,
 }: PromptMentionInputProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [triggerIndex, setTriggerIndex] = useState<number | null>(null)
@@ -213,6 +215,7 @@ export default function PromptMentionInput({
     placeholder,
     autoFocus,
     className,
+    'data-testid': dataTestId,
   }
 
   return (

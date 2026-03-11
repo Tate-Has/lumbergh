@@ -213,6 +213,7 @@ export default function SessionCard({ session, onDelete, onUpdate, onReset }: Pr
   return (
     <div
       onClick={handleClick}
+      data-testid="session-card-link"
       className="bg-bg-surface rounded-lg p-4 cursor-pointer hover:bg-bg-elevated transition-colors border border-border-default hover:border-border-subtle"
     >
       <div className="flex items-start justify-between mb-2">
@@ -229,6 +230,7 @@ export default function SessionCard({ session, onDelete, onUpdate, onReset }: Pr
         <div className="flex items-center gap-1 flex-shrink-0">
           <button
             onClick={handleEditClick}
+            data-testid="session-edit-btn"
             className="text-text-muted hover:text-blue-400 transition-colors p-1"
             title="Edit session"
           >
@@ -245,6 +247,7 @@ export default function SessionCard({ session, onDelete, onUpdate, onReset }: Pr
           )}
           <button
             onClick={handleDelete}
+            data-testid="session-delete-btn"
             className="text-text-muted hover:text-red-400 transition-colors p-1"
             title="Delete session"
           >

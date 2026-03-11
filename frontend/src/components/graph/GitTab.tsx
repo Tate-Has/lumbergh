@@ -40,35 +40,37 @@ export default function GitTab({
   }, [])
 
   return (
-    <VerticalResizablePanes
-      top={
-        <GitGraph
-          sessionName={sessionName}
-          onSelectCommit={handleSelectCommit}
-          selectedCommit={selectedCommit}
-          refreshTrigger={graphRefreshTrigger}
-          resetTrigger={resetTrigger}
-          onGitAction={handleGitAction}
-        />
-      }
-      bottom={
-        <DiffViewer
-          sessionName={sessionName}
-          diffData={diffData}
-          onRefreshDiff={onRefreshDiff}
-          onFocusTerminal={onFocusTerminal}
-          onJumpToTodos={onJumpToTodos}
-          selectedCommit={selectedCommit}
-          commitSelectVersion={commitSelectVersion}
-          onGitAction={handleGitAction}
-        />
-      }
-      defaultTopHeight={40}
-      minTopHeight={15}
-      maxTopHeight={75}
-      storageKey={
-        sessionName ? `lumbergh:gitTabSplitHeight:${sessionName}` : 'lumbergh:gitTabSplitHeight'
-      }
-    />
+    <div data-testid="git-tab" className="h-full">
+      <VerticalResizablePanes
+        top={
+          <GitGraph
+            sessionName={sessionName}
+            onSelectCommit={handleSelectCommit}
+            selectedCommit={selectedCommit}
+            refreshTrigger={graphRefreshTrigger}
+            resetTrigger={resetTrigger}
+            onGitAction={handleGitAction}
+          />
+        }
+        bottom={
+          <DiffViewer
+            sessionName={sessionName}
+            diffData={diffData}
+            onRefreshDiff={onRefreshDiff}
+            onFocusTerminal={onFocusTerminal}
+            onJumpToTodos={onJumpToTodos}
+            selectedCommit={selectedCommit}
+            commitSelectVersion={commitSelectVersion}
+            onGitAction={handleGitAction}
+          />
+        }
+        defaultTopHeight={40}
+        minTopHeight={15}
+        maxTopHeight={75}
+        storageKey={
+          sessionName ? `lumbergh:gitTabSplitHeight:${sessionName}` : 'lumbergh:gitTabSplitHeight'
+        }
+      />
+    </div>
   )
 }

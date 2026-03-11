@@ -2,10 +2,11 @@
 Shared constants for the Lumbergh backend.
 """
 
+import os
 from pathlib import Path
 
-# Configuration directories
-CONFIG_DIR = Path.home() / ".config" / "lumbergh"
+# Configuration directories — override with LUMBERGH_DATA_DIR env var
+CONFIG_DIR = Path(os.environ.get("LUMBERGH_DATA_DIR", Path.home() / ".config" / "lumbergh"))
 PROJECTS_DIR = CONFIG_DIR / "projects"
 SESSIONS_DATA_DIR = CONFIG_DIR / "session_data"
 SHARED_DIR = CONFIG_DIR / "shared"

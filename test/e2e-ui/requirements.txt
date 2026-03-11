@@ -1,0 +1,4 @@
+httpx>=0.27
+playwright>=1.40
+pytest-bdd>=7.0
+pytest>=8.0

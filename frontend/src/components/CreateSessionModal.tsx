@@ -137,7 +137,10 @@ export default function CreateSessionModal({ onClose, onCreated }: Props) {
 
   return (
     <div className="fixed inset-0 bg-bg-overlay flex items-center justify-center z-50 p-4">
-      <div className="bg-bg-surface rounded-lg w-full max-w-md border border-border-default">
+      <div
+        className="bg-bg-surface rounded-lg w-full max-w-md border border-border-default"
+        data-testid="create-session-modal"
+      >
         <div className="flex items-center justify-between p-4 border-b border-border-default">
           <h2 className="text-lg font-semibold text-text-primary">New Session</h2>
           <button
@@ -192,6 +195,7 @@ export default function CreateSessionModal({ onClose, onCreated }: Props) {
               placeholder={
                 workdir ? workdir.split('/').filter(Boolean).pop() || 'auto' : 'auto from directory'
               }
+              data-testid="session-name-input"
               className="w-full px-3 py-2 bg-input-bg text-text-primary rounded border border-input-border focus:outline-none focus:border-blue-500"
             />
             {slug && (
@@ -212,6 +216,7 @@ export default function CreateSessionModal({ onClose, onCreated }: Props) {
                     value={workdir}
                     onChange={(e) => setWorkdir(e.target.value)}
                     placeholder="e.g., /home/user/myproject"
+                    data-testid="workdir-input"
                     className="w-full px-3 py-2 bg-input-bg text-text-primary rounded border border-input-border focus:outline-none focus:border-blue-500 font-mono text-sm"
                     required
                   />
@@ -307,6 +312,7 @@ export default function CreateSessionModal({ onClose, onCreated }: Props) {
             <button
               type="submit"
               disabled={isCreating || !isValid()}
+              data-testid="create-session-submit"
               className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-control-bg-hover disabled:cursor-not-allowed text-white rounded transition-colors"
             >
               {isCreating ? 'Creating...' : 'Create Session'}

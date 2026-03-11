@@ -318,6 +318,7 @@ export default function TodoList({
           prompts={allPrompts}
           onKeyDown={handleKeyDown}
           placeholder="Add a task... (press Enter, use @ to reference prompts)"
+          data-testid="todo-input"
           className="w-full px-3 py-2 bg-input-bg text-text-primary rounded border border-input-border focus:outline-none focus:border-blue-500"
         />
       </div>
@@ -332,7 +333,7 @@ export default function TodoList({
               const prevTodo = index > 0 ? todos[index - 1] : null
               const showCompletedSeparator = todo.done && (!prevTodo || !prevTodo.done)
               return (
-                <li key={index}>
+                <li key={index} data-testid="todo-item">
                   {showCompletedSeparator && (
                     <div className="flex items-center gap-2 py-2 mb-2">
                       <div className="flex-1 border-t border-border-default" />
@@ -445,6 +446,7 @@ export default function TodoList({
                         type="checkbox"
                         checked={todo.done}
                         onChange={() => handleToggle(index)}
+                        data-testid="todo-checkbox"
                         className="w-5 h-5 rounded bg-bg-surface border-input-border text-blue-500 focus:ring-blue-500 accent-blue-500"
                       />
                     </div>

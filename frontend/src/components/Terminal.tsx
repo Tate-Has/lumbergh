@@ -662,7 +662,7 @@ export default function Terminal({
             }}
           />
         )}
-        <div ref={containerRef} className="h-full w-full" />
+        <div ref={containerRef} data-testid="xterm-container" className="h-full w-full" />
       </div>
     </div>
   )
