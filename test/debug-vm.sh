@@ -25,7 +25,11 @@ users:
     ssh_authorized_keys:
       - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC3YXOFpRYAvpHczOlmpRcPGqvJmU2R5yFd/BDLLh4eSwDlaGDkIE6KPMU5P1TCOQ3ORlHt6BGYxQpf0FHVYEk3+YT5kpfrC+jgVRq8PUO+7SIEcFgj7rbwYWSIt+caOQ2s2H518t3hz8cAdJErwjmbs/r1NPX8Q37PotjwrvEWqosMcJbXHzx8Bb2SFUp/bZg2JghkDuf+L5NwHFnIw5d5YfuYJSJqko7iYIqzdwIj2VIBZaNJytG2YxrmJ4b0YA5iXtrESVTg62lOnIDE2FV7TUNKDtyYe9Tl0rAOW0rf+LS6/GkN659cO9Gd6yi/uHZYc+8sB//i60b6oaCUm2xF jvogel@ubuntu
 package_update: true
-packages: [python3, python3-pip, python3-venv, openssh-server]
+packages: [git, tmux, python3, python3-pip, python3-venv, openssh-server, curl]
+
+runcmd:
+  - sudo -u test bash -c 'curl -LsSf https://astral.sh/uv/install.sh | sh'
+  - sudo -u test bash -c 'source /home/test/.local/bin/env && uv tool install pylumbergh --prerelease allow'
 EOF
 cat > "$TMPDIR/meta-data" <<'EOF'
 instance-id: debug
