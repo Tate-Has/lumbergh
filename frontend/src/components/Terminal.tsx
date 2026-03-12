@@ -236,6 +236,36 @@ export default function Terminal({
       sendRef.current(data)
     })
 
+    // Play notification sound on BEL character (e.g. task completion, `echo -e '\a'`)
+    // Two-note rising chime: E5 (659Hz) → G5 (784Hz), gentle sine wave
+    term.onBell(() => {
+      try {
+        const ctx = new AudioContext()
+        const t = ctx.currentTime
+
+        const playNote = (freq: number, start: number, duration: number) => {
+          const osc = ctx.createOscillator()
+          const gain = ctx.createGain()
+          osc.connect(gain)
+          gain.connect(ctx.destination)
+          osc.frequency.value = freq
+          osc.type = 'sine'
+          gain.gain.setValueAtTime(0, start)
+          gain.gain.linearRampToValueAtTime(0.15, start + 0.02)
+          gain.gain.exponentialRampToValueAtTime(0.001, start + duration)
+          osc.start(start)
+          osc.stop(start + duration)
+          return osc
+        }
+
+        playNote(659, t, 0.2)
+        const last = playNote(784, t + 0.12, 0.25)
+        last.onended = () => ctx.close()
+      } catch {
+        // Audio not available (e.g. autoplay policy) - silently ignore
+      }
+    })
+
     // Handle Shift+Enter to send newline (like Claude Code CLI)
     // Must return false for ALL event types (keydown, keypress, keyup) to prevent
     // xterm.js's _keyPress handler from also sending \r (carriage return/submit).
