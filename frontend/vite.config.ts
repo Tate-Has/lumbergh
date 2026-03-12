@@ -1,17 +1,61 @@
+import { X509Certificate } from 'crypto'
+import fs from 'fs'
+import path from 'path'
+import os from 'os'
+import type { Plugin } from 'vite'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
+const certDir = path.join(os.homedir(), '.config', 'lumbergh')
+const certFile = path.join(certDir, 'tls.crt')
+const keyFile = path.join(certDir, 'tls.key')
+
+let httpsConfig: { cert: Buffer; key: Buffer } | undefined
+let tlsFqdn: string | undefined
+
+if (fs.existsSync(certFile) && fs.existsSync(keyFile)) {
+  const cert = fs.readFileSync(certFile)
+  httpsConfig = { cert, key: fs.readFileSync(keyFile) }
+  // Extract FQDN from cert's Subject Alt Names for redirect
+  const x509 = new X509Certificate(cert)
+  const san = x509.subjectAltName // e.g. "DNS:jv-desktop.tail1a4967.ts.net"
+  const match = san?.match(/DNS:([^\s,]+)/)
+  if (match) tlsFqdn = match[1]
+}
+
+function redirectToFqdn(): Plugin | null {
+  if (!tlsFqdn) return null
+  const fqdn = tlsFqdn
+  return {
+    name: 'redirect-to-fqdn',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const host = req.headers.host?.replace(/:\d+$/, '')
+        if (host && host !== fqdn) {
+          res.writeHead(302, {
+            Location: `https://${fqdn}:${server.config.server.port}${req.url}`,
+          })
+          res.end()
+          return
+        }
+        next()
+      })
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
+    redirectToFqdn(),
     react(),
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
       devOptions: {
-        enabled: false,
+        enabled: true,
       },
       manifest: {
         name: 'Lumbergh',
@@ -76,6 +120,14 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 5420,
-    allowedHosts: true,  // Allow all hosts (for Tailscale access)
+    https: httpsConfig,
+    allowedHosts: true, // Allow all hosts (for Tailscale access)
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8420',
+        changeOrigin: true,
+        ws: true,
+      },
+    },
   },
 })
