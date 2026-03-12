@@ -43,7 +43,11 @@ export default function CreateSessionModal({ onClose, onCreated }: Props) {
   const [createNewBranch, setCreateNewBranch] = useState(false)
   const [newBranchName, setNewBranchName] = useState('')
 
-  const slug = toSlug(name)
+  const slug =
+    toSlug(name) ||
+    (mode === 'direct'
+      ? toSlug(workdir.split('/').filter(Boolean).pop() || '')
+      : toSlug(parentRepo.split('/').filter(Boolean).pop() || ''))
 
   // Debounced directory validation for manual entry
   useEffect(() => {
