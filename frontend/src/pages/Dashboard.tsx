@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Sun, Moon, Settings, Plus, Monitor, Info } from 'lucide-react'
+import { Sun, Moon, Settings, Plus, Monitor, Info, ArrowUpCircle, X } from 'lucide-react'
 import { getApiBase } from '../config'
 import SessionCard from '../components/SessionCard'
 import CreateSessionModal from '../components/CreateSessionModal'
@@ -34,7 +34,37 @@ export default function Dashboard() {
   const [installingLbShared, setInstallingLbShared] = useState(false)
   const [tmuxMouseEnabled, setTmuxMouseEnabled] = useState<boolean | null>(null)
   const [enablingTmuxMouse, setEnablingTmuxMouse] = useState(false)
+  const [updateInfo, setUpdateInfo] = useState<{
+    current: string
+    latest: string
+  } | null>(null)
   const { theme, setTheme } = useTheme()
+
+  const UPDATE_MESSAGES = [
+    (_c: string, l: string) => `Yeah, if you could go ahead and update to v${l}, that'd be great.`,
+    (_c: string, l: string) => `I'm gonna need you to go ahead and update to v${l}. Mmkay?`,
+    (c: string, l: string) =>
+      `What would you say... you DO here? Besides run v${c} when v${l} exists?`,
+    (_c: string, l: string) =>
+      `We're putting cover sheets on all TPS reports now. Also, v${l} is out.`,
+    (c: string, l: string) => `Have you seen my stapler? Also, v${l} is out. You're on v${c}.`,
+    (c: string, l: string) =>
+      `PC Load Letter?! No wait — v${l} is available. Please update from v${c}.`,
+  ]
+
+  function getUpdateMessage(current: string, latest: string): string {
+    const idx = Math.floor(Math.random() * UPDATE_MESSAGES.length)
+    return UPDATE_MESSAGES[idx](current, latest)
+  }
+
+  function isDismissed(version: string): boolean {
+    return localStorage.getItem('lumbergh:dismissedVersion') === version
+  }
+
+  function dismissUpdate(version: string) {
+    localStorage.setItem('lumbergh:dismissedVersion', version)
+    setUpdateInfo(null)
+  }
 
   const fetchSessions = useCallback(async () => {
     try {
@@ -68,6 +98,20 @@ export default function Dashboard() {
       if (res.ok) {
         const data = await res.json()
         setTmuxMouseEnabled(data.enabled)
+      }
+    } catch {
+      // Silently fail - not critical
+    }
+  }, [])
+
+  const checkVersion = useCallback(async () => {
+    try {
+      const res = await fetch(`${getApiBase()}/version`)
+      if (res.ok) {
+        const data = await res.json()
+        if (data.update_available && data.latest && !isDismissed(data.latest)) {
+          setUpdateInfo({ current: data.current, latest: data.latest })
+        }
       }
     } catch {
       // Silently fail - not critical
@@ -112,10 +156,11 @@ export default function Dashboard() {
     fetchSessions()
     checkLbSharedStatus()
     checkTmuxMouse()
+    checkVersion()
     // Poll for session updates every 10 seconds
     const interval = setInterval(fetchSessions, 10000)
     return () => clearInterval(interval)
-  }, [fetchSessions, checkLbSharedStatus, checkTmuxMouse])
+  }, [fetchSessions, checkLbSharedStatus, checkTmuxMouse, checkVersion])
 
   const handleDelete = async (name: string, cleanupWorktree?: boolean) => {
     try {
@@ -260,6 +305,35 @@ export default function Dashboard() {
               className="px-3 py-1.5 text-sm bg-yellow-600 hover:bg-yellow-500 disabled:bg-yellow-800 rounded transition-colors"
             >
               Install full config
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Update available banner */}
+      {updateInfo && (
+        <div className="mx-4 mt-4 p-3 bg-yellow-900/50 border border-yellow-700 rounded-lg flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <ArrowUpCircle size={20} className="text-yellow-400 flex-shrink-0" />
+            <span className="text-sm text-text-secondary">
+              {getUpdateMessage(updateInfo.current, updateInfo.latest)}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <a
+              href={`https://github.com/voglster/lumbergh/releases/tag/v${updateInfo.latest}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3 py-1.5 text-sm bg-yellow-600 hover:bg-yellow-500 rounded transition-colors"
+            >
+              View Release
+            </a>
+            <button
+              onClick={() => dismissUpdate(updateInfo.latest)}
+              title="Dismiss"
+              className="p-1.5 text-text-tertiary hover:text-text-primary rounded transition-colors"
+            >
+              <X size={16} />
             </button>
           </div>
         </div>

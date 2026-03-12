@@ -85,6 +85,14 @@ async def health_check():
     return {"status": "ok"}
 
 
+@app.get("/api/version")
+async def version_check():
+    """Check current version and whether an update is available."""
+    from lumbergh.version_check import get_version_info
+
+    return await get_version_info()
+
+
 @app.get("/api/git/status")
 async def git_status():
     """Get git status for the project."""
