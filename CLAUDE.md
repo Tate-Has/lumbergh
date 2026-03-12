@@ -81,6 +81,10 @@ Run `./lint.sh` before finishing any task. It auto-fixes what it can (ruff forma
 - WebSocket for terminal streaming, REST+polling for diffs and metadata
 - Mobile-first responsive design (this will be used from phones/tablets)
 
+## Releasing
+
+When asked to release, read and follow `docs/release-workflow.md`.
+
 ## Current Phase
 
 Phase 4: "The Manager & Context" - Building the AI chat/review pane. Phases 1-3 complete (terminal, diff viewer, file browser, todos, prompts, multi-session dashboard all working).
