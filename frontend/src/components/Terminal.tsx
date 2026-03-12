@@ -390,7 +390,7 @@ export default function Terminal({
       {/* Header bar */}
       <div className="bg-bg-surface border-b border-border-default">
         {/* Main row */}
-        <div className="flex items-center justify-between p-2">
+        <div className="flex items-center justify-between p-2 relative">
           <div className="flex items-center gap-2">
             {onBack && (
               <>
@@ -420,6 +420,11 @@ export default function Terminal({
               &gt;
             </button>
           </div>
+          {onBack && (
+            <span className="absolute left-1/2 -translate-x-1/2 text-base font-semibold text-text-secondary truncate max-w-[40%] pointer-events-none">
+              {sessionName}
+            </span>
+          )}
           <div className="flex items-center gap-2">
             {isTouchDevice && (
               <button
