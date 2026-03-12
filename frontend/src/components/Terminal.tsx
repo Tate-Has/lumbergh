@@ -407,20 +407,6 @@ export default function Terminal({
                 <div className="w-px h-4 bg-border-subtle mx-1" />
               </>
             )}
-            <button
-              onClick={() => sendTmuxCommand('prev-window')}
-              className="px-2 py-1 text-xs bg-control-bg hover:bg-control-bg-hover rounded"
-              title="Previous tmux window"
-            >
-              &lt;
-            </button>
-            <button
-              onClick={() => sendTmuxCommand('next-window')}
-              className="px-2 py-1 text-xs bg-control-bg hover:bg-control-bg-hover rounded"
-              title="Next tmux window"
-            >
-              &gt;
-            </button>
           </div>
           <span
             onClick={
