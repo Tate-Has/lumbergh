@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, memo } from 'react'
+import { useState, useEffect, useRef, useMemo, memo } from 'react'
 import {
   Play,
   RefreshCw,
@@ -45,6 +45,44 @@ interface Props {
   onPull?: () => void
   isPulling?: boolean
 }
+
+const FileRow = memo(function FileRow({
+  file,
+  isWorkingChanges,
+  revertingFile,
+  onSelectFile,
+  onRevertFile,
+}: {
+  file: { path: string; diff: string }
+  isWorkingChanges: boolean
+  revertingFile: string | null
+  onSelectFile: (path: string) => void
+  onRevertFile: (path: string, e: React.MouseEvent) => void
+}) {
+  const stats = useMemo(() => getFileStats(file.diff), [file.diff])
+  return (
+    <div
+      onClick={() => onSelectFile(file.path)}
+      data-testid="diff-file-item"
+      className="group w-full flex items-center gap-3 px-3 py-2 hover:bg-bg-surface border-b border-border-default/50 text-left cursor-pointer"
+    >
+      <span className="text-blue-400 font-mono text-sm truncate flex-1">{file.path}</span>
+      {isWorkingChanges && (
+        <button
+          onClick={(e) => onRevertFile(file.path, e)}
+          disabled={revertingFile === file.path}
+          className="opacity-0 group-hover:opacity-100 px-1 py-0.5 text-text-muted hover:text-red-400 disabled:text-text-muted transition-all"
+          title={`Revert ${file.path}`}
+        >
+          {revertingFile === file.path ? '...' : <Undo2 size={14} />}
+        </button>
+      )}
+      <span className="text-green-400 text-xs">+{stats.additions}</span>
+      <span className="text-red-400 text-xs">-{stats.deletions}</span>
+      <ChevronRight size={14} className="text-text-muted" />
+    </div>
+  )
+})
 
 const FileList = memo(function FileList({
   data,
@@ -512,32 +550,16 @@ const FileList = memo(function FileList({
 
       {/* File list */}
       <div className="flex-1 overflow-auto">
-        {data.files.map((file) => {
-          const stats = getFileStats(file.diff)
-          return (
-            <div
-              key={file.path}
-              onClick={() => onSelectFile(file.path)}
-              data-testid="diff-file-item"
-              className="group w-full flex items-center gap-3 px-3 py-2 hover:bg-bg-surface border-b border-border-default/50 text-left cursor-pointer"
-            >
-              <span className="text-blue-400 font-mono text-sm truncate flex-1">{file.path}</span>
-              {isWorkingChanges && (
-                <button
-                  onClick={(e) => handleRevertFile(file.path, e)}
-                  disabled={revertingFile === file.path}
-                  className="opacity-0 group-hover:opacity-100 px-1 py-0.5 text-text-muted hover:text-red-400 disabled:text-text-muted transition-all"
-                  title={`Revert ${file.path}`}
-                >
-                  {revertingFile === file.path ? '...' : <Undo2 size={14} />}
-                </button>
-              )}
-              <span className="text-green-400 text-xs">+{stats.additions}</span>
-              <span className="text-red-400 text-xs">-{stats.deletions}</span>
-              <ChevronRight size={14} className="text-text-muted" />
-            </div>
-          )
-        })}
+        {data.files.map((file) => (
+          <FileRow
+            key={file.path}
+            file={file}
+            isWorkingChanges={isWorkingChanges}
+            revertingFile={revertingFile}
+            onSelectFile={onSelectFile}
+            onRevertFile={handleRevertFile}
+          />
+        ))}
       </div>
     </div>
   )
