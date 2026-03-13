@@ -15,8 +15,17 @@ lumbergh
 
 Open [http://localhost:8420](http://localhost:8420) in your browser. That's it.
 
+!!! info "What's uv?"
+    [uv](https://docs.astral.sh/uv/) is a fast Python package manager from [Astral](https://astral.sh/). `uv tool install` installs CLI tools into isolated environments so they don't conflict with other Python packages on your system. If you don't have it yet:
+
+    ```bash
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    ```
+
+    See the [uv docs](https://docs.astral.sh/uv/getting-started/installation/) for other install methods (Homebrew, pip, Windows, etc).
+
 !!! tip "Alternative: pip"
-    If you don't use `uv`, install with pip instead:
+    If you'd rather not use uv, pip works too:
 
     ```bash
     pip install pylumbergh

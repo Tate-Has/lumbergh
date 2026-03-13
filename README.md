@@ -6,6 +6,8 @@ A self-hosted web dashboard for supervising multiple Claude Code sessions runnin
 
 ![Lumbergh Dashboard](docs/screenshots/dashboard.png)
 
+**[Read the full documentation](https://voglster.github.io/lumbergh/)** -- guides, configuration, mobile/PWA setup, screenshots, and more.
+
 ## Install in 30 seconds
 
 You need `tmux` and `git` on your machine. Then:
@@ -17,7 +19,15 @@ lumbergh
 
 Open **http://localhost:8420**. Done.
 
-> No `uv`? Use `pip install pylumbergh` instead. Lumbergh checks for tmux/git on startup and tells you what's missing.
+> **What's uv?** [uv](https://docs.astral.sh/uv/) is a fast Python package manager from [Astral](https://astral.sh/). It handles installing Python tools in isolated environments so they don't conflict with anything else on your system. Install it with:
+>
+> ```bash
+> curl -LsSf https://astral.sh/uv/install.sh | sh
+> ```
+>
+> Don't want uv? `pip install pylumbergh` works too.
+
+Lumbergh checks for tmux/git on startup and tells you what's missing.
 
 ## What you get
 
@@ -30,40 +40,8 @@ Open **http://localhost:8420**. Done.
 - **Prompt templates** -- reusable prompts with variables, fire them with one click
 - **Todos & scratchpad** -- per-project notes and task tracking
 - **Shared files** -- share context across sessions
-- **Mobile-first + PWA** -- responsive design, installable on your phone or tablet
+- **Mobile-first + PWA** -- responsive design, installable on your phone or tablet ([setup guide](https://voglster.github.io/lumbergh/docs/guides/mobile/))
 - **Dark and light themes** -- toggle with one click
-
-## Mobile / PWA setup
-
-Lumbergh works great as a PWA -- add it to your home screen and it runs fullscreen like a native app. This requires HTTPS, but you don't need to expose anything to the internet.
-
-[Tailscale](https://tailscale.com/) is a free VPN that connects your devices into a private network (your "tailnet"). Install it on your server and your phone, and they can talk directly -- no port forwarding, no firewall holes, no public IP needed. Tailscale also provides free HTTPS certificates for your machines, which is what makes the PWA work.
-
-### Production (recommended)
-
-One command. Tailscale terminates TLS and proxies to Lumbergh automatically:
-
-```bash
-tailscale serve --bg 8420
-```
-
-Access Lumbergh at `https://YOUR-MACHINE.tailnet-name.ts.net`. Valid certs, auto-renewed, only accessible from your tailnet. Then open Chrome on your phone, tap the menu, and choose **"Install app"** or **"Add to Home Screen"**.
-
-> Find your machine's Tailscale name with `tailscale status --self`.
-
-### Development
-
-The Vite dev server needs cert files directly. Run the setup script -- it detects your Tailscale hostname automatically:
-
-```bash
-./setup-https.sh
-```
-
-Restart the frontend and open the URL it prints. Re-run every ~90 days to renew the certs.
-
-### Without Tailscale
-
-Lumbergh binds to `0.0.0.0` so it's accessible from any device on your local network. Without HTTPS you can still use it in the browser -- you just won't get the PWA install option.
 
 ## Development
 
@@ -83,10 +61,8 @@ The Vite dev server proxies `/api` requests to the backend on port 8420, so the 
 
 Run `./lint.sh` before submitting PRs -- it handles formatting and catches errors.
 
-
 ## Links
 
-- **[Documentation & Screenshots](https://voglster.github.io/lumbergh/)** -- full usage guide, configuration, mobile setup
 - [PyPI package](https://pypi.org/project/pylumbergh/)
 - [Issues](https://github.com/voglster/lumbergh/issues)
 - [Changelog](https://github.com/voglster/lumbergh/releases)

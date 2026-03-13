@@ -63,4 +63,13 @@ lumbergh
 # open http://localhost:8420
 ```
 
-Requires **tmux** and **git**. No `uv`? Use `pip install pylumbergh`.
+Requires **tmux** and **git**. See [Prerequisites](getting-started/prerequisites.md) for details.
+
+!!! tip "Need uv?"
+    [uv](https://docs.astral.sh/uv/) is a fast Python package manager that installs tools in isolated environments. Get it with:
+
+    ```bash
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    ```
+
+    Prefer pip? `pip install pylumbergh` works too.

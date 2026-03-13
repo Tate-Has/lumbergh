@@ -44,11 +44,27 @@ git --version
 
 ### uv (recommended)
 
-The fastest way to install Lumbergh.
+[uv](https://docs.astral.sh/uv/) is a fast Python package manager from [Astral](https://astral.sh/). It installs CLI tools like Lumbergh in isolated environments, keeping your system Python clean. Think of it like `npx` or `pipx`, but faster.
 
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
+=== "Linux/macOS"
+
+    ```bash
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    ```
+
+=== "macOS (Homebrew)"
+
+    ```bash
+    brew install uv
+    ```
+
+=== "Windows"
+
+    ```powershell
+    powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+    ```
+
+For other methods, see the [uv installation docs](https://docs.astral.sh/uv/getting-started/installation/).
 
 !!! tip "Alternative: pip"
     You can also install with `pip` if you prefer. Any Python package manager that supports PyPI packages will work.
