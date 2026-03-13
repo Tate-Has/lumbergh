@@ -61,7 +61,8 @@ export default function TodoList({
     fetch(`${getApiBase()}/sessions/${sessionName}/todos`)
       .then((res) => res.json())
       .then((data) => {
-        setTodos(data.todos || [])
+        const fetched: Todo[] = data.todos || []
+        setTodos([...fetched.filter((t) => !t.done), ...fetched.filter((t) => t.done)])
         setLoading(false)
       })
       .catch((err) => {
