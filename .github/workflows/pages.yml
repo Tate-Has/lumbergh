@@ -3,7 +3,10 @@ name: Pages
 on:
   push:
     branches: [main]
-    paths: ["docs/**"]
+    paths:
+      - "docs/**"
+      - "docs-src/**"
+      - "mkdocs.yml"
 
 permissions:
   pages: write
@@ -21,9 +24,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install mkdocs-material
+      - run: mkdocs build
+      # Move MkDocs output under docs/ subpath, overlay landing page at root
+      - run: |
+          mkdir -p _assembled/docs
+          cp -r site/* _assembled/docs/
+          cp docs/index.html _assembled/index.html
+          cp -r docs/screenshots _assembled/screenshots
+          rm -rf site
+          mv _assembled site
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:
-          path: docs
+          path: site
       - id: deployment
         uses: actions/deploy-pages@v4

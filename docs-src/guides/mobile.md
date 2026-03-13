@@ -1,0 +1,68 @@
+---
+title: Mobile & PWA
+---
+
+# Mobile & PWA
+
+Lumbergh is designed mobile-first with a fully responsive UI. Every feature works on your phone or tablet.
+
+## PWA Support
+
+Lumbergh is a Progressive Web App. Once installed, it looks and feels like a native app -- with its own icon, splash screen, and full-screen mode.
+
+**To install:** open Lumbergh in your mobile browser and tap **Add to Home Screen** (or the install prompt if your browser shows one).
+
+!!! warning "HTTPS required for PWA"
+    Browsers only allow PWA installation over HTTPS (or localhost). Use Tailscale or another method to serve over TLS.
+
+## Remote Access with Tailscale (Recommended)
+
+[Tailscale](https://tailscale.com/) is a free VPN that connects your devices into a private mesh network. It's the easiest way to access Lumbergh securely from anywhere.
+
+### Setup
+
+1. Install Tailscale on your server and your phone/tablet
+2. Serve Lumbergh with automatic TLS:
+
+```bash
+tailscale serve --bg 8420
+```
+
+3. Access Lumbergh at:
+
+```
+https://YOUR-MACHINE.tailnet-name.ts.net
+```
+
+!!! tip "Find your hostname"
+    ```bash
+    tailscale status --self
+    ```
+
+### Development Mode
+
+When running the Vite dev server, use the provided script to generate local TLS certs:
+
+```bash
+./setup-https.sh
+```
+
+Certs expire after roughly 90 days -- just re-run the script to renew.
+
+## Without Tailscale
+
+Lumbergh binds to `0.0.0.0` by default, so it's accessible to any device on your local network. However, without HTTPS you lose:
+
+- PWA installation
+- Service worker caching
+
+For remote access without Tailscale, consider an SSH tunnel:
+
+```bash
+ssh -L 8420:localhost:8420 your-server
+```
+
+## Security
+
+!!! warning "No built-in authentication"
+    Lumbergh does not include authentication. It trusts your network. Use Tailscale, an SSH tunnel, or a reverse proxy with auth for any untrusted network.

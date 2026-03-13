@@ -1,0 +1,60 @@
+---
+title: Sessions
+---
+
+# Sessions
+
+A session is a single Claude Code AI workspace tied to a tmux session and a working directory.
+
+## Creating a Session
+
+Click **+ New Session** on the dashboard. There are two creation modes:
+
+### Direct Mode
+
+Point at an existing directory on disk.
+
+1. Give the session a name
+2. Pick a working directory using the **repo finder** (scans your configured repo search directory) or type a path manually
+3. Optionally add a description
+
+### Worktree Mode
+
+Create a git worktree from an existing repo -- perfect for running parallel feature branches.
+
+1. Pick a **parent repo** from the repo finder
+2. Choose an **existing branch** or create a new one
+3. Lumbergh creates the worktree and wires everything up automatically
+
+!!! tip "When to use worktrees"
+    Worktrees let you have multiple branches checked out simultaneously. Spin up two sessions on different features of the same repo and let them work in parallel without conflicts.
+
+## Session IDs
+
+Lumbergh auto-generates a URL-safe ID from the session name:
+
+```
+"Auth Feature"  →  auth-feature
+"Bug Fix #42"   →  bug-fix-42
+```
+
+## Managing Sessions
+
+### Editing
+
+Change a session's name, description, or working directory at any time via the edit action on the dashboard card or inside the session detail view.
+
+### Pausing & Resuming
+
+Pause a session to temporarily stop monitoring it. The tmux session stays alive -- Lumbergh just stops polling. Resume to pick back up.
+
+### Resetting
+
+Reset restarts the underlying tmux session. Use this when the AI gets stuck or you want a clean slate.
+
+### Deleting
+
+Delete removes the session from Lumbergh and kills the tmux session. If the session was created in worktree mode, you'll be prompted to optionally remove the worktree from disk as well.
+
+!!! warning
+    Deleting a worktree removes the directory and any uncommitted changes in it.

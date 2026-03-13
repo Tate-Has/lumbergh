@@ -1,0 +1,84 @@
+# Troubleshooting
+
+Common issues and how to fix them.
+
+---
+
+### Terminal not connecting?
+
+Make sure tmux mouse mode is enabled:
+
+```bash
+tmux set -g mouse on
+```
+
+The bootstrap script does this automatically. If you skipped bootstrap, run it again.
+
+---
+
+### Port already in use?
+
+The default port is **8420**. Pick a different one with:
+
+```bash
+lumbergh -p 9000
+```
+
+!!! note
+    In dev mode, the backend runs on port **8420** and the Vite frontend on **5420**.
+
+---
+
+### Dependencies not installing?
+
+Run `./bootstrap.sh` again -- it tells you what's missing.
+
+For Node issues, make sure nvm is loaded first:
+
+```bash
+source ~/.nvm/nvm.sh
+```
+
+---
+
+### Session shows as inactive?
+
+The session's tmux session may have been killed externally. Click **Reset** on the session card to restart it.
+
+---
+
+### Git diff not updating?
+
+- Make sure the session's working directory is a valid git repository.
+- Check that `git` is installed and accessible from the shell.
+
+---
+
+### AI status not working?
+
+Configure an AI provider in **Settings > AI** tab.
+
+For Ollama, make sure the server is running:
+
+```bash
+ollama serve
+```
+
+---
+
+### Mobile can't connect?
+
+Lumbergh binds to `0.0.0.0` by default, so it should be accessible from any device on your local network. If it's not:
+
+- Check your firewall rules (e.g., `ufw`, `iptables`).
+- For remote access outside your LAN, use [Tailscale](https://tailscale.com/).
+
+---
+
+### PWA not installable?
+
+PWA installation requires HTTPS. Use Tailscale Serve for automatic TLS certificates:
+
+```bash
+tailscale serve --bg 8420
+```
