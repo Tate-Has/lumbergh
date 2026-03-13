@@ -55,6 +55,9 @@ def run():
         )
         sys.exit(1)
 
+    display_host = "localhost" if args.host == "0.0.0.0" else args.host
+    print(f"Lumbergh: http://{display_host}:{args.port}")
+
     import uvicorn
 
     uvicorn.run("lumbergh.main:app", host=args.host, port=args.port, reload=args.reload)
