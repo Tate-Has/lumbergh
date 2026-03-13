@@ -96,12 +96,26 @@ def get_settings() -> dict:
     return deep_merge(_get_defaults(), stored)
 
 
+def _is_ai_configured(settings: dict) -> bool:
+    """Check if the current AI provider has enough config to work."""
+    ai = settings.get("ai", {})
+    provider = ai.get("provider", "ollama")
+    config = ai.get("providers", {}).get(provider, {})
+
+    if provider == "ollama":
+        return bool(config.get("baseUrl"))
+    if provider == "openai_compatible":
+        return bool(config.get("baseUrl")) and bool(config.get("model"))
+    # Cloud providers need an API key
+    return bool(config.get("apiKey"))
+
+
 @router.get("")
 async def read_settings():
     """Get all settings."""
     settings = get_settings()
     is_first_run = len(settings_table.all()) == 0
-    return {**settings, "isFirstRun": is_first_run}
+    return {**settings, "isFirstRun": is_first_run, "aiConfigured": _is_ai_configured(settings)}
 
 
 @router.patch("")

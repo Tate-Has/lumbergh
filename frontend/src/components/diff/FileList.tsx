@@ -118,6 +118,7 @@ const FileList = memo(function FileList({
   const [branchMenuData, setBranchMenuData] = useState<BranchData | null>(null)
   const [isBranchOp, setIsBranchOp] = useState(false)
   const branchMenuRef = useRef<HTMLDivElement>(null)
+  const [aiConfigured, setAiConfigured] = useState<boolean | null>(null)
 
   // Close menu on click outside
   useEffect(() => {
@@ -148,6 +149,15 @@ const FileList = memo(function FileList({
   const generateUrl = sessionName
     ? `${getApiBase()}/sessions/${sessionName}/ai/generate-commit-message`
     : null
+
+  // Check if AI is configured
+  useEffect(() => {
+    if (!generateUrl) return
+    fetch(`${getApiBase()}/settings`)
+      .then((res) => res.json())
+      .then((data) => setAiConfigured(data.aiConfigured ?? false))
+      .catch(() => setAiConfigured(false))
+  }, [generateUrl])
 
   const isWorkingChanges = !commit
   const hasChanges = data.files.length > 0
@@ -661,10 +671,20 @@ const FileList = memo(function FileList({
               </div>
               {generateUrl && hasChanges && (
                 <button
-                  onClick={handleGenerate}
-                  disabled={isGenerating || isCommitting || isPushing || isResetting}
-                  className="px-3 py-2 bg-purple-600 hover:bg-purple-500 disabled:bg-control-bg-hover disabled:cursor-not-allowed text-text-primary text-sm rounded transition-colors"
-                  title="Generate commit message with AI"
+                  onClick={aiConfigured ? handleGenerate : undefined}
+                  disabled={
+                    !aiConfigured || isGenerating || isCommitting || isPushing || isResetting
+                  }
+                  className={`px-3 py-2 text-sm rounded transition-colors ${
+                    aiConfigured
+                      ? 'bg-purple-600 hover:bg-purple-500 disabled:bg-control-bg-hover disabled:cursor-not-allowed text-text-primary'
+                      : 'bg-control-bg-hover text-text-muted cursor-not-allowed'
+                  }`}
+                  title={
+                    aiConfigured
+                      ? 'Generate commit message with AI'
+                      : 'Configure an AI provider in Settings to enable this'
+                  }
                 >
                   {isGenerating ? '...' : 'AI'}
                 </button>

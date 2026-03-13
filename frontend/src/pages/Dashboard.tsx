@@ -44,6 +44,7 @@ export default function Dashboard() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showSettingsModal, setShowSettingsModal] = useState(false)
   const [isFirstRun, setIsFirstRun] = useState<boolean | null>(null)
+  const [showWelcome, setShowWelcome] = useState(false)
   const [defaultRepoDir, setDefaultRepoDir] = useState('')
   const [lbSharedInstalled, setLbSharedInstalled] = useState<boolean | null>(null)
   const [installingLbShared, setInstallingLbShared] = useState(false)
@@ -97,7 +98,7 @@ export default function Dashboard() {
 
   const checkFirstRun = useCallback(async () => {
     try {
-      const res = await fetch(`${getApiBase()}/api/settings`)
+      const res = await fetch(`${getApiBase()}/settings`)
       if (res.ok) {
         const data = await res.json()
         setIsFirstRun(data.isFirstRun ?? false)
@@ -265,6 +266,14 @@ export default function Dashboard() {
       <header className="flex items-center justify-between p-4 bg-bg-surface border-b border-border-default">
         <h1 className="text-xl font-semibold text-text-secondary">Lumbergh</h1>
         <div className="flex items-center gap-2">
+          {/* Show welcome intro */}
+          <button
+            onClick={() => setShowWelcome(true)}
+            title="Show welcome intro"
+            className="p-2 text-text-tertiary hover:text-text-primary hover:bg-control-bg rounded transition-colors"
+          >
+            <Info size={20} />
+          </button>
           {/* GitHub docs */}
           <a
             href="https://voglster.github.io/lumbergh/"
@@ -395,17 +404,20 @@ export default function Dashboard() {
                 Retry
               </button>
             </div>
-          ) : sessions.length === 0 && isFirstRun ? (
+          ) : showWelcome || (sessions.length === 0 && isFirstRun) ? (
             <WelcomeCard
               defaultRepoDir={defaultRepoDir}
               onComplete={() => {
                 setIsFirstRun(false)
+                setShowWelcome(false)
                 setShowCreateModal(true)
               }}
               onOpenSettings={() => {
                 setIsFirstRun(false)
+                setShowWelcome(false)
                 setShowSettingsModal(true)
               }}
+              onDismiss={showWelcome ? () => setShowWelcome(false) : undefined}
             />
           ) : sessions.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 gap-4 text-text-muted">

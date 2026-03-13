@@ -1,14 +1,20 @@
 import { useState } from 'react'
-import { FolderOpen, Settings } from 'lucide-react'
+import { FolderOpen, Settings, X } from 'lucide-react'
 import { getApiBase } from '../config'
 
 interface Props {
   defaultRepoDir: string
   onComplete: () => void
   onOpenSettings: () => void
+  onDismiss?: () => void
 }
 
-export default function WelcomeCard({ defaultRepoDir, onComplete, onOpenSettings }: Props) {
+export default function WelcomeCard({
+  defaultRepoDir,
+  onComplete,
+  onOpenSettings,
+  onDismiss,
+}: Props) {
   const [repoDir, setRepoDir] = useState(defaultRepoDir)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -17,7 +23,7 @@ export default function WelcomeCard({ defaultRepoDir, onComplete, onOpenSettings
     setSaving(true)
     setError(null)
     try {
-      const res = await fetch(`${getApiBase()}/api/settings`, {
+      const res = await fetch(`${getApiBase()}/settings`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ repoSearchDir: repoDir }),
@@ -36,7 +42,16 @@ export default function WelcomeCard({ defaultRepoDir, onComplete, onOpenSettings
 
   return (
     <div className="flex flex-col items-center justify-center py-12">
-      <div className="w-full max-w-md bg-bg-surface border border-border-default rounded-lg p-6">
+      <div className="w-full max-w-md bg-bg-surface border border-border-default rounded-lg p-6 relative">
+        {onDismiss && (
+          <button
+            onClick={onDismiss}
+            title="Close"
+            className="absolute top-4 right-4 p-1 text-text-tertiary hover:text-text-primary rounded transition-colors"
+          >
+            <X size={16} />
+          </button>
+        )}
         <h2 className="text-lg font-semibold text-text-primary mb-1">Welcome to Lumbergh</h2>
         <p className="text-sm text-text-tertiary mb-6">
           Supervise your Claude Code sessions from one dashboard.
