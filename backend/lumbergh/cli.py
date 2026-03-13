@@ -1,11 +1,14 @@
 """CLI entry point for Lumbergh."""
 
 import argparse
+import platform
 import shutil
 import sys
 
 from lumbergh._version import __version__
 from lumbergh.tailscale import detect_tailscale
+
+IS_WINDOWS = platform.system() == "Windows"
 
 REQUIRED_TOOLS = {
     "tmux": "sudo apt install tmux  (or: brew install tmux)",
@@ -56,7 +59,18 @@ def run():
         sys.exit(1)
 
     display_host = "localhost" if args.host == "0.0.0.0" else args.host
-    print(f"Lumbergh: http://{display_host}:{args.port}")
+    url = f"http://{display_host}:{args.port}"
+    print(f"Lumbergh: {url}")
+
+    if IS_WINDOWS and args.host == "0.0.0.0":
+        print()
+        print("=" * 60)
+        print(f"  OPEN THIS URL:  {url}")
+        print()
+        print("  Windows users: ignore the 0.0.0.0 address below.")
+        print("  Use localhost instead — 0.0.0.0 won't work in your browser.")
+        print("=" * 60)
+        print()
 
     import uvicorn
 
