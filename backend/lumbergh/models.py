@@ -46,6 +46,13 @@ class CreateBranchInput(BaseModel):
     start_point: str | None = None
 
 
+class MergeInput(BaseModel):
+    """Input for merging a branch into the current branch."""
+
+    source_branch: str
+    strategy: str = "merge"  # "merge" | "rebase"
+
+
 class ResetToInput(BaseModel):
     """Input for resetting to a specific commit."""
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, memo } from 'react'
+import { useState, useEffect, useRef, useMemo, memo, useCallback } from 'react'
 import {
   Play,
   RefreshCw,
@@ -8,10 +8,11 @@ import {
   Maximize2,
   ArrowDown,
   CloudDownload,
+  GitMerge,
 } from 'lucide-react'
 import { getApiBase } from '../../config'
 import { relativeDate } from '../../utils/relativeDate'
-import type { DiffData } from './types'
+import type { BranchData, DiffData } from './types'
 import { getFileStats } from './utils'
 import BranchSelector from './BranchSelector'
 
@@ -112,6 +113,9 @@ const FileList = memo(function FileList({
     type: 'success' | 'error'
     message: string
   } | null>(null)
+  const [showMergeMenu, setShowMergeMenu] = useState(false)
+  const [mergeBranches, setMergeBranches] = useState<BranchData | null>(null)
+  const [isMerging, setIsMerging] = useState(false)
 
   // Close menu on click outside
   useEffect(() => {
@@ -291,6 +295,51 @@ const FileList = memo(function FileList({
     } finally {
       setRevertingFile(null)
       setTimeout(() => setCommitResult(null), 3000)
+    }
+  }
+
+  const fetchMergeBranches = useCallback(async () => {
+    try {
+      const res = await fetch(`${gitBaseUrl}/branches`)
+      if (!res.ok) return
+      const data = await res.json()
+      setMergeBranches(data)
+    } catch {
+      /* ignore */
+    }
+  }, [gitBaseUrl])
+
+  const handleMerge = async (sourceBranch: string) => {
+    if (!confirm(`Merge "${sourceBranch}" into the current branch? This cannot be undone easily.`))
+      return
+    setIsMerging(true)
+    setShowMergeMenu(false)
+    setShowMenu(false)
+    setCommitResult(null)
+    try {
+      const res = await fetch(`${gitBaseUrl}/merge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source_branch: sourceBranch }),
+      })
+      const result = await res.json()
+      if (!res.ok) {
+        setCommitResult({ type: 'error', message: result.detail || 'Merge failed' })
+      } else {
+        setCommitResult({
+          type: 'success',
+          message: result.stashConflict
+            ? `${result.message} (stash conflicts — resolve manually)`
+            : result.message,
+        })
+        onRefresh()
+        onGitAction?.()
+      }
+    } catch {
+      setCommitResult({ type: 'error', message: 'Merge failed' })
+    } finally {
+      setIsMerging(false)
+      setTimeout(() => setCommitResult(null), 5000)
     }
   }
 
@@ -523,6 +572,39 @@ const FileList = memo(function FileList({
                     >
                       Pop stash
                     </button>
+                    <div className="border-t border-border-default" />
+                    <div className="relative">
+                      <button
+                        onClick={() => {
+                          setShowMergeMenu((v) => !v)
+                          if (!mergeBranches) fetchMergeBranches()
+                        }}
+                        disabled={isMerging}
+                        className="w-full flex items-center gap-2 text-left px-3 py-2 text-sm text-text-secondary hover:bg-control-bg-hover transition-colors"
+                      >
+                        <GitMerge size={14} />
+                        {isMerging ? 'Merging...' : 'Merge branch...'}
+                      </button>
+                      {showMergeMenu && (
+                        <div className="absolute left-full top-0 ml-1 min-w-[180px] max-h-[250px] overflow-auto bg-bg-surface border border-border-default rounded shadow-lg z-50">
+                          {!mergeBranches ? (
+                            <div className="px-3 py-2 text-sm text-text-muted">Loading...</div>
+                          ) : (
+                            mergeBranches.local
+                              .filter((b) => !b.current)
+                              .map((branch) => (
+                                <button
+                                  key={branch.name}
+                                  onClick={() => handleMerge(branch.name)}
+                                  className="w-full text-left px-3 py-2 text-sm text-text-secondary hover:bg-control-bg-hover font-mono transition-colors"
+                                >
+                                  {branch.name}
+                                </button>
+                              ))
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

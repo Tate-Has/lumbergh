@@ -40,6 +40,7 @@ from lumbergh.git_utils import (
     get_porcelain_status,
     get_remote_status,
     git_force_push,
+    git_merge_branch,
     git_pull_rebase,
     git_push,
     git_stash,
@@ -58,6 +59,7 @@ from lumbergh.models import (
     CommitInput,
     CreateBranchInput,
     CreateSessionRequest,
+    MergeInput,
     PromptTemplateList,
     ResetToInput,
     RevertFileInput,
@@ -974,6 +976,27 @@ async def session_git_pull(name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/{name}/git/merge")
+async def session_git_merge(name: str, body: MergeInput):
+    """Merge a branch into the current branch."""
+    workdir = get_session_workdir(name)
+
+    try:
+        result = git_merge_branch(workdir, body.source_branch, body.strategy)
+        if "error" in result:
+            status_code = 409 if "conflict" in result["error"].lower() else 400
+            raise HTTPException(status_code=status_code, detail=result["error"])
+        from lumbergh.diff_cache import diff_cache
+
+        diff_cache.invalidate(name)
+        _files_cache.pop(name, None)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/{name}/git/create-branch")
 async def session_git_create_branch(name: str, body: CreateBranchInput):
     """Create a new branch at a specific commit."""
@@ -1046,10 +1069,11 @@ async def session_git_remote_status(name: str, fetch: bool = True):
 
 @router.get("/{name}/todos")
 async def get_session_todos(name: str):
-    """Get todos for a specific session."""
+    """Get todos for a project (shared across sessions with the same repo)."""
+    workdir = get_session_workdir(name)
     try:
-        session_db = get_session_data_db(name)
-        todos_table = session_db.table("todos")
+        db = get_project_db(workdir)
+        todos_table = db.table("todos")
         todos = get_single_document_items(todos_table)
         return {"todos": todos}
     except Exception as e:
@@ -1058,10 +1082,11 @@ async def get_session_todos(name: str):
 
 @router.post("/{name}/todos")
 async def save_session_todos(name: str, todo_list: TodoList):
-    """Save todos for a specific session."""
+    """Save todos for a project (shared across sessions with the same repo)."""
+    workdir = get_session_workdir(name)
     try:
-        session_db = get_session_data_db(name)
-        todos_table = session_db.table("todos")
+        db = get_project_db(workdir)
+        todos_table = db.table("todos")
         todos = [
             {"text": t.text, "done": t.done, "description": t.description} for t in todo_list.todos
         ]
@@ -1073,10 +1098,10 @@ async def save_session_todos(name: str, todo_list: TodoList):
 
 @router.post("/{name}/todos/move")
 async def move_session_todo(name: str, req: TodoMoveRequest):
-    """Move a todo from one session to another."""
+    """Move a todo from one project to another."""
     try:
-        # Load source todos
-        source_db = get_session_data_db(name)
+        source_workdir = get_session_workdir(name)
+        source_db = get_project_db(source_workdir)
         source_table = source_db.table("todos")
         source_todos = get_single_document_items(source_table)
 
@@ -1088,7 +1113,8 @@ async def move_session_todo(name: str, req: TodoMoveRequest):
         todo["done"] = False  # Reset to unchecked in target
 
         # Load target todos and prepend
-        target_db = get_session_data_db(req.target_session)
+        target_workdir = get_session_workdir(req.target_session)
+        target_db = get_project_db(target_workdir)
         target_table = target_db.table("todos")
         target_todos = get_single_document_items(target_table)
         target_todos.insert(0, todo)
@@ -1106,10 +1132,11 @@ async def move_session_todo(name: str, req: TodoMoveRequest):
 
 @router.get("/{name}/scratchpad")
 async def get_session_scratchpad(name: str):
-    """Get scratchpad content for a specific session."""
+    """Get scratchpad content for a project (shared across sessions with the same repo)."""
+    workdir = get_session_workdir(name)
     try:
-        session_db = get_session_data_db(name)
-        scratchpad_table = session_db.table("scratchpad")
+        db = get_project_db(workdir)
+        scratchpad_table = db.table("scratchpad")
         content = get_single_document_value(scratchpad_table, "content", default="")
         return {"content": content}
     except Exception as e:
@@ -1118,10 +1145,11 @@ async def get_session_scratchpad(name: str):
 
 @router.post("/{name}/scratchpad")
 async def save_session_scratchpad(name: str, data: ScratchpadContent):
-    """Save scratchpad content for a specific session."""
+    """Save scratchpad content for a project (shared across sessions with the same repo)."""
+    workdir = get_session_workdir(name)
     try:
-        session_db = get_session_data_db(name)
-        scratchpad_table = session_db.table("scratchpad")
+        db = get_project_db(workdir)
+        scratchpad_table = db.table("scratchpad")
         save_single_document_value(scratchpad_table, "content", data.content)
         return {"content": data.content}
     except Exception as e:
