@@ -5,6 +5,7 @@ import shutil
 import sys
 
 from lumbergh._version import __version__
+from lumbergh.tailscale import detect_tailscale
 
 REQUIRED_TOOLS = {
     "tmux": "sudo apt install tmux  (or: brew install tmux)",
@@ -33,9 +34,26 @@ def run():
     parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
     parser.add_argument("--port", "-p", type=int, default=8420, help="Port to bind to")
     parser.add_argument("--reload", action="store_true", help="Enable auto-reload for development")
+    parser.add_argument(
+        "--tailscale-only",
+        action="store_true",
+        help="Bind only to the Tailscale interface",
+    )
     args = parser.parse_args()
 
     _check_dependencies()
+
+    ts = detect_tailscale()
+    if ts:
+        print(f"Tailscale: http://{ts['hostname']}:{args.port}")
+        if args.tailscale_only:
+            args.host = ts["ip"]
+    elif args.tailscale_only:
+        print(
+            "Error: --tailscale-only requires Tailscale to be installed and connected.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     import uvicorn
 
