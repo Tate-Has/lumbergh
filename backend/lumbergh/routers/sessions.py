@@ -3,11 +3,14 @@ Sessions router - CRUD for tmux sessions and session-scoped git operations.
 Stores metadata in ~/.config/lumbergh/sessions.json
 """
 
+import asyncio
 import logging
 import re
 import subprocess
 import uuid
+from collections.abc import Callable
 from pathlib import Path
+from typing import TypeVar
 
 import libtmux
 from fastapi import APIRouter, HTTPException
@@ -75,6 +78,30 @@ from lumbergh.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
+
+GIT_READ_TIMEOUT = 10  # seconds — status, diff, log, branches
+GIT_WRITE_TIMEOUT = 30  # seconds — push, pull, rebase, commit
+
+
+async def _run_git(fn: Callable[..., T], *args, timeout: float = GIT_READ_TIMEOUT, **kwargs) -> T:
+    """Run a blocking git function in a thread with a timeout.
+
+    Prevents a hung git process (bad config, credential prompt, lock file)
+    from blocking the event loop and starving WebSocket connections.
+    """
+    try:
+        return await asyncio.wait_for(
+            asyncio.to_thread(fn, *args, **kwargs),
+            timeout=timeout,
+        )
+    except TimeoutError:
+        raise HTTPException(
+            status_code=504,
+            detail=f"Git operation timed out after {timeout}s — is git configured correctly?",
+        )
+
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 directories_router = APIRouter(prefix="/api/directories", tags=["directories"])
@@ -658,9 +685,11 @@ async def session_git_status(name: str):
     workdir = get_session_workdir(name)
 
     try:
-        branch = get_current_branch(workdir)
-        files = get_porcelain_status(workdir)
+        branch = await _run_git(get_current_branch, workdir)
+        files = await _run_git(get_porcelain_status, workdir)
         return {"branch": branch, "files": files, "clean": len(files) == 0}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -678,7 +707,9 @@ async def session_git_diff(name: str):
     # Cache miss (first request before background loop runs) — compute inline
     workdir = get_session_workdir(name)
     try:
-        return get_full_diff_with_untracked(workdir)
+        return await _run_git(get_full_diff_with_untracked, workdir)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -703,7 +734,9 @@ async def session_git_graph(name: str, limit: int = 100):
     workdir = get_session_workdir(name)
 
     try:
-        return get_graph_log(workdir, limit)
+        return await _run_git(get_graph_log, workdir, limit)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -714,8 +747,10 @@ async def session_git_log(name: str, limit: int = 20):
     workdir = get_session_workdir(name)
 
     try:
-        commits = get_commit_log(workdir, limit)
+        commits = await _run_git(get_commit_log, workdir, limit)
         return {"commits": commits}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -726,7 +761,7 @@ async def session_git_commit_diff(name: str, commit_hash: str):
     workdir = get_session_workdir(name)
 
     try:
-        result = get_commit_diff(workdir, commit_hash)
+        result = await _run_git(get_commit_diff, workdir, commit_hash)
         if result is None:
             raise HTTPException(status_code=404, detail="Commit not found")
         return result
@@ -742,7 +777,9 @@ async def session_git_commit(name: str, body: CommitInput):
     workdir = get_session_workdir(name)
 
     try:
-        result = stage_all_and_commit(workdir, body.message)
+        result = await _run_git(
+            stage_all_and_commit, workdir, body.message, timeout=GIT_WRITE_TIMEOUT
+        )
         if "error" in result:
             raise HTTPException(status_code=500, detail=result["error"])
         from lumbergh.diff_cache import diff_cache
@@ -765,7 +802,9 @@ async def session_git_branches(name: str):
     workdir = get_session_workdir(name)
 
     try:
-        return get_branches(workdir)
+        return await _run_git(get_branches, workdir)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -778,7 +817,7 @@ async def get_worktree_branches(repo_path: str):
         raise HTTPException(status_code=400, detail=f"Repository path does not exist: {repo_path}")
 
     try:
-        result = get_branches_for_worktree(path)
+        result = await _run_git(get_branches_for_worktree, path)
         if "error" in result:
             raise HTTPException(status_code=400, detail=result["error"])
         return result
@@ -792,7 +831,9 @@ async def session_git_checkout(name: str, body: CheckoutInput):
     workdir = get_session_workdir(name)
 
     try:
-        result = checkout_branch(workdir, body.branch, body.reset_to)
+        result = await _run_git(
+            checkout_branch, workdir, body.branch, body.reset_to, timeout=GIT_WRITE_TIMEOUT
+        )
         if "error" in result:
             status_code = 409 if "pending changes" in result["error"] else 400
             raise HTTPException(status_code=status_code, detail=result["error"])
@@ -813,7 +854,7 @@ async def session_git_reset(name: str):
     workdir = get_session_workdir(name)
 
     try:
-        result = reset_to_head(workdir)
+        result = await _run_git(reset_to_head, workdir, timeout=GIT_WRITE_TIMEOUT)
         if "error" in result:
             raise HTTPException(status_code=500, detail=result["error"])
         from lumbergh.diff_cache import diff_cache
@@ -833,7 +874,7 @@ async def session_git_revert_file(name: str, body: RevertFileInput):
     workdir = get_session_workdir(name)
 
     try:
-        result = revert_file(workdir, body.path)
+        result = await _run_git(revert_file, workdir, body.path, timeout=GIT_WRITE_TIMEOUT)
         if "error" in result:
             raise HTTPException(status_code=400, detail=result["error"])
         from lumbergh.diff_cache import diff_cache
@@ -853,7 +894,7 @@ async def session_git_push(name: str):
     workdir = get_session_workdir(name)
 
     try:
-        result = git_push(workdir)
+        result = await _run_git(git_push, workdir, timeout=GIT_WRITE_TIMEOUT)
         if "error" in result:
             raise HTTPException(status_code=400, detail=result["error"])
         return result
@@ -869,7 +910,7 @@ async def session_git_amend(name: str, body: AmendInput):
     workdir = get_session_workdir(name)
 
     try:
-        result = amend_commit(workdir, body.message)
+        result = await _run_git(amend_commit, workdir, body.message, timeout=GIT_WRITE_TIMEOUT)
         if "error" in result:
             raise HTTPException(status_code=400, detail=result["error"])
         from lumbergh.diff_cache import diff_cache
@@ -889,7 +930,7 @@ async def session_git_force_push(name: str):
     workdir = get_session_workdir(name)
 
     try:
-        result = git_force_push(workdir)
+        result = await _run_git(git_force_push, workdir, timeout=GIT_WRITE_TIMEOUT)
         if "error" in result:
             raise HTTPException(status_code=400, detail=result["error"])
         return result
@@ -905,7 +946,7 @@ async def session_git_stash(name: str):
     workdir = get_session_workdir(name)
 
     try:
-        result = git_stash(workdir)
+        result = await _run_git(git_stash, workdir, timeout=GIT_WRITE_TIMEOUT)
         if "error" in result:
             raise HTTPException(status_code=400, detail=result["error"])
         from lumbergh.diff_cache import diff_cache
@@ -925,7 +966,7 @@ async def session_git_stash_pop(name: str, ref: str | None = None):
     workdir = get_session_workdir(name)
 
     try:
-        result = git_stash_pop(workdir, ref=ref)
+        result = await _run_git(git_stash_pop, workdir, ref=ref, timeout=GIT_WRITE_TIMEOUT)
         if "error" in result:
             raise HTTPException(status_code=400, detail=result["error"])
         from lumbergh.diff_cache import diff_cache
@@ -945,7 +986,7 @@ async def session_git_stash_drop(name: str, ref: str | None = None):
     workdir = get_session_workdir(name)
 
     try:
-        result = git_stash_drop(workdir, ref=ref)
+        result = await _run_git(git_stash_drop, workdir, ref=ref, timeout=GIT_WRITE_TIMEOUT)
         if "error" in result:
             raise HTTPException(status_code=400, detail=result["error"])
         from lumbergh.diff_cache import diff_cache
@@ -965,7 +1006,7 @@ async def session_git_pull(name: str):
     workdir = get_session_workdir(name)
 
     try:
-        result = git_pull_rebase(workdir)
+        result = await _run_git(git_pull_rebase, workdir, timeout=GIT_WRITE_TIMEOUT)
         if "error" in result:
             raise HTTPException(status_code=400, detail=result["error"])
         from lumbergh.diff_cache import diff_cache
@@ -985,7 +1026,7 @@ async def session_git_fast_forward(name: str, body: BranchTargetInput):
     workdir = get_session_workdir(name)
 
     try:
-        result = git_fast_forward(workdir, body.branch)
+        result = await _run_git(git_fast_forward, workdir, body.branch, timeout=GIT_WRITE_TIMEOUT)
         if "error" in result:
             raise HTTPException(status_code=400, detail=result["error"])
         from lumbergh.diff_cache import diff_cache
@@ -1005,7 +1046,7 @@ async def session_git_rebase(name: str, body: BranchTargetInput):
     workdir = get_session_workdir(name)
 
     try:
-        result = git_rebase_onto(workdir, body.branch)
+        result = await _run_git(git_rebase_onto, workdir, body.branch, timeout=GIT_WRITE_TIMEOUT)
         if "error" in result:
             status_code = 409 if "conflict" in result["error"].lower() else 400
             raise HTTPException(status_code=status_code, detail=result["error"])
@@ -1026,7 +1067,9 @@ async def session_git_create_branch(name: str, body: CreateBranchInput):
     workdir = get_session_workdir(name)
 
     try:
-        result = create_branch_at(workdir, body.name, body.start_point)
+        result = await _run_git(
+            create_branch_at, workdir, body.name, body.start_point, timeout=GIT_WRITE_TIMEOUT
+        )
         if "error" in result:
             raise HTTPException(status_code=400, detail=result["error"])
         return result
@@ -1042,7 +1085,9 @@ async def session_git_reset_to(name: str, body: ResetToInput):
     workdir = get_session_workdir(name)
 
     try:
-        result = reset_to_commit(workdir, body.hash, body.mode)
+        result = await _run_git(
+            reset_to_commit, workdir, body.hash, body.mode, timeout=GIT_WRITE_TIMEOUT
+        )
         if "error" in result:
             raise HTTPException(status_code=400, detail=result["error"])
         from lumbergh.diff_cache import diff_cache
@@ -1062,7 +1107,9 @@ async def session_git_reword(name: str, body: RewordInput):
     workdir = get_session_workdir(name)
 
     try:
-        result = reword_commit(workdir, body.hash, body.message)
+        result = await _run_git(
+            reword_commit, workdir, body.hash, body.message, timeout=GIT_WRITE_TIMEOUT
+        )
         if "error" in result:
             raise HTTPException(status_code=400, detail=result["error"])
         from lumbergh.diff_cache import diff_cache
@@ -1082,7 +1129,7 @@ async def session_git_cherry_pick(name: str, body: CherryPickInput):
     workdir = get_session_workdir(name)
 
     try:
-        result = git_cherry_pick(workdir, body.hash)
+        result = await _run_git(git_cherry_pick, workdir, body.hash, timeout=GIT_WRITE_TIMEOUT)
         if "error" in result:
             status_code = 409 if "conflict" in result["error"].lower() else 400
             raise HTTPException(status_code=status_code, detail=result["error"])
@@ -1103,7 +1150,9 @@ async def session_git_remote_status(name: str, fetch: bool = True):
     workdir = get_session_workdir(name)
 
     try:
-        return get_remote_status(workdir, fetch=fetch)
+        return await _run_git(get_remote_status, workdir, fetch=fetch, timeout=GIT_WRITE_TIMEOUT)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

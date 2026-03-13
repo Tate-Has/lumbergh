@@ -96,14 +96,18 @@ async def version_check():
 @app.get("/api/git/status")
 async def git_status():
     """Get git status for the project."""
+    from lumbergh.routers.sessions import _run_git
+
     try:
-        branch = get_current_branch(PROJECT_ROOT)
-        files = get_porcelain_status(PROJECT_ROOT)
+        branch = await _run_git(get_current_branch, PROJECT_ROOT)
+        files = await _run_git(get_porcelain_status, PROJECT_ROOT)
         return {
             "branch": branch,
             "files": files,
             "clean": len(files) == 0,
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -111,8 +115,12 @@ async def git_status():
 @app.get("/api/git/diff")
 async def git_diff():
     """Get git diff for all changed files, including untracked files."""
+    from lumbergh.routers.sessions import _run_git
+
     try:
-        return get_full_diff_with_untracked(PROJECT_ROOT)
+        return await _run_git(get_full_diff_with_untracked, PROJECT_ROOT)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -120,9 +128,13 @@ async def git_diff():
 @app.get("/api/git/log")
 async def git_log(limit: int = 20):
     """Get recent commit history."""
+    from lumbergh.routers.sessions import _run_git
+
     try:
-        commits = get_commit_log(PROJECT_ROOT, limit)
+        commits = await _run_git(get_commit_log, PROJECT_ROOT, limit)
         return {"commits": commits}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -130,8 +142,10 @@ async def git_log(limit: int = 20):
 @app.get("/api/git/commit/{commit_hash}")
 async def git_commit_diff(commit_hash: str):
     """Get diff for a specific commit."""
+    from lumbergh.routers.sessions import _run_git
+
     try:
-        result = get_commit_diff(PROJECT_ROOT, commit_hash)
+        result = await _run_git(get_commit_diff, PROJECT_ROOT, commit_hash)
         if result is None:
             raise HTTPException(status_code=404, detail="Commit not found")
         return result
@@ -144,8 +158,12 @@ async def git_commit_diff(commit_hash: str):
 @app.post("/api/git/commit")
 async def git_commit(body: CommitInput):
     """Stage all changes and create a commit."""
+    from lumbergh.routers.sessions import GIT_WRITE_TIMEOUT, _run_git
+
     try:
-        result = stage_all_and_commit(PROJECT_ROOT, body.message)
+        result = await _run_git(
+            stage_all_and_commit, PROJECT_ROOT, body.message, timeout=GIT_WRITE_TIMEOUT
+        )
         if "error" in result:
             raise HTTPException(status_code=500, detail=result["error"])
         return result
@@ -158,8 +176,10 @@ async def git_commit(body: CommitInput):
 @app.post("/api/git/reset")
 async def git_reset():
     """Reset all changes to HEAD (discard all uncommitted changes)."""
+    from lumbergh.routers.sessions import GIT_WRITE_TIMEOUT, _run_git
+
     try:
-        result = reset_to_head(PROJECT_ROOT)
+        result = await _run_git(reset_to_head, PROJECT_ROOT, timeout=GIT_WRITE_TIMEOUT)
         if "error" in result:
             raise HTTPException(status_code=500, detail=result["error"])
         return result
@@ -172,8 +192,10 @@ async def git_reset():
 @app.post("/api/git/revert-file")
 async def git_revert_file(body: RevertFileInput):
     """Revert a single file to HEAD (discard changes for one file)."""
+    from lumbergh.routers.sessions import GIT_WRITE_TIMEOUT, _run_git
+
     try:
-        result = revert_file(PROJECT_ROOT, body.path)
+        result = await _run_git(revert_file, PROJECT_ROOT, body.path, timeout=GIT_WRITE_TIMEOUT)
         if "error" in result:
             raise HTTPException(status_code=400, detail=result["error"])
         return result
@@ -186,8 +208,10 @@ async def git_revert_file(body: RevertFileInput):
 @app.post("/api/git/push")
 async def git_push_endpoint():
     """Push commits to remote repository."""
+    from lumbergh.routers.sessions import GIT_WRITE_TIMEOUT, _run_git
+
     try:
-        result = git_push(PROJECT_ROOT)
+        result = await _run_git(git_push, PROJECT_ROOT, timeout=GIT_WRITE_TIMEOUT)
         if "error" in result:
             raise HTTPException(status_code=400, detail=result["error"])
         return result
@@ -200,9 +224,13 @@ async def git_push_endpoint():
 @app.get("/api/files")
 async def list_files():
     """List files in the project directory."""
+    from lumbergh.routers.sessions import _run_git
+
     try:
-        files = list_project_files(PROJECT_ROOT)
+        files = await _run_git(list_project_files, PROJECT_ROOT)
         return {"files": files, "root": str(PROJECT_ROOT)}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
