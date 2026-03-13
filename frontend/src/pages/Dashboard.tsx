@@ -1,5 +1,16 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Sun, Moon, Settings, Plus, Monitor, Info, ArrowUpCircle, X } from 'lucide-react'
+import {
+  Sun,
+  Moon,
+  Settings,
+  Plus,
+  Monitor,
+  Info,
+  ArrowUpCircle,
+  X,
+  BookOpen,
+  Star,
+} from 'lucide-react'
 import { getApiBase } from '../config'
 import SessionCard from '../components/SessionCard'
 import CreateSessionModal from '../components/CreateSessionModal'
@@ -237,6 +248,16 @@ export default function Dashboard() {
       <header className="flex items-center justify-between p-4 bg-bg-surface border-b border-border-default">
         <h1 className="text-xl font-semibold text-text-secondary">Lumbergh</h1>
         <div className="flex items-center gap-2">
+          {/* GitHub docs */}
+          <a
+            href="https://voglster.github.io/lumbergh/"
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Documentation"
+            className="p-2 text-text-tertiary hover:text-text-primary hover:bg-control-bg rounded transition-colors"
+          >
+            <BookOpen size={20} />
+          </a>
           {/* Theme toggle */}
           <button
             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
@@ -412,6 +433,20 @@ export default function Dashboard() {
           )}
         </div>
       </main>
+
+      {/* Footer */}
+      <footer className="py-4 text-center">
+        <a
+          href="https://github.com/voglster/lumbergh"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 text-xs text-text-muted hover:text-amber-400 transition-colors group"
+        >
+          I was told there would be
+          <Star size={14} className="group-hover:fill-amber-400 transition-colors" />
+          stars
+        </a>
+      </footer>
 
       {/* Create session modal */}
       {showCreateModal && (
