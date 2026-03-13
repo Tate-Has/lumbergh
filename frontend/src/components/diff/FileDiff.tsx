@@ -1,11 +1,19 @@
 import { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react'
 import { DiffView, DiffModeEnum } from '@git-diff-view/react'
+import { highlighter } from '@git-diff-view/lowlight'
+import { _cacheMap } from '@git-diff-view/core'
 import { ArrowLeft, Play, Maximize2 } from 'lucide-react'
 import { getApiBase } from '../../config'
 import type { DiffFile } from './types'
 import { extractDiffContent, getFileStats, getLangFromPath } from './utils'
 import MarkdownViewer from '../MarkdownViewer'
 import { useTheme } from '../../hooks/useTheme'
+
+// Disable the global File cache in @git-diff-view/core.
+// The cache causes a bug where syntax highlighting is lost on re-mount:
+// cached File objects carry stale highlighter metadata that tricks DiffView
+// into skipping initSyntax() on subsequent renders.
+_cacheMap.setMaxLength(0)
 
 const IMAGE_EXTENSIONS = new Set([
   '.png',
@@ -237,6 +245,7 @@ const FileDiff = memo(function FileDiff({
               diffViewTheme={theme}
               diffViewHighlight
               diffViewWrap
+              registerHighlighter={highlighter}
             />
           ) : (
             <div className="flex items-center justify-center h-full text-text-muted">
