@@ -10,12 +10,12 @@ import {
   X,
   BookOpen,
   Star,
+  FolderOpen,
 } from 'lucide-react'
 import { getApiBase } from '../config'
 import SessionCard from '../components/SessionCard'
 import CreateSessionModal from '../components/CreateSessionModal'
 import SettingsModal from '../components/SettingsModal'
-import WelcomeCard from '../components/WelcomeCard'
 import { useTheme } from '../hooks/useTheme'
 
 interface Session {
@@ -44,7 +44,6 @@ export default function Dashboard() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showSettingsModal, setShowSettingsModal] = useState(false)
   const [isFirstRun, setIsFirstRun] = useState<boolean | null>(null)
-  const [showWelcome, setShowWelcome] = useState(false)
   const [defaultRepoDir, setDefaultRepoDir] = useState('')
   const [lbSharedInstalled, setLbSharedInstalled] = useState<boolean | null>(null)
   const [installingLbShared, setInstallingLbShared] = useState(false)
@@ -266,14 +265,6 @@ export default function Dashboard() {
       <header className="flex items-center justify-between p-4 bg-bg-surface border-b border-border-default">
         <h1 className="text-xl font-semibold text-text-secondary">Lumbergh</h1>
         <div className="flex items-center gap-2">
-          {/* Show welcome intro */}
-          <button
-            onClick={() => setShowWelcome(true)}
-            title="Show welcome intro"
-            className="p-2 text-text-tertiary hover:text-text-primary hover:bg-control-bg rounded transition-colors"
-          >
-            <Info size={20} />
-          </button>
           {/* GitHub docs */}
           <a
             href="https://voglster.github.io/lumbergh/"
@@ -358,6 +349,31 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* First-run repo search directory banner */}
+      {isFirstRun && defaultRepoDir && (
+        <div className="mx-4 mt-4 p-3 bg-blue-900/50 border border-blue-700 rounded-lg flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <FolderOpen size={20} className="text-blue-400 flex-shrink-0" />
+            <span className="text-sm text-text-secondary">
+              Searching for repos in <span className="font-mono">{defaultRepoDir}</span> —{' '}
+              <button
+                onClick={() => setShowSettingsModal(true)}
+                className="text-blue-400 hover:text-blue-300 underline"
+              >
+                Change in Settings
+              </button>
+            </span>
+          </div>
+          <button
+            onClick={() => setIsFirstRun(false)}
+            title="Dismiss"
+            className="p-1.5 text-text-tertiary hover:text-text-primary rounded transition-colors"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
       {/* Update available banner */}
       {updateInfo && (
         <div className="mx-4 mt-4 p-3 bg-yellow-900/50 border border-yellow-700 rounded-lg flex items-center justify-between">
@@ -404,21 +420,6 @@ export default function Dashboard() {
                 Retry
               </button>
             </div>
-          ) : showWelcome || (sessions.length === 0 && isFirstRun) ? (
-            <WelcomeCard
-              defaultRepoDir={defaultRepoDir}
-              onComplete={() => {
-                setIsFirstRun(false)
-                setShowWelcome(false)
-                setShowCreateModal(true)
-              }}
-              onOpenSettings={() => {
-                setIsFirstRun(false)
-                setShowWelcome(false)
-                setShowSettingsModal(true)
-              }}
-              onDismiss={showWelcome ? () => setShowWelcome(false) : undefined}
-            />
           ) : sessions.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 gap-4 text-text-muted">
               <Monitor size={64} strokeWidth={1} />
@@ -426,6 +427,13 @@ export default function Dashboard() {
               <p className="text-sm">
                 Create a new session to get started, or existing tmux sessions will appear here
               </p>
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="mt-2 flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium transition-colors text-base"
+              >
+                <Plus size={20} />
+                Create Your First Session
+              </button>
             </div>
           ) : (
             <>
