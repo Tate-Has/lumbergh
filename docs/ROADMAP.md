@@ -59,7 +59,7 @@ The manager watches and comments. It doesn't drive sessions or make autonomous d
 - CLAUDE.md template editor — AI-assisted "generate a CLAUDE.md from this repo"
 - Plugin/hook system — user-defined hooks ("on idle, run tests"), plugin API for custom widgets
 - Docker image — one-command deployment
-- Onboarding flow — first-run wizard, example sessions, getting-started guide
+- ~~Onboarding flow — first-run wizard, example sessions, getting-started guide~~ ✓ shipped
 - GitHub presence — issue templates, contributing guide, release automation
 
 ---

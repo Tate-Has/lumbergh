@@ -8,7 +8,7 @@ Click the **gear icon** in the dashboard top-right corner to open settings.
 
 | Setting | Description | Default |
 |---------|-------------|---------|
-| Repository search directory | Root path Lumbergh scans to find git repos when creating sessions | `~/src` |
+| Repository search directory | Root path Lumbergh scans to find git repos when creating sessions | Directory where `lumbergh` was launched |
 | Git graph commits | Number of commits shown in the graph visualization (10--1000) | `100` |
 
 ### AI
@@ -53,6 +53,7 @@ Use `--tailscale-only` to bind exclusively to the Tailscale interface. This ensu
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `LUMBERGH_DATA_DIR` | Override the data directory | `~/.config/lumbergh/` |
+| `LUMBERGH_LAUNCH_DIR` | Override the default repo search directory (set automatically to CWD on startup) | CWD |
 
 ```bash
 # Store data in a custom location

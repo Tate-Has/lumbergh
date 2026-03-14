@@ -38,9 +38,12 @@ Open [http://localhost:8420](http://localhost:8420) in your browser. That's it.
 
 When you run `lumbergh` for the first time, it will:
 
-1. Create a tmux session for managing Claude Code terminals
-2. Start the web dashboard on port 8420
-3. Open the UI where you can add and supervise AI sessions
+1. Start the web dashboard on port 8420
+2. Show a **welcome screen** that pre-fills your repo search directory to the folder you launched from
+3. Let you confirm the directory and create your first session right away
+
+!!! tip "Launch from your projects folder"
+    Run `lumbergh` from the directory that contains your git repos (e.g. `~/src`) so it auto-detects the right search path.
 
 ## CLI Options
 
