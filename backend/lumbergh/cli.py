@@ -77,7 +77,11 @@ def run():
 
     import uvicorn
 
-    uvicorn.run("lumbergh.main:app", host=args.host, port=args.port, reload=args.reload)
+    extra: dict = {}
+    if args.reload:
+        extra["timeout_graceful_shutdown"] = 3
+
+    uvicorn.run("lumbergh.main:app", host=args.host, port=args.port, reload=args.reload, **extra)
 
 
 if __name__ == "__main__":
