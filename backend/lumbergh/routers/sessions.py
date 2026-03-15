@@ -76,6 +76,7 @@ from lumbergh.models import (
     TodoList,
     TodoMoveRequest,
 )
+from lumbergh.providers import get_launch_command
 
 logger = logging.getLogger(__name__)
 
@@ -162,12 +163,15 @@ def find_venv_activate(workdir: Path) -> Path | None:
     return None
 
 
-def create_tmux_session(name: str, workdir: Path) -> None:
-    """Create a tmux session with optional venv activation and claude start.
+def create_tmux_session(
+    name: str, workdir: Path, launch_command: str = "claude --continue"
+) -> None:
+    """Create a tmux session with optional venv activation and agent start.
 
     Args:
         name: Session name
         workdir: Working directory for the session
+        launch_command: Shell command to start the agent
 
     Raises:
         RuntimeError: If tmux session creation fails
@@ -189,9 +193,9 @@ def create_tmux_session(name: str, workdir: Path) -> None:
             text=True,
         )
 
-    # Start claude (--continue resumes previous conversation if one exists)
+    # Start the agent
     subprocess.run(
-        ["tmux", "send-keys", "-t", name, "claude --continue", "Enter"],
+        ["tmux", "send-keys", "-t", name, launch_command, "Enter"],
         capture_output=True,
         text=True,
     )
@@ -308,6 +312,7 @@ async def list_sessions():
                 "worktreeBranch": meta.get("worktree_branch"),
                 "lastUsedAt": meta.get("lastUsedAt"),
                 "paused": meta.get("paused", False),
+                "agentProvider": meta.get("agent_provider"),
             }
         )
 
@@ -333,6 +338,7 @@ async def list_sessions():
                     "worktreeBranch": None,
                     "lastUsedAt": None,
                     "paused": False,
+                    "agentProvider": None,
                 }
             )
 
@@ -383,6 +389,8 @@ async def update_session(name: str, body: SessionUpdate):
         record["description"] = body.description
     if body.paused is not None:
         record["paused"] = body.paused
+    if body.agentProvider is not None:
+        record["agent_provider"] = body.agentProvider
 
     sessions_table.upsert(record, session_q.name == name)
 
@@ -470,6 +478,15 @@ def _resolve_direct_workdir(body: CreateSessionRequest) -> Path:
     return workdir
 
 
+def _resolve_launch_command(agent_provider: str | None) -> str:
+    """Resolve the agent launch command from provider + global settings."""
+    from lumbergh.routers.settings import get_settings
+
+    settings = get_settings()
+    default_agent = settings.get("defaultAgent")
+    return get_launch_command(agent_provider, default_agent)
+
+
 @router.post("")
 async def create_session(body: CreateSessionRequest):
     """Create a new tmux session."""
@@ -519,17 +536,20 @@ async def create_session(body: CreateSessionRequest):
                 "worktreeBranch": meta.get("worktree_branch"),
             }
 
+    launch_cmd = _resolve_launch_command(body.agent_provider)
+
     try:
-        create_tmux_session(body.name, workdir)
+        create_tmux_session(body.name, workdir, launch_command=launch_cmd)
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
     session_q = Query()
-    session_data = {
+    session_data: dict[str, object] = {
         "name": body.name,
         "workdir": str(workdir),
         "description": body.description,
         "type": session_type,
+        "agent_provider": body.agent_provider,
     }
     if worktree_parent_repo:
         session_data["worktree_parent_repo"] = worktree_parent_repo
@@ -585,6 +605,8 @@ async def reset_session(name: str):
         text=True,
     )
 
+    launch_cmd = _resolve_launch_command(session_meta.get("agent_provider"))
+
     # Activate venv if found
     venv_activate = find_venv_activate(workdir)
     if venv_activate:
@@ -594,9 +616,9 @@ async def reset_session(name: str):
             text=True,
         )
 
-    # Start claude (--continue resumes previous conversation if one exists)
+    # Start the agent
     subprocess.run(
-        ["tmux", "send-keys", "-t", name, "claude --continue", "Enter"],
+        ["tmux", "send-keys", "-t", name, launch_cmd, "Enter"],
         capture_output=True,
         text=True,
     )

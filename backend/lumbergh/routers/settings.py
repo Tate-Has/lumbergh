@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from lumbergh.db_utils import get_settings_db
+from lumbergh.providers import DEFAULT_PROVIDER, PROVIDERS
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -29,6 +30,7 @@ def _get_defaults() -> dict:
     return {
         "repoSearchDir": repo_search_dir,
         "gitGraphCommits": 100,
+        "defaultAgent": DEFAULT_PROVIDER,
         "ai": {
             "provider": "ollama",
             "providers": {
@@ -73,6 +75,7 @@ class SettingsUpdate(BaseModel):
     repoSearchDir: str | None = None  # noqa: N815 - API field name
     gitGraphCommits: int | None = None  # noqa: N815 - API field name
     ai: AISettings | None = None
+    defaultAgent: str | None = None  # noqa: N815 - API field name
 
 
 def deep_merge(base: dict, override: dict) -> dict:
@@ -115,7 +118,12 @@ async def read_settings():
     """Get all settings."""
     settings = get_settings()
     is_first_run = len(settings_table.all()) == 0
-    return {**settings, "isFirstRun": is_first_run, "aiConfigured": _is_ai_configured(settings)}
+    return {
+        **settings,
+        "isFirstRun": is_first_run,
+        "aiConfigured": _is_ai_configured(settings),
+        "agentProviders": PROVIDERS,
+    }
 
 
 @router.patch("")
@@ -146,6 +154,14 @@ async def update_settings(updates: SettingsUpdate):
                 detail="Git graph commits must be between 10 and 1000",
             )
         update_data["gitGraphCommits"] = updates.gitGraphCommits
+
+    if updates.defaultAgent is not None:
+        if updates.defaultAgent not in PROVIDERS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown agent provider: {updates.defaultAgent}",
+            )
+        update_data["defaultAgent"] = updates.defaultAgent
 
     if updates.ai is not None:
         ai_update = updates.ai.model_dump(exclude_none=True)

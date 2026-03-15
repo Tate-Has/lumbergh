@@ -35,6 +35,7 @@ interface Session {
   worktreeBranch?: string | null
   lastUsedAt?: string | null
   paused?: boolean
+  agentProvider?: string | null
 }
 
 export default function Dashboard() {

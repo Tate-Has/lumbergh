@@ -12,7 +12,17 @@ import {
   RefreshCw,
   X,
   GitBranch,
+  Bot,
 } from 'lucide-react'
+
+const PROVIDER_LABELS: Record<string, string> = {
+  'claude-code': 'Claude Code',
+  cursor: 'Cursor',
+  opencode: 'OpenCode',
+  'gemini-cli': 'Gemini CLI',
+  aider: 'Aider',
+  codex: 'Codex CLI',
+}
 
 interface Session {
   name: string
@@ -30,6 +40,7 @@ interface Session {
   worktreeParentRepo?: string | null
   worktreeBranch?: string | null
   paused?: boolean
+  agentProvider?: string | null
 }
 
 function getSessionStatus(session: Session) {
@@ -292,6 +303,16 @@ export default function SessionCard({ session, onDelete, onUpdate, onReset }: Pr
               from {session.worktreeParentRepo.split('/').pop()}
             </span>
           )}
+        </div>
+      )}
+
+      {/* Agent provider badge (only when non-default) */}
+      {session.agentProvider && (
+        <div className="flex items-center gap-1.5 mb-1">
+          <Bot size={14} className="text-cyan-400" />
+          <span className="text-xs text-cyan-400">
+            {PROVIDER_LABELS[session.agentProvider] || session.agentProvider}
+          </span>
         </div>
       )}
 

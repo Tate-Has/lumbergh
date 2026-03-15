@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { X } from 'lucide-react'
+import { X, Bot } from 'lucide-react'
 import { getApiBase } from '../config'
 import DirectoryPicker from './DirectoryPicker'
 import BranchPicker from './BranchPicker'
@@ -47,12 +47,19 @@ export default function CreateSessionModal({ onClose, onCreated }: Props) {
   const [createNewBranch, setCreateNewBranch] = useState(false)
   const [newBranchName, setNewBranchName] = useState('')
 
-  // Fetch repoSearchDir for default parent directory
+  // Agent provider state
+  const [agentProvider, setAgentProvider] = useState<string>('')
+  const [agentProviders, setAgentProviders] = useState<Record<string, { label: string }>>({})
+  const [defaultAgent, setDefaultAgent] = useState<string>('')
+
+  // Fetch settings (repoSearchDir + agent providers)
   useEffect(() => {
     fetch(`${getApiBase()}/settings`)
       .then((res) => res.json())
       .then((data) => {
         if (data.repoSearchDir) setParentDir(data.repoSearchDir)
+        if (data.agentProviders) setAgentProviders(data.agentProviders)
+        if (data.defaultAgent) setDefaultAgent(data.defaultAgent)
       })
       .catch(() => {})
   }, [])
@@ -116,6 +123,11 @@ export default function CreateSessionModal({ onClose, onCreated }: Props) {
       const body: Record<string, unknown> = {
         name: slug,
         description: description.trim(),
+      }
+
+      // Include agent_provider only when non-default
+      if (agentProvider && agentProvider !== defaultAgent) {
+        body.agent_provider = agentProvider
       }
 
       if (mode === 'existing') {
@@ -387,6 +399,28 @@ export default function CreateSessionModal({ onClose, onCreated }: Props) {
               className="w-full px-3 py-2 bg-input-bg text-text-primary rounded border border-input-border focus:outline-none focus:border-blue-500"
             />
           </div>
+
+          {/* Agent Provider */}
+          {Object.keys(agentProviders).length > 1 && (
+            <div>
+              <label className="block text-sm text-text-tertiary mb-1">
+                <Bot size={14} className="inline mr-1 -mt-0.5" />
+                Agent
+              </label>
+              <select
+                value={agentProvider || defaultAgent}
+                onChange={(e) => setAgentProvider(e.target.value)}
+                className="w-full px-3 py-2 bg-input-bg text-text-primary rounded border border-input-border focus:outline-none focus:border-blue-500"
+              >
+                {Object.entries(agentProviders).map(([key, provider]) => (
+                  <option key={key} value={key}>
+                    {provider.label}
+                    {key === defaultAgent ? ' (default)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {error && <div className="text-red-400 text-sm">{error}</div>}
 

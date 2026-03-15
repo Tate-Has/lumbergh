@@ -119,6 +119,7 @@ class CreateSessionRequest(BaseModel):
     mode: Literal["direct", "worktree"] = "direct"
     worktree: WorktreeConfig | None = None
     init_repo: bool = False  # Create dir + git init if it doesn't exist
+    agent_provider: str | None = None  # Override global default agent provider
 
 
 class SessionUpdate(BaseModel):
@@ -127,6 +128,7 @@ class SessionUpdate(BaseModel):
     displayName: str | None = None  # noqa: N815 - API field name
     description: str | None = None
     paused: bool | None = None
+    agentProvider: str | None = None  # noqa: N815 - API field name
 
 
 class TodoMoveRequest(BaseModel):
