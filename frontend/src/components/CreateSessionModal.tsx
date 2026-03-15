@@ -167,6 +167,7 @@ export default function CreateSessionModal({ onClose, onCreated }: Props) {
 
       onCreated()
       onClose()
+      navigate(`/session/${data.name}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create session')
     } finally {
