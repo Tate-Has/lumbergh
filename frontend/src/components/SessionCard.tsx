@@ -1,28 +1,10 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getApiBase } from '../config'
-import {
-  Minus,
-  Pause,
-  Play,
-  AlertCircle,
-  AlertTriangle,
-  Circle,
-  Pencil,
-  RefreshCw,
-  X,
-  GitBranch,
-  Bot,
-} from 'lucide-react'
-
-const PROVIDER_LABELS: Record<string, string> = {
-  'claude-code': 'Claude Code',
-  cursor: 'Cursor',
-  opencode: 'OpenCode',
-  'gemini-cli': 'Gemini CLI',
-  aider: 'Aider',
-  codex: 'Codex CLI',
-}
+import { Minus, Pause, Play, AlertCircle, AlertTriangle, Circle } from 'lucide-react'
+import SessionCardEditForm from './SessionCardEditForm'
+import SessionCardActions from './SessionCardActions'
+import SessionCardBadges from './SessionCardBadges'
 
 interface Session {
   name: string
@@ -84,8 +66,6 @@ interface Props {
 export default function SessionCard({ session, onDelete, onUpdate, onReset }: Props) {
   const navigate = useNavigate()
   const [isEditing, setIsEditing] = useState(false)
-  const [editName, setEditName] = useState(session.displayName || '')
-  const [editDescription, setEditDescription] = useState(session.description || '')
 
   const handleClick = () => {
     if (!isEditing) {
@@ -143,43 +123,7 @@ export default function SessionCard({ session, onDelete, onUpdate, onReset }: Pr
 
   const handleEditClick = (e: React.MouseEvent) => {
     e.stopPropagation()
-    setEditName(session.displayName || session.name)
-    setEditDescription(session.description || '')
     setIsEditing(true)
-  }
-
-  const handleEditSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-
-    const updates: SessionUpdate = {}
-    const trimmedName = editName.trim()
-    const trimmedDesc = editDescription.trim()
-
-    // Only include changed fields
-    if (trimmedName !== (session.displayName || '')) {
-      updates.displayName = trimmedName
-    }
-    if (trimmedDesc !== (session.description || '')) {
-      updates.description = trimmedDesc
-    }
-
-    if (Object.keys(updates).length > 0) {
-      onUpdate(session.name, updates)
-    }
-    setIsEditing(false)
-  }
-
-  const handleEditCancel = () => {
-    setIsEditing(false)
-    setEditName(session.displayName || '')
-    setEditDescription(session.description || '')
-  }
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      handleEditCancel()
-    }
   }
 
   const displayTitle = session.displayName || session.name
@@ -187,51 +131,13 @@ export default function SessionCard({ session, onDelete, onUpdate, onReset }: Pr
 
   if (isEditing) {
     return (
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="bg-bg-surface rounded-lg p-4 border border-blue-500"
-      >
-        <form onSubmit={handleEditSubmit} className="space-y-3">
-          <div>
-            <label className="block text-xs text-text-tertiary mb-1">Display Name</label>
-            <input
-              type="text"
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-              onKeyDown={handleKeyDown}
-              autoFocus
-              className="w-full bg-control-bg text-text-primary px-2 py-1.5 rounded border border-border-subtle focus:border-blue-500 focus:outline-none text-sm"
-              placeholder={session.name}
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-text-tertiary mb-1">Description</label>
-            <input
-              type="text"
-              value={editDescription}
-              onChange={(e) => setEditDescription(e.target.value)}
-              onKeyDown={handleKeyDown}
-              className="w-full bg-control-bg text-text-primary px-2 py-1.5 rounded border border-border-subtle focus:border-blue-500 focus:outline-none text-sm"
-              placeholder="Optional description"
-            />
-          </div>
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={handleEditCancel}
-              className="px-3 py-1 text-sm text-text-tertiary hover:text-text-primary transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-3 py-1 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
-            >
-              Save
-            </button>
-          </div>
-        </form>
-      </div>
+      <SessionCardEditForm
+        sessionName={session.name}
+        displayName={session.displayName}
+        description={session.description}
+        onSave={onUpdate}
+        onCancel={() => setIsEditing(false)}
+      />
     )
   }
 
@@ -255,80 +161,25 @@ export default function SessionCard({ session, onDelete, onUpdate, onReset }: Pr
             {showOriginalName && <p className="text-xs text-text-muted truncate">{session.name}</p>}
           </div>
         </div>
-        <div className="flex items-center gap-1 flex-shrink-0">
-          {session.alive && (
-            <button
-              onClick={handleTogglePaused}
-              className={`transition-colors p-1 ${session.paused ? 'text-yellow-400 hover:text-green-400' : 'text-text-muted hover:text-yellow-400'}`}
-              title={session.paused ? 'Resume session' : 'Pause session'}
-            >
-              {session.paused ? <Play size={16} /> : <Pause size={16} />}
-            </button>
-          )}
-          <button
-            onClick={handleEditClick}
-            data-testid="session-edit-btn"
-            className="text-text-muted hover:text-blue-400 transition-colors p-1"
-            title="Edit session"
-          >
-            <Pencil size={16} />
-          </button>
-          {session.alive && (
-            <button
-              onClick={handleReset}
-              className="text-text-muted hover:text-yellow-400 transition-colors p-1"
-              title="Reset session"
-            >
-              <RefreshCw size={16} />
-            </button>
-          )}
-          <button
-            onClick={handleDelete}
-            data-testid="session-delete-btn"
-            className="text-text-muted hover:text-red-400 transition-colors p-1"
-            title="Delete session"
-          >
-            <X size={16} />
-          </button>
-        </div>
+        <SessionCardActions
+            alive={session.alive}
+            paused={session.paused}
+            onTogglePaused={handleTogglePaused}
+            onEdit={handleEditClick}
+            onReset={handleReset}
+            onDelete={handleDelete}
+          />
       </div>
 
-      {/* Worktree indicator */}
-      {session.type === 'worktree' && session.worktreeBranch && (
-        <div className="flex items-center gap-1.5 mb-1">
-          <GitBranch size={14} className="text-purple-400" />
-          <span className="text-xs text-purple-400 font-mono">{session.worktreeBranch}</span>
-          {session.worktreeParentRepo && (
-            <span className="text-xs text-text-muted">
-              from {session.worktreeParentRepo.split('/').pop()}
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* Agent provider badge (only when non-default) */}
-      {session.agentProvider && (
-        <div className="flex items-center gap-1.5 mb-1">
-          <Bot size={14} className="text-cyan-400" />
-          <span className="text-xs text-cyan-400">
-            {PROVIDER_LABELS[session.agentProvider] || session.agentProvider}
-          </span>
-        </div>
-      )}
-
-      {session.workdir && (
-        <p className="text-sm text-text-tertiary font-mono truncate mb-1" title={session.workdir}>
-          {session.workdir}
-        </p>
-      )}
-
-      {session.description && (
-        <p className="text-sm text-text-muted truncate mb-1">{session.description}</p>
-      )}
-
-      {session.status && (
-        <p className="text-sm text-blue-400 truncate mb-2 italic">{session.status}</p>
-      )}
+      <SessionCardBadges
+        type={session.type}
+        worktreeBranch={session.worktreeBranch}
+        worktreeParentRepo={session.worktreeParentRepo}
+        agentProvider={session.agentProvider}
+        workdir={session.workdir}
+        description={session.description}
+        status={session.status}
+      />
 
       {session.alive && session.idleState && session.idleState !== 'unknown' && (
         <div className={`flex items-center gap-1.5 ${colors.text} text-xs mb-2`}>
