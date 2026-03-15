@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { X, Bot } from 'lucide-react'
+import { X } from 'lucide-react'
 import { getApiBase } from '../config'
-import DirectoryPicker from './DirectoryPicker'
-import BranchPicker from './BranchPicker'
+import ModeToggle from './create-session/ModeToggle'
+import ExistingRepoForm from './create-session/ExistingRepoForm'
+import NewRepoForm from './create-session/NewRepoForm'
+import WorktreeForm from './create-session/WorktreeForm'
+import AgentProviderSelect from './create-session/AgentProviderSelect'
 
 interface Props {
   onClose: () => void
@@ -22,6 +25,14 @@ function toSlug(text: string): string {
     .replace(/\s+/g, '-') // Replace spaces with hyphens
     .replace(/-+/g, '-') // Collapse multiple hyphens
     .replace(/^-|-$/g, '') // Trim leading/trailing hyphens
+}
+
+function deriveSlug(name: string, mode: SessionMode, workdir: string, projectSlug: string, parentRepo: string): string {
+  const lastSegment = (path: string) => toSlug(path.split('/').filter(Boolean).pop() || '')
+  if (toSlug(name)) return toSlug(name)
+  if (mode === 'existing') return lastSegment(workdir)
+  if (mode === 'new') return projectSlug
+  return lastSegment(parentRepo)
 }
 
 export default function CreateSessionModal({ onClose, onCreated }: Props) {
@@ -67,13 +78,7 @@ export default function CreateSessionModal({ onClose, onCreated }: Props) {
   const projectSlug = toSlug(projectName)
   const newRepoPath = parentDir && projectSlug ? `${parentDir}/${projectSlug}` : ''
 
-  const slug =
-    toSlug(name) ||
-    (mode === 'existing'
-      ? toSlug(workdir.split('/').filter(Boolean).pop() || '')
-      : mode === 'new'
-        ? projectSlug
-        : toSlug(parentRepo.split('/').filter(Boolean).pop() || ''))
+  const slug = deriveSlug(name, mode, workdir, projectSlug, parentRepo)
 
   // Debounced directory validation for manual entry
   useEffect(() => {
@@ -103,13 +108,13 @@ export default function CreateSessionModal({ onClose, onCreated }: Props) {
       if (manualEntry && dirStatus === 'not_found') return false
       if (manualEntry && dirStatus === 'checking') return false
       return true
-    } else if (mode === 'new') {
-      return projectSlug !== '' && parentDir.trim() !== ''
-    } else {
-      return (
-        parentRepo.trim() !== '' && (createNewBranch ? newBranchName.trim() !== '' : branch !== '')
-      )
     }
+    if (mode === 'new') {
+      return projectSlug !== '' && parentDir.trim() !== ''
+    }
+    return (
+      parentRepo.trim() !== '' && (createNewBranch ? newBranchName.trim() !== '' : branch !== '')
+    )
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -125,7 +130,6 @@ export default function CreateSessionModal({ onClose, onCreated }: Props) {
         description: description.trim(),
       }
 
-      // Include agent_provider only when non-default
       if (agentProvider && agentProvider !== defaultAgent) {
         body.agent_provider = agentProvider
       }
@@ -159,7 +163,6 @@ export default function CreateSessionModal({ onClose, onCreated }: Props) {
 
       const data = await res.json()
       if (data.existing) {
-        // Session already exists for this repo - navigate to it
         navigate(`/session/${data.name}`)
         onClose()
         return
@@ -192,33 +195,7 @@ export default function CreateSessionModal({ onClose, onCreated }: Props) {
         </div>
 
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
-          {/* Mode Toggle */}
-          <div>
-            <label className="block text-sm text-text-tertiary mb-2">Session Type</label>
-            <div className="flex gap-2">
-              {(
-                [
-                  { key: 'existing', label: 'Existing Repo', desc: 'Use existing directory' },
-                  { key: 'new', label: 'New Repo', desc: 'Create new git repo' },
-                  { key: 'worktree', label: 'Worktree', desc: 'Create git worktree' },
-                ] as const
-              ).map((opt) => (
-                <button
-                  key={opt.key}
-                  type="button"
-                  onClick={() => setMode(opt.key)}
-                  className={`flex-1 px-3 py-2 text-sm rounded transition-colors ${
-                    mode === opt.key
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-control-bg text-text-tertiary hover:text-text-primary hover:bg-control-bg-hover'
-                  }`}
-                >
-                  <div className="font-medium">{opt.label}</div>
-                  <div className="text-xs opacity-75 mt-0.5">{opt.desc}</div>
-                </button>
-              ))}
-            </div>
-          </div>
+          <ModeToggle mode={mode} onModeChange={setMode} />
 
           {mode !== 'new' && (
             /* Session Name - not shown for New Repo (project name drives it) */
@@ -247,146 +224,35 @@ export default function CreateSessionModal({ onClose, onCreated }: Props) {
           )}
 
           {mode === 'existing' ? (
-            /* Existing Repo Mode - Working Directory */
-            <div>
-              <label className="block text-sm text-text-tertiary mb-1">Working Directory</label>
-              {manualEntry ? (
-                <div>
-                  <input
-                    type="text"
-                    value={workdir}
-                    onChange={(e) => setWorkdir(e.target.value)}
-                    placeholder="e.g., /home/user/myproject"
-                    data-testid="workdir-input"
-                    className="w-full px-3 py-2 bg-input-bg text-text-primary rounded border border-input-border focus:outline-none focus:border-blue-500 font-mono text-sm"
-                    required
-                  />
-                  {dirStatus === 'checking' && (
-                    <p className="text-xs text-text-muted mt-1">Checking...</p>
-                  )}
-                  {dirStatus === 'exists' && (
-                    <p className="text-xs text-green-400 mt-1">Directory exists</p>
-                  )}
-                  {dirStatus === 'not_found' && (
-                    <p className="text-xs text-yellow-400 mt-1">
-                      Directory not found — use the &quot;New Repo&quot; tab to create one
-                    </p>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setManualEntry(false)
-                      setWorkdir('')
-                    }}
-                    className="mt-2 text-xs text-blue-400 hover:text-blue-300 transition-colors"
-                  >
-                    Search repositories instead
-                  </button>
-                </div>
-              ) : (
-                <DirectoryPicker
-                  value={workdir}
-                  onChange={setWorkdir}
-                  onManualEntry={() => setManualEntry(true)}
-                />
-              )}
-            </div>
+            <ExistingRepoForm
+              workdir={workdir}
+              onWorkdirChange={setWorkdir}
+              manualEntry={manualEntry}
+              onManualEntryChange={setManualEntry}
+              dirStatus={dirStatus}
+            />
           ) : mode === 'new' ? (
-            /* New Repo Mode */
-            <>
-              <div>
-                <label className="block text-sm text-text-tertiary mb-1">Project Name</label>
-                <input
-                  type="text"
-                  value={projectName}
-                  onChange={(e) => setProjectName(e.target.value)}
-                  placeholder="e.g., my-new-project"
-                  data-testid="project-name-input"
-                  className="w-full px-3 py-2 bg-input-bg text-text-primary rounded border border-input-border focus:outline-none focus:border-blue-500"
-                  autoFocus
-                />
-                {projectSlug && projectSlug !== projectName && (
-                  <p className="text-xs text-text-muted mt-1">
-                    Directory name:{' '}
-                    <span className="text-text-tertiary font-mono">{projectSlug}</span>
-                  </p>
-                )}
-              </div>
-              <div>
-                <label className="block text-sm text-text-tertiary mb-1">Parent Directory</label>
-                {editingParentDir ? (
-                  <div>
-                    <input
-                      type="text"
-                      value={parentDir}
-                      onChange={(e) => setParentDir(e.target.value)}
-                      placeholder="e.g., /home/user/src"
-                      className="w-full px-3 py-2 bg-input-bg text-text-primary rounded border border-input-border focus:outline-none focus:border-blue-500 font-mono text-sm"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setEditingParentDir(false)}
-                      className="mt-1 text-xs text-blue-400 hover:text-blue-300 transition-colors"
-                    >
-                      Done
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-text-primary font-mono truncate">
-                      {parentDir || '(not set)'}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setEditingParentDir(true)}
-                      className="text-xs text-blue-400 hover:text-blue-300 transition-colors shrink-0"
-                    >
-                      Change
-                    </button>
-                  </div>
-                )}
-              </div>
-              {newRepoPath && (
-                <div className="px-3 py-2 bg-control-bg rounded border border-border-default">
-                  <p className="text-xs text-text-muted mb-0.5">Will create:</p>
-                  <p className="text-sm text-text-primary font-mono break-all">{newRepoPath}</p>
-                </div>
-              )}
-              {slug && (
-                <p className="text-xs text-text-muted">
-                  Session ID: <span className="text-text-tertiary font-mono">{slug}</span>
-                </p>
-              )}
-            </>
+            <NewRepoForm
+              projectName={projectName}
+              onProjectNameChange={setProjectName}
+              projectSlug={projectSlug}
+              parentDir={parentDir}
+              onParentDirChange={setParentDir}
+              editingParentDir={editingParentDir}
+              onEditingParentDirChange={setEditingParentDir}
+              newRepoPath={newRepoPath}
+              slug={slug}
+            />
           ) : (
-            /* Worktree Mode */
-            <>
-              <div>
-                <label className="block text-sm text-text-tertiary mb-1">Parent Repository</label>
-                <DirectoryPicker
-                  value={parentRepo}
-                  onChange={(path) => {
-                    setParentRepo(path)
-                    setBranch('')
-                  }}
-                  onManualEntry={() => {}}
-                />
-              </div>
-
-              {parentRepo && (
-                <div>
-                  <label className="block text-sm text-text-tertiary mb-1">Branch</label>
-                  <BranchPicker
-                    repoPath={parentRepo}
-                    value={branch}
-                    onChange={setBranch}
-                    onCreateNew={setNewBranchName}
-                    createNewBranch={createNewBranch}
-                    onCreateNewBranchChange={setCreateNewBranch}
-                  />
-                </div>
-              )}
-            </>
+            <WorktreeForm
+              parentRepo={parentRepo}
+              onParentRepoChange={setParentRepo}
+              branch={branch}
+              onBranchChange={setBranch}
+              createNewBranch={createNewBranch}
+              onCreateNewBranchChange={setCreateNewBranch}
+              onNewBranchNameChange={setNewBranchName}
+            />
           )}
 
           {/* Description */}
@@ -401,27 +267,12 @@ export default function CreateSessionModal({ onClose, onCreated }: Props) {
             />
           </div>
 
-          {/* Agent Provider */}
-          {Object.keys(agentProviders).length > 1 && (
-            <div>
-              <label className="block text-sm text-text-tertiary mb-1">
-                <Bot size={14} className="inline mr-1 -mt-0.5" />
-                Agent
-              </label>
-              <select
-                value={agentProvider || defaultAgent}
-                onChange={(e) => setAgentProvider(e.target.value)}
-                className="w-full px-3 py-2 bg-input-bg text-text-primary rounded border border-input-border focus:outline-none focus:border-blue-500"
-              >
-                {Object.entries(agentProviders).map(([key, provider]) => (
-                  <option key={key} value={key}>
-                    {provider.label}
-                    {key === defaultAgent ? ' (default)' : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+          <AgentProviderSelect
+            agentProviders={agentProviders}
+            agentProvider={agentProvider}
+            defaultAgent={defaultAgent}
+            onAgentProviderChange={setAgentProvider}
+          />
 
           {error && <div className="text-red-400 text-sm">{error}</div>}
 
