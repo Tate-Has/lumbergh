@@ -1,8 +1,8 @@
 """
-Idle state detector for Claude Code terminal sessions.
+Idle state detector for agent terminal sessions.
 
-Analyzes terminal output to detect whether Claude is idle (waiting for input)
-or actively working on a task.
+Analyzes terminal output to detect whether the agent is idle (waiting for input)
+or actively working on a task.  Supports Claude Code, Cursor CLI, and other providers.
 """
 
 import re
@@ -15,7 +15,7 @@ class SessionState(Enum):
     UNKNOWN = "unknown"
     IDLE = "idle"  # Waiting for user input
     WORKING = "working"
-    ERROR = "error"  # Claude Code exited, crashed, or hit a rate limit
+    ERROR = "error"  # Agent exited, crashed, or hit a rate limit
     STALLED = "stalled"  # Working for too long without progress
 
 
@@ -30,10 +30,11 @@ class IdleDetectionResult:
 
 class IdleDetector:
     """
-    Detects whether a Claude Code session is idle or working.
+    Detects whether an agent session is idle or working.
 
     Maintains a rolling buffer of terminal lines and analyzes patterns
-    to determine the current state.
+    to determine the current state.  Patterns cover Claude Code, Cursor CLI,
+    and other supported providers.
     """
 
     # Spinner characters used by Claude Code
@@ -46,18 +47,21 @@ class IdleDetector:
         re.compile(r"Running…|Executing"),  # Tool execution
         re.compile(r"thought for \d+s"),  # "thought for Xs" indicator
         re.compile(r"esc to interrupt", re.IGNORECASE),  # Actively processing
+        re.compile(r"Reading|Writing|Searching", re.IGNORECASE),  # Cursor agent tool usage
     ]
 
     # Patterns indicating idle state (waiting for user input)
     IDLE_PATTERNS = [
-        re.compile(r"\u276f"),  # Claude Code prompt character
+        re.compile(r"\u276f"),  # Agent prompt character (U+276F)
         re.compile(r"Do you want to proceed\?"),
         re.compile(r"Esc to cancel"),
         re.compile(r"\? for shortcuts"),
         re.compile(r"Yes.*No", re.DOTALL),  # Yes/No choice
+        re.compile(r"Shift\+Tab"),  # Cursor CLI mode switching hint
+        re.compile(r"\(y/n\)"),  # Command approval prompt (Cursor)
     ]
 
-    # Patterns indicating an error state (Claude Code exited, rate limited, crashed)
+    # Patterns indicating an error state (agent exited, rate limited, crashed)
     ERROR_PATTERNS = [
         re.compile(r"rate limit|rate_limit", re.IGNORECASE),
         re.compile(r"429|too many requests", re.IGNORECASE),
@@ -66,14 +70,14 @@ class IdleDetector:
         re.compile(r"unexpected error|Connection error", re.IGNORECASE),
     ]
 
-    # Shell prompt patterns (Claude Code exited, user is back at their shell)
+    # Shell prompt patterns (agent exited, user is back at their shell)
     SHELL_PROMPT_PATTERNS = [
         re.compile(r"[\$%#]\s*$"),  # Ends with $ % or #
         re.compile(r"@.*[\$%#]\s*$"),  # user@host$
         re.compile(r"^\s*\w+@[\w.-]+[:\s]"),  # user@hostname:
     ]
 
-    # Pattern for Claude Code prompt (idle state) - not used anymore but kept for reference
+    # Agent prompt pattern (idle state)
     PROMPT_PATTERN = re.compile(r"^[\u276f>]\s*$")
 
     # Hysteresis settings
