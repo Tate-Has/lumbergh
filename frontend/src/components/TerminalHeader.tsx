@@ -22,6 +22,7 @@ interface Props {
   onSendViaApi: (text: string) => void
   onSendTmuxCommand: (command: string) => void
   onFit: () => void
+  onFocusTerminal?: () => void
   onBack?: () => void
   onReset?: () => void
   onCycleSession?: (direction: 'next' | 'prev') => void
@@ -41,6 +42,7 @@ export default function TerminalHeader({
   onSendViaApi,
   onSendTmuxCommand,
   onFit,
+  onFocusTerminal,
   onBack,
   onReset,
   onCycleSession,
@@ -120,7 +122,10 @@ export default function TerminalHeader({
             1
           </button>
           <button
-            onClick={() => onSendViaApi('/clear')}
+            onClick={() => {
+              onSendViaApi('/clear')
+              onFocusTerminal?.()
+            }}
             disabled={!isConnected}
             className="px-2 py-1 text-xs bg-control-bg hover:bg-control-bg-hover disabled:opacity-50 rounded"
             title="Send /clear"

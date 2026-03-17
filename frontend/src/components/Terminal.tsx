@@ -425,6 +425,7 @@ export default function Terminal({
         onToggleScrollMode={toggleScrollMode}
         onSendRaw={(data) => sendRef.current(data)}
         onSendViaApi={sendViaApi}
+        onFocusTerminal={() => termRef.current?.focus()}
         onSendTmuxCommand={sendTmuxCommand}
         onFit={handleFit}
         onBack={onBack}
