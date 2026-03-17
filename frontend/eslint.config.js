@@ -25,7 +25,7 @@ export default defineConfig([
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
       ],
-      complexity: ['warn', 15],
+      complexity: ['error', 15],
     },
   },
   eslintConfigPrettier,
