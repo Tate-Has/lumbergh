@@ -29,8 +29,9 @@ def _git_fingerprint(workdir: Path) -> tuple:
     """Fingerprint of git state using filesystem metadata + worktree status.
 
     Checks mtime of .git/HEAD, .git/index, and .git/refs/ (recursive) for
-    commit/staging/branch changes. Also hashes `git status --porcelain` output
-    to detect unstaged working tree changes (modified, untracked, deleted files).
+    commit/staging/branch changes. Also hashes ``git status --porcelain``
+    output to detect unstaged working tree changes (modified, untracked,
+    deleted files).
     """
     git_dir = workdir / ".git"
     if not git_dir.is_dir():
