@@ -27,6 +27,19 @@ export function useLocalStorageDraft(
   })
 
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [prevKey, setPrevKey] = useState(storageKey)
+
+  // Re-read from localStorage when the key changes (e.g. session switch)
+  // Uses "adjust state during render" pattern to avoid cascading effects
+  if (prevKey !== storageKey) {
+    setPrevKey(storageKey)
+    try {
+      const stored = localStorage.getItem(storageKey)
+      setValue(stored !== null ? stored : initialValue)
+    } catch {
+      setValue(initialValue)
+    }
+  }
 
   // Debounced write to localStorage
   useEffect(() => {

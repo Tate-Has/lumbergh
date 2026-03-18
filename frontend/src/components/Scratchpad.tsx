@@ -15,19 +15,23 @@ export default function Scratchpad({ sessionName, onFocusTerminal }: ScratchpadP
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const selectedTextRef = useRef('')
-  const contentRef = useRef(content)
+  const [prevSession, setPrevSession] = useState(sessionName)
 
-  useEffect(() => {
-    contentRef.current = content
-  }, [content])
+  // Reset loading state when session changes (adjust-state-during-render pattern)
+  if (prevSession !== sessionName) {
+    setPrevSession(sessionName)
+    setLoading(true)
+  }
 
-  // Fetch content on mount - localStorage draft takes priority over backend
+  // Fetch content on session change - localStorage draft takes priority over backend
   useEffect(() => {
     fetch(`${getApiBase()}/sessions/${sessionName}/scratchpad`)
       .then((res) => res.json())
       .then((data) => {
-        // Only use backend content if we don't have a localStorage draft
-        if (!contentRef.current) {
+        // Only use backend content if we don't have a localStorage draft for this session
+        const draftKey = `lumbergh-draft:scratchpad:${sessionName}`
+        const hasDraft = localStorage.getItem(draftKey) !== null
+        if (!hasDraft) {
           setContent(data.content || '')
         }
         setLoading(false)

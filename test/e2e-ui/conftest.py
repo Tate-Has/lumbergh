@@ -71,6 +71,24 @@ def _ensure_test_session(base_url, repo_dir):
         client.delete(f"/api/sessions/{session_name}")
 
 
+@pytest.fixture(scope="session")
+def _ensure_second_session(base_url, repo_dir):
+    """Create a second test session for multi-session UI tests."""
+    session_name = "e2e-ui-session-2"
+    with httpx.Client(base_url=base_url, timeout=30.0) as client:
+        client.delete(f"/api/sessions/{session_name}")
+
+        r = client.post(
+            "/api/sessions",
+            json={"name": session_name, "workdir": f"{repo_dir}/test-repo-2"},
+        )
+        assert r.status_code == 200, f"Failed to create second session: {r.text}"
+
+        yield session_name
+
+        client.delete(f"/api/sessions/{session_name}")
+
+
 # ── Shared Step Definitions (available to all feature files) ──────────
 
 
@@ -106,3 +124,9 @@ def click_tab(page: Page, tab_name: str):
     tab = page.locator(f'[data-testid="tab-{tab_name}"]')
     tab.click()
     page.wait_for_timeout(500)
+
+
+@when(parsers.parse('I navigate to the session page for "{name}"'))
+def navigate_to_session(page: Page, base_url: str, name: str):
+    page.goto(f"{base_url}/session/{name}")
+    page.wait_for_load_state("networkidle")
