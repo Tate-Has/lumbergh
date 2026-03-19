@@ -48,6 +48,9 @@ uv.lock
 # MkDocs build output
 site/
 
+# Eval data
+data/
+
 # Lumbergh package build artifacts
 backend/lumbergh/frontend_dist/
 !backend/lumbergh/frontend_dist/.gitkeep
