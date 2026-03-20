@@ -16,52 +16,34 @@ from lumbergh.db_utils import (
 )
 
 # Default prompt for commit message generation
-DEFAULT_COMMIT_MESSAGE_PROMPT = """Generate a git commit message following the Conventional Commits specification.
+# NOTE: This is only used when user hasn't customized the prompt.
+# The actual generation logic uses build_commit_prompt() from commit_message.py
+# which handles adaptive sizing and preprocessing.
+DEFAULT_COMMIT_MESSAGE_PROMPT = """You are a commit message generator. Analyze the diff briefly, then output a YAML block.
 
-FORMAT:
-<type>(<scope>): <description>
+Analyze this diff step by step, then generate a commit message.
 
-[optional body]
+Step 1: List the files changed and what each change does (1 line each)
+Step 2: Identify the overall purpose — is this adding something new (feat), fixing something broken (fix), or reorganizing (refactor)?
+Step 3: Output the commit message as YAML:
 
-TYPES (pick one):
-- feat: new feature or capability
-- fix: bug fix
-- refactor: code change that neither fixes a bug nor adds a feature
-- docs: documentation only
-- test: adding or updating tests
-- chore: maintenance tasks (deps, config, build)
-- style: formatting, whitespace (no logic change)
-- perf: performance improvement
+Types: feat, fix, refactor, docs, test, chore, style, perf
 
-RULES:
-- Subject line MUST be under 50 characters (hard limit)
-- Use imperative mood: "add" not "added" or "adds"
-- Scope is optional but helpful (e.g., api, ui, auth)
-- No period at end of subject line
-- Body is optional; use for complex changes to explain WHY
-
-EXAMPLES:
-- feat(ai): add commit message generation
-- fix: prevent crash on empty diff
-- refactor(providers): extract base class for AI providers
-- chore: update dependencies
+```yaml
+type: <type>
+scope: <short area like ui, api, auth — omit if unclear>
+description: <imperative mood, under 50 chars, no period>
+```
 
 {{#if user_messages}}
 User instructions that led to these changes:
 {{user_messages}}
 {{/if}}
 
-{{#if file_summary}}
-Files changed:
-{{file_summary}}
-{{/if}}
-
 Diff:
 ```
 {{git_diff}}
-```
-
-Respond with ONLY the commit message. No markdown, no explanation."""
+```"""
 
 # Prompt for summarizing a todo into a short status
 STATUS_SUMMARY_PROMPT = """Summarize this task in 2-3 words maximum.

@@ -108,6 +108,58 @@ def truncate(diff: str, max_chars: int = 8000) -> str:
     return diff[:max_chars] + "\n\n... [truncated]"
 
 
+def extract_diff_metadata(diff: str) -> str:
+    """Extract file list and line stats from a diff, returned as a text summary."""
+    hunks = _split_hunks(diff)
+    files = []
+    total_added = 0
+    total_removed = 0
+    for filename, text in hunks:
+        added = text.count("\n+") - text.count("\n+++")
+        removed = text.count("\n-") - text.count("\n---")
+        total_added += added
+        total_removed += removed
+        files.append(filename)
+    dirs = set()
+    for f in files:
+        parts = f.split("/")
+        if len(parts) > 1:
+            dirs.add(parts[0])
+    lines = [
+        f"Files changed ({len(files)}): {', '.join(files)}",
+        f"Lines: +{total_added} -{total_removed}",
+        f"Top-level dirs: {', '.join(sorted(dirs)) or 'root'}",
+    ]
+    return "\n".join(lines)
+
+
+def suggest_scope(diff: str) -> str:
+    """Heuristically suggest a scope from file paths in the diff."""
+    hunks = _split_hunks(diff)
+    files = [f for f, _ in hunks]
+    if not files:
+        return ""
+
+    # Check if all files are in one area
+    areas = set()
+    for f in files:
+        parts = f.split("/")
+        if "frontend" in parts or "src/components" in "/".join(parts):
+            areas.add("ui")
+        elif "backend" in parts or "routers" in "/".join(parts):
+            areas.add("api")
+        elif "test" in parts or "e2e" in "/".join(parts) or f.endswith("_test.py") or f.endswith(".test.ts"):
+            areas.add("test")
+        elif f.endswith(".md"):
+            areas.add("docs")
+        elif f.endswith(".json") or f.endswith(".toml") or f.endswith(".yaml") or f.endswith(".yml"):
+            areas.add("config")
+
+    if len(areas) == 1:
+        return areas.pop()
+    return ""
+
+
 # Registry for config-driven pipeline
 PREPROCESSORS = {
     "filter_lockfiles": filter_lockfiles,

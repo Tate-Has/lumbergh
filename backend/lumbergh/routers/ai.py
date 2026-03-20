@@ -122,40 +122,38 @@ async def generate_commit_message(
     project_path: str | None = None,
 ) -> GenerateCommitMessageResponse:
     """Generate a commit message using the configured AI provider."""
+    from lumbergh.ai.commit_message import build_commit_prompt, parse_commit_response
+
     settings = get_settings()
     ai_settings = settings.get("ai", {})
 
-    # Get the prompt template
+    # Check for custom prompt override
     project = Path(project_path) if project_path else None
-    template = get_ai_prompt("commit_message", project)
+    custom_template = get_ai_prompt("commit_message", project)
 
-    if not template:
-        raise HTTPException(status_code=500, detail="No commit message prompt template found")
-
-    # Render the prompt with variables
-    prompt = render_prompt(
-        template,
-        {
-            "git_diff": request.diff,
-            "file_summary": request.file_summary or "",
-        },
-    )
+    # Use adaptive prompt builder (handles preprocessing + truncation)
+    # unless user has a custom template
+    if custom_template and not custom_template.startswith("You are a commit message generator."):
+        # User has customized the prompt — use their template as-is
+        prompt = render_prompt(
+            custom_template,
+            {
+                "git_diff": request.diff,
+                "file_summary": request.file_summary or "",
+            },
+        )
+    else:
+        # Use the adaptive v17-based prompt builder
+        prompt = build_commit_prompt(
+            request.diff,
+            file_summary=request.file_summary or "",
+        )
 
     # Get the AI provider and generate
     try:
         provider = get_provider(ai_settings)
         message = await provider.complete(prompt)
-        # Clean up the response - remove any markdown code blocks if present
-        message = message.strip()
-        if message.startswith("```"):
-            lines = message.split("\n")
-            # Remove first and last lines if they're code fence markers
-            if lines[0].startswith("```"):
-                lines = lines[1:]
-            if lines and lines[-1].strip() == "```":
-                lines = lines[:-1]
-            message = "\n".join(lines).strip()
-
+        message = parse_commit_response(message)
         return GenerateCommitMessageResponse(message=message)
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"AI generation failed: {e}")

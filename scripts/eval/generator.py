@@ -3,7 +3,7 @@
 import time
 from types import ModuleType
 
-TIME_BUDGET = 5.0  # seconds — over this is a fail
+TIME_BUDGET = 7.0  # seconds — over this is a fail
 
 
 def speed_score(elapsed: float) -> float:

@@ -1492,7 +1492,7 @@ async def session_clear_message_buffer(name: str):
 @router.post("/{name}/ai/generate-commit-message")
 async def session_generate_commit_message(name: str):
     """Generate a commit message using AI for the session's current changes."""
-    from lumbergh.ai.prompts import get_ai_prompt, render_prompt
+    from lumbergh.ai.commit_message import build_commit_prompt, parse_commit_response
     from lumbergh.ai.providers import get_provider
     from lumbergh.routers.settings import get_settings
 
@@ -1511,30 +1511,19 @@ async def session_generate_commit_message(name: str):
             f"- {f['path']} ({f.get('additions', 0)}+/{f.get('deletions', 0)}-)" for f in files
         )
 
-        # Combine all diffs (truncate if too long)
+        # Combine all diffs (preprocessing + truncation handled by build_commit_prompt)
         all_diffs = "\n\n".join(f["diff"] for f in files if f.get("diff"))
-        max_diff_length = 8000  # Limit to avoid token limits
-        if len(all_diffs) > max_diff_length:
-            all_diffs = all_diffs[:max_diff_length] + "\n\n... (truncated)"
-
-        # Get the prompt template
-        template = get_ai_prompt("commit_message", workdir)
-        if not template:
-            raise HTTPException(status_code=500, detail="No commit message prompt template found")
 
         # Get user instruction context
         from lumbergh.message_buffer import message_buffer
 
         user_messages = message_buffer.get_formatted(name)
 
-        # Render the prompt
-        prompt = render_prompt(
-            template,
-            {
-                "git_diff": all_diffs,
-                "file_summary": file_summary,
-                "user_messages": user_messages,
-            },
+        # Build adaptive prompt (handles preprocessing, truncation, prompt selection)
+        prompt = build_commit_prompt(
+            all_diffs,
+            file_summary=file_summary,
+            user_messages=user_messages,
         )
 
         # Get AI provider and generate
@@ -1543,16 +1532,7 @@ async def session_generate_commit_message(name: str):
         provider = get_provider(ai_settings)
 
         message = await provider.complete(prompt)
-
-        # Clean up response
-        message = message.strip()
-        if message.startswith("```"):
-            lines = message.split("\n")
-            if lines[0].startswith("```"):
-                lines = lines[1:]
-            if lines and lines[-1].strip() == "```":
-                lines = lines[:-1]
-            message = "\n".join(lines).strip()
+        message = parse_commit_response(message)
 
         return {"message": message}
 
