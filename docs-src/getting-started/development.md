@@ -35,10 +35,6 @@ Your browser opens automatically to [http://localhost:5420](http://localhost:542
 If you prefer to start services yourself:
 
 ```bash
-# Start everything at once
-./start.sh
-
-# Or run separately
 ./backend/start.sh   # Backend on :8420
 ./frontend/start.sh  # Frontend on :5420
 ```

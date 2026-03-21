@@ -73,24 +73,22 @@ lumbergh/
 │   ├── e2e/                # API E2E tests (httpx + pytest)
 │   ├── e2e-ui/             # UI E2E tests (Playwright + pytest-bdd)
 │   └── e2e-vm.sh           # QEMU VM test runner
-├── start.sh
+├── bootstrap.sh
 └── docs/
 ```
 
 ## Quick Start
 
 ```bash
-# First time only
-cd frontend && npm install && cd ..
-
-# Start everything (both bind to 0.0.0.0)
-./start.sh
+./bootstrap.sh
 ```
 
-Or run separately:
+This creates a tmux session with claude, backend (port 8420), and frontend (port 5420) windows and opens the browser.
+
+Or run services separately:
 ```bash
-./backend/start.sh   # Backend on :8000
-./frontend/start.sh  # Frontend on :5173
+./backend/start.sh   # Backend on :8420
+./frontend/start.sh  # Frontend on :5420
 ```
 
 ## Linting
