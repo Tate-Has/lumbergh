@@ -161,6 +161,10 @@ export default function SessionDetail() {
     [name, navigate]
   )
 
+  const handleBack = useCallback(() => {
+    navigate('/')
+  }, [navigate])
+
   const handleReset = useCallback(async () => {
     if (!name) return
     try {
@@ -308,7 +312,7 @@ export default function SessionDetail() {
         <Terminal
           sessionName={name}
           onFocusReady={handleFocusReady}
-          onBack={isDesktop ? () => navigate('/') : undefined}
+          onBack={isDesktop ? handleBack : undefined}
           onReset={handleReset}
           onCycleSession={handleCycleSession}
           isVisible={isDesktop || mobileTab === 'terminal'}

@@ -173,10 +173,38 @@ class SessionManager:
         for client in disconnected:
             managed.clients.discard(client)
 
+    async def _batch_drain(
+        self,
+        initial_data: bytes,
+        managed: ManagedSession,
+        data_ready: asyncio.Event,
+    ) -> bytes:
+        """Accumulate PTY output for up to ~16ms to reduce WebSocket message frequency."""
+        batch_interval = 0.016  # ~16ms (one frame at 60fps)
+        max_batch_size = 32768
+
+        buffer = bytearray(initial_data)
+        try:
+            await asyncio.wait_for(data_ready.wait(), timeout=batch_interval)
+            data_ready.clear()
+            while len(buffer) < max_batch_size:
+                chunk = managed.pty.read()
+                if not chunk:  # None (not ready) or b"" (EOF)
+                    break
+                buffer.extend(chunk)
+                if not data_ready.is_set():
+                    break
+                data_ready.clear()
+        except TimeoutError:
+            pass  # Batch window expired, send what we have
+        return bytes(buffer)
+
     async def _broadcast_loop(self, session_name: str) -> None:
         """Read from PTY and broadcast to all connected clients.
 
-        Uses loop.add_reader (epoll) for zero-latency, zero-overhead fd watching.
+        Uses loop.add_reader (epoll) for fd watching with output batching.
+        Accumulates data for up to ~16ms before sending to reduce WebSocket
+        message frequency during rapid terminal output (e.g. Claude streaming).
         """
         managed = self._sessions.get(session_name)
         if not managed or managed.pty.master_fd is None:
@@ -207,8 +235,11 @@ class SessionManager:
                     continue
 
                 consecutive_eof = 0
-                if data:
-                    await self._broadcast_data(managed, data)
+                if not data:
+                    continue
+
+                batched = await self._batch_drain(data, managed, data_ready)
+                await self._broadcast_data(managed, batched)
 
         except asyncio.CancelledError:
             pass

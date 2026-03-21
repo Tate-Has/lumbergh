@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback, useState } from 'react'
+import { useRef, useEffect, useCallback, useState, memo } from 'react'
 import { Terminal as XTerm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
@@ -19,7 +19,7 @@ interface TerminalProps {
   isVisible?: boolean
 }
 
-export default function Terminal({
+export default memo(function Terminal({
   sessionName,
   onSendReady,
   onFocusReady,
@@ -510,4 +510,4 @@ export default function Terminal({
       </div>
     </div>
   )
-}
+})
