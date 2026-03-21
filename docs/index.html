@@ -988,6 +988,27 @@ document.querySelectorAll('.copy-btn').forEach(btn => {
     }
   });
 });
+
+/* ---- Analytics ---- */
+(function() {
+  var API = 'https://lumbergh.jc.turbo.inc/api/telemetry/web';
+  var vid = localStorage.getItem('lb_vid');
+  if (!vid) { vid = crypto.randomUUID(); localStorage.setItem('lb_vid', vid); }
+
+  function send(events) {
+    try {
+      fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ visitor_id: vid, events: events }), keepalive: true });
+    } catch(e) {}
+  }
+
+  send([{ event: 'page_view', url: location.href, referrer: document.referrer, properties: {} }]);
+
+  document.querySelectorAll('.copy-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      send([{ event: 'install_click', url: location.href, referrer: document.referrer, properties: { command: btn.dataset.copy } }]);
+    });
+  });
+})();
 </script>
 
 </body>
