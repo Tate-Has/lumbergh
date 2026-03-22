@@ -164,6 +164,18 @@ async def proxy_install(code: str):
     return await _cloud_json("POST", f"/api/prompts/{code}/install")
 
 
+class LintPromptRequest(BaseModel):
+    prompt: str
+    name: str = ""
+    mode: str = "quick"
+
+
+@router.post("/prompts/lint")
+async def proxy_lint_prompt(body: LintPromptRequest):
+    """Forward prompt lint request to cloud."""
+    return await _cloud_json("POST", "/api/prompts/lint", json=body.model_dump(), timeout=90.0)
+
+
 @router.post("/disconnect")
 async def disconnect():
     """Clear cloud token and username from settings."""

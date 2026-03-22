@@ -19,6 +19,11 @@ import {
   Share2,
   Link,
   Settings,
+  Loader2,
+  AlertTriangle,
+  AlertCircle,
+  Info,
+  Sparkles,
 } from 'lucide-react'
 import { getApiBase } from '../config'
 import { useLocalStorageDraft } from '../hooks/useLocalStorageDraft'
@@ -50,6 +55,24 @@ interface CommunityPrompt {
   install_count: number
   version: number
   is_own?: boolean
+}
+
+interface LintCheck {
+  rule: string
+  level: 'pass' | 'info' | 'warning' | 'error'
+  message: string
+}
+interface LintAIAnalysis {
+  clarity: number
+  specificity: number
+  suggestions: string[]
+}
+interface LintResult {
+  score: number
+  max_score: number
+  mode: string
+  checks: LintCheck[]
+  ai_analysis: LintAIAnalysis | null
 }
 
 // --- Cloud Badge Popover ---
@@ -843,6 +866,9 @@ export default function PromptTemplates({ sessionName, onFocusTerminal }: Prompt
   const [searchQuery, setSearchQuery] = useState(
     () => sessionStorage.getItem('lb:community-search') || ''
   )
+  const [lintResult, setLintResult] = useState<LintResult | null>(null)
+  const [lintLoading, setLintLoading] = useState(false)
+  const [lintMode, setLintMode] = useState<'quick' | 'deep'>('quick')
   const [importCode, setImportCode] = useState('')
   const [importPreview, setImportPreview] = useState<CommunityPrompt | null>(null)
   const [importLoading, setImportLoading] = useState(false)
@@ -1126,6 +1152,30 @@ export default function PromptTemplates({ sessionName, onFocusTerminal }: Prompt
     clearFormPrompt()
     setEditingTemplate(null)
     setShowForm(null)
+    setLintResult(null)
+  }
+
+  const handleAnalyzePrompt = async () => {
+    if (!formPrompt.trim() || lintLoading) return
+    setLintLoading(true)
+    setLintResult(null)
+    try {
+      const resp = await fetch(`${getApiBase()}/cloud/prompts/lint`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: formPrompt, name: formName, mode: lintMode }),
+      })
+      if (!resp.ok) {
+        const err = await resp.text()
+        console.error('Lint failed:', err)
+        return
+      }
+      setLintResult(await resp.json())
+    } catch (e) {
+      console.error('Lint request failed:', e)
+    } finally {
+      setLintLoading(false)
+    }
   }
 
   const handleEdit = (template: PromptTemplate, scope: 'project' | 'global') => {
@@ -1133,6 +1183,7 @@ export default function PromptTemplates({ sessionName, onFocusTerminal }: Prompt
     setFormName(template.name)
     setFormPrompt(template.prompt)
     setShowForm(scope)
+    setLintResult(null)
   }
 
   const handleCancelEdit = () => {
@@ -1140,6 +1191,7 @@ export default function PromptTemplates({ sessionName, onFocusTerminal }: Prompt
     clearFormName()
     clearFormPrompt()
     setShowForm(null)
+    setLintResult(null)
   }
 
   const handleStartAdd = (scope: 'project' | 'global') => {
@@ -1483,6 +1535,79 @@ export default function PromptTemplates({ sessionName, onFocusTerminal }: Prompt
             <span>Editing content will detach this prompt from its cloud source</span>
           </div>
         )}
+        {lintResult && (
+          <div className="mb-2 p-2.5 rounded border border-border-default bg-bg-base text-sm">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <span
+                  className={`text-lg font-bold ${
+                    lintResult.score >= 7
+                      ? 'text-green-400'
+                      : lintResult.score >= 4
+                        ? 'text-yellow-400'
+                        : 'text-red-400'
+                  }`}
+                >
+                  {lintResult.score}/{lintResult.max_score}
+                </span>
+                <span className="text-xs text-text-muted">({lintResult.mode} analysis)</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLintResult(null)}
+                className="text-text-muted hover:text-text-secondary"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <div className="space-y-1">
+              {lintResult.checks
+                .filter((c) => c.level !== 'pass')
+                .map((c, i) => (
+                  <div key={i} className="flex items-start gap-1.5 text-xs">
+                    {c.level === 'error' ? (
+                      <AlertCircle size={13} className="text-red-400 mt-0.5 shrink-0" />
+                    ) : c.level === 'warning' ? (
+                      <AlertTriangle size={13} className="text-amber-400 mt-0.5 shrink-0" />
+                    ) : (
+                      <Info size={13} className="text-blue-400 mt-0.5 shrink-0" />
+                    )}
+                    <span
+                      className={
+                        c.level === 'error'
+                          ? 'text-red-400'
+                          : c.level === 'warning'
+                            ? 'text-amber-400'
+                            : 'text-blue-400'
+                      }
+                    >
+                      {c.message}
+                    </span>
+                  </div>
+                ))}
+            </div>
+            {lintResult.ai_analysis && lintResult.ai_analysis.suggestions.length > 0 && (
+              <div className="mt-2 pt-2 border-t border-border-default">
+                <div className="flex items-center gap-1.5 text-xs text-text-secondary mb-1">
+                  <Sparkles size={12} />
+                  <span className="font-medium">AI Suggestions</span>
+                  <span className="text-text-muted ml-1">
+                    clarity {lintResult.ai_analysis.clarity}/10 &middot; specificity{' '}
+                    {lintResult.ai_analysis.specificity}/10
+                  </span>
+                </div>
+                <ul className="space-y-0.5">
+                  {lintResult.ai_analysis.suggestions.map((s, i) => (
+                    <li key={i} className="text-xs text-text-secondary pl-3 relative">
+                      <span className="absolute left-0">&bull;</span>
+                      {s}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -1492,6 +1617,31 @@ export default function PromptTemplates({ sessionName, onFocusTerminal }: Prompt
           >
             Save
           </button>
+          {cloudConnected && (
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={handleAnalyzePrompt}
+                disabled={!formPrompt.trim() || lintLoading}
+                className="px-3 py-1.5 bg-purple-600 text-white text-sm rounded hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+              >
+                {lintLoading ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Sparkles size={14} />
+                )}
+                Analyze
+              </button>
+              <select
+                value={lintMode}
+                onChange={(e) => setLintMode(e.target.value as 'quick' | 'deep')}
+                className="px-1.5 py-1.5 bg-control-bg text-text-tertiary text-xs rounded border border-input-border focus:outline-none"
+              >
+                <option value="quick">Quick</option>
+                <option value="deep">Deep</option>
+              </select>
+            </div>
+          )}
           <button
             type="button"
             onClick={handleCancelEdit}
