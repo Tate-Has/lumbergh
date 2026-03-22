@@ -46,7 +46,7 @@ class IdleDetector:
         re.compile(r"⠋|⠙|⠹|⠸|⠼|⠴|⠦|⠧|⠇|⠏"),  # Spinner chars
         re.compile(r"Running…|Executing"),  # Tool execution
         re.compile(r"thought for \d+s"),  # "thought for Xs" indicator
-        re.compile(r"esc to interrupt", re.IGNORECASE),  # Actively processing
+        re.compile(r"esc to (interrupt|cancel)", re.IGNORECASE),  # Actively processing
         re.compile(r"Reading|Writing|Searching", re.IGNORECASE),  # Cursor agent tool usage
     ]
 
@@ -59,6 +59,10 @@ class IdleDetector:
         re.compile(r"Yes.*No", re.DOTALL),  # Yes/No choice
         re.compile(r"Shift\+Tab"),  # Cursor CLI mode switching hint
         re.compile(r"\(y/n\)"),  # Command approval prompt (Cursor)
+        re.compile(r"Type your message"),  # Gemini CLI input prompt
+        re.compile(r"Action Required"),  # Gemini CLI approval prompt
+        re.compile(r"Apply this change\?"),  # Gemini CLI file write approval
+        re.compile(r"Allow (once|execution|for this session)"),  # Gemini CLI permission
     ]
 
     # Patterns indicating an error state (agent exited, rate limited, crashed)
