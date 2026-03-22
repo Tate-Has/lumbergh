@@ -27,7 +27,6 @@ export default function GitTab({
 }: Props) {
   const [selectedCommit, setSelectedCommit] = useState<string | null>(null)
   const [graphRefreshTrigger, setGraphRefreshTrigger] = useState(0)
-
   const [commitSelectVersion, setCommitSelectVersion] = useState(0)
 
   const handleSelectCommit = useCallback((hash: string | null) => {

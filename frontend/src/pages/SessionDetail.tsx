@@ -398,6 +398,7 @@ export default function SessionDetail() {
       <div className="flex-1 min-h-0 overflow-hidden">
         {rightPanel === 'git' && (
           <GitTab
+            key={name}
             sessionName={name}
             diffData={diffData}
             onRefreshDiff={() => fetchDiffData({ force: true })}
