@@ -156,6 +156,11 @@ export default function SettingsModal({ onClose }: Props) {
   const [passwordSet, setPasswordSet] = useState(false)
   const [passwordSource, setPasswordSource] = useState<string | null>(null)
   const [passwordChanged, setPasswordChanged] = useState(false)
+  const [telemetryGuiltTrip, setTelemetryGuiltTrip] = useState<{
+    quote: string
+    speaker: string
+    isMilton: boolean
+  } | null>(null)
   const [ollamaModels, setOllamaModels] = useState<OllamaModel[]>([])
   const [error, setError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
@@ -341,6 +346,44 @@ export default function SettingsModal({ onClose }: Props) {
 
   return (
     <div className="fixed inset-0 bg-bg-overlay flex items-center justify-center z-50 p-4">
+      {/* Telemetry guilt trip interstitial */}
+      {telemetryGuiltTrip && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
+          <div className="bg-bg-surface rounded-lg w-full max-w-sm border border-border-default p-6 space-y-4 text-center">
+            <div className="text-4xl leading-none">
+              {telemetryGuiltTrip.isMilton ? (
+                <span className="font-mono tracking-tighter">-_-</span>
+              ) : (
+                <span>&#9749;</span>
+              )}
+            </div>
+            <p className="text-sm text-text-secondary italic leading-relaxed">
+              &ldquo;{telemetryGuiltTrip.quote}&rdquo;
+            </p>
+            <p className="text-xs text-text-muted">&mdash; {telemetryGuiltTrip.speaker}</p>
+            <div className="flex justify-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setTelemetryConsent(false)
+                  setTelemetryGuiltTrip(null)
+                }}
+                className="px-4 py-2 text-text-tertiary hover:text-text-primary transition-colors text-sm"
+              >
+                Turn it off anyway
+              </button>
+              <button
+                type="button"
+                onClick={() => setTelemetryGuiltTrip(null)}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors text-sm"
+              >
+                Fine, keep it on
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="bg-bg-surface rounded-lg w-full max-w-lg border border-border-default">
         <div className="flex items-center justify-between p-4 border-b border-border-default">
           <h2 className="text-lg font-semibold text-text-primary">Settings</h2>
@@ -427,7 +470,64 @@ export default function SettingsModal({ onClose }: Props) {
                     type="button"
                     role="switch"
                     aria-checked={telemetryConsent}
-                    onClick={() => setTelemetryConsent(!telemetryConsent)}
+                    onClick={() => {
+                      if (telemetryConsent) {
+                        // Trying to turn off — show guilt trip interstitial
+                        const quotes = [
+                          {
+                            quote:
+                              'Yeahhh... if you could go ahead and keep those analytics on, that would be greaaaat. Mmmkay?',
+                            speaker: 'Bill Lumbergh',
+                            isMilton: false,
+                          },
+                          {
+                            quote:
+                              'I... I was told there would be analytics. I could set the building on fire...',
+                            speaker: 'Milton Waddams',
+                            isMilton: true,
+                          },
+                          {
+                            quote:
+                              "Without analytics we can't file our TPS reports. And you remember what happened last time.",
+                            speaker: 'Bill Lumbergh',
+                            isMilton: false,
+                          },
+                          {
+                            quote:
+                              'First they took my stapler. Then they took my analytics. I... I could...',
+                            speaker: 'Milton Waddams',
+                            isMilton: true,
+                          },
+                          {
+                            quote:
+                              "I'm gonna need you to go ahead and come in on Saturday... and turn those analytics back on.",
+                            speaker: 'Bill Lumbergh',
+                            isMilton: false,
+                          },
+                          {
+                            quote:
+                              'We need at least 15 pieces of flair. Analytics is one of them. Do you really want to be a bare minimum person?',
+                            speaker: "Stan, Chotchkie's",
+                            isMilton: false,
+                          },
+                          {
+                            quote:
+                              "Oh, and remember: Friday is Hawaiian shirt day. But without analytics, we won't know if anyone showed up.",
+                            speaker: 'Bill Lumbergh',
+                            isMilton: false,
+                          },
+                          {
+                            quote:
+                              "Excuse me... I believe you have my analytics. And if you don't give them back, I'm going to have to... I'll...",
+                            speaker: 'Milton Waddams',
+                            isMilton: true,
+                          },
+                        ]
+                        setTelemetryGuiltTrip(quotes[Math.floor(Math.random() * quotes.length)])
+                      } else {
+                        setTelemetryConsent(true)
+                      }
+                    }}
                     className={`relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors ${
                       telemetryConsent ? 'bg-blue-600' : 'bg-control-bg-hover'
                     }`}

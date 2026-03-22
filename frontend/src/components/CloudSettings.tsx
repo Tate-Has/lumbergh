@@ -1,7 +1,304 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { getApiBase } from '../config'
 
 const DEFAULT_CLOUD_URL = 'https://lumbergh.jc.turbo.inc'
+
+interface BackupStatus {
+  enabled: boolean
+  includeApiKeys: boolean
+  lastBackupTime: string | null
+  lastBackupHash: string | null
+  hasPassphrase: boolean
+}
+
+function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${on ? 'bg-blue-600' : 'bg-bg-elevated'}`}
+    >
+      <span
+        className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${on ? 'translate-x-4.5' : 'translate-x-0.5'}`}
+      />
+    </button>
+  )
+}
+
+function BackupSection({ onRefresh }: { onRefresh: () => void }) {
+  const [status, setStatus] = useState<BackupStatus | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [showSecurity, setShowSecurity] = useState(false)
+  const [passphrase, setPassphrase] = useState('')
+  const [restorePassphrase, setRestorePassphrase] = useState('')
+  const [showRestoreConfirm, setShowRestoreConfirm] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+
+  const fetchStatus = useCallback(async () => {
+    try {
+      const res = await fetch(`${getApiBase()}/backup/status`)
+      if (res.ok) setStatus(await res.json())
+    } catch {
+      // ignore
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchStatus()
+  }, [fetchStatus])
+
+  if (!status) return null
+
+  const apiCall = async (url: string, opts: RequestInit, onSuccess: () => Promise<void> | void) => {
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await fetch(url, opts)
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.detail || 'Request failed')
+      }
+      await onSuccess()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Request failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="border-t border-border-subtle pt-3 space-y-3">
+      <p className="text-xs font-medium text-text-muted uppercase tracking-wide">Backup</p>
+
+      <div className="flex items-center justify-between">
+        <span className="text-sm text-text-secondary">Auto-backup</span>
+        <Toggle
+          on={status.enabled}
+          onClick={() =>
+            apiCall(
+              `${getApiBase()}/backup/toggle`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: !status.enabled }),
+              },
+              () => setStatus({ ...status, enabled: !status.enabled })
+            )
+          }
+        />
+      </div>
+
+      <div className="flex items-center justify-between">
+        <span className="text-sm text-text-secondary">Include API keys</span>
+        <Toggle
+          on={status.includeApiKeys}
+          onClick={() =>
+            apiCall(
+              `${getApiBase()}/settings`,
+              {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ backupIncludeApiKeys: !status.includeApiKeys }),
+              },
+              () => setStatus({ ...status, includeApiKeys: !status.includeApiKeys })
+            )
+          }
+        />
+      </div>
+
+      {status.lastBackupTime && (
+        <p className="text-xs text-text-muted">
+          Last backed up: {new Date(status.lastBackupTime).toLocaleString()}
+        </p>
+      )}
+
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() =>
+            apiCall(`${getApiBase()}/backup/push`, { method: 'POST' }, () => {
+              fetchStatus()
+              onRefresh()
+            })
+          }
+          disabled={busy}
+          className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded transition-colors"
+        >
+          {busy ? 'Working...' : 'Backup now'}
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowRestoreConfirm(true)}
+          disabled={busy}
+          className="px-3 py-1.5 text-xs bg-bg-elevated hover:bg-bg-elevated/80 disabled:opacity-50 text-text-secondary rounded transition-colors"
+        >
+          Restore
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowDeleteConfirm(true)}
+          disabled={busy}
+          className="px-3 py-1.5 text-xs text-red-400 hover:text-red-300 disabled:opacity-50 transition-colors"
+        >
+          Delete backup
+        </button>
+      </div>
+
+      {showRestoreConfirm && (
+        <div className="p-3 bg-bg-elevated rounded space-y-2">
+          <p className="text-xs text-text-secondary">
+            This will overwrite your local sessions, todos, and prompts with the cloud backup.
+            Settings (API keys, password, cloud connection) will be preserved.
+          </p>
+          {status.hasPassphrase && (
+            <input
+              type="password"
+              value={restorePassphrase}
+              onChange={(e) => setRestorePassphrase(e.target.value)}
+              placeholder="Enter backup passphrase"
+              className="w-full px-3 py-1.5 bg-input-bg text-text-primary rounded border border-input-border focus:outline-none focus:border-blue-500 text-sm"
+            />
+          )}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() =>
+                apiCall(
+                  `${getApiBase()}/backup/restore`,
+                  {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      passphrase: status.hasPassphrase ? restorePassphrase : null,
+                    }),
+                  },
+                  () => {
+                    setShowRestoreConfirm(false)
+                    setRestorePassphrase('')
+                  }
+                )
+              }
+              disabled={busy || (status.hasPassphrase && !restorePassphrase)}
+              className="px-3 py-1.5 text-xs bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white rounded transition-colors"
+            >
+              Confirm restore
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowRestoreConfirm(false)
+                setRestorePassphrase('')
+              }}
+              className="px-3 py-1.5 text-xs text-text-muted hover:text-text-secondary transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showDeleteConfirm && (
+        <div className="p-3 bg-bg-elevated rounded space-y-2">
+          <p className="text-xs text-text-secondary">Permanently delete your cloud backup?</p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() =>
+                apiCall(`${getApiBase()}/backup`, { method: 'DELETE' }, () => {
+                  setShowDeleteConfirm(false)
+                  fetchStatus()
+                })
+              }
+              disabled={busy}
+              className="px-3 py-1.5 text-xs bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white rounded transition-colors"
+            >
+              Delete
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowDeleteConfirm(false)}
+              className="px-3 py-1.5 text-xs text-text-muted hover:text-text-secondary transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={() => setShowSecurity(!showSecurity)}
+        className="text-xs text-text-muted hover:text-text-tertiary transition-colors"
+      >
+        {showSecurity ? 'Hide security' : 'Security'}
+      </button>
+
+      {showSecurity && (
+        <div className="space-y-2 pl-2 border-l border-border-subtle">
+          {status.hasPassphrase ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-text-secondary">Passphrase set</span>
+              <button
+                type="button"
+                onClick={() =>
+                  apiCall(
+                    `${getApiBase()}/settings`,
+                    {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ backupPassphrase: '' }),
+                    },
+                    fetchStatus
+                  )
+                }
+                className="text-xs text-red-400 hover:text-red-300 transition-colors"
+              >
+                Clear
+              </button>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <input
+                type="password"
+                value={passphrase}
+                onChange={(e) => setPassphrase(e.target.value)}
+                placeholder="Set passphrase"
+                className="flex-1 px-2 py-1 bg-input-bg text-text-primary rounded border border-input-border focus:outline-none focus:border-blue-500 text-xs"
+              />
+              <button
+                type="button"
+                onClick={() =>
+                  apiCall(
+                    `${getApiBase()}/settings`,
+                    {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ backupPassphrase: passphrase }),
+                    },
+                    () => {
+                      setPassphrase('')
+                      fetchStatus()
+                    }
+                  )
+                }
+                disabled={!passphrase}
+                className="px-2 py-1 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded transition-colors"
+              >
+                Set
+              </button>
+            </div>
+          )}
+          <p className="text-xs text-text-muted">
+            Encrypts backup data before upload. Required to restore. Cannot be recovered.
+          </p>
+        </div>
+      )}
+
+      {error && <p className="text-xs text-red-400">{error}</p>}
+    </div>
+  )
+}
 
 export default function CloudSettings() {
   const [cloudUrl, setCloudUrl] = useState(DEFAULT_CLOUD_URL)
@@ -12,6 +309,7 @@ export default function CloudSettings() {
   const [cloudError, setCloudError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [showAdvanced, setShowAdvanced] = useState(false)
+  const [backupKey, setBackupKey] = useState(0)
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -30,8 +328,6 @@ export default function CloudSettings() {
 
   const saveCloudUrl = async (url: string) => {
     setCloudUrl(url)
-    // Debounced save is not needed — the parent form saves on submit.
-    // But since we're standalone, save immediately on blur.
   }
 
   const handleBlurSave = async () => {
@@ -129,6 +425,8 @@ export default function CloudSettings() {
               Disconnect
             </button>
           </div>
+
+          <BackupSection key={backupKey} onRefresh={() => setBackupKey((k) => k + 1)} />
         </div>
       ) : cloudConnecting && cloudUserCode ? (
         <div className="p-3 bg-bg-elevated/50 rounded space-y-3 text-center">

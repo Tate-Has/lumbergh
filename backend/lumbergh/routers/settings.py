@@ -83,6 +83,9 @@ class SettingsUpdate(BaseModel):
     cloudUrl: str | None = None  # noqa: N815 - API field name
     cloudToken: str | None = None  # noqa: N815 - API field name
     cloudUsername: str | None = None  # noqa: N815 - API field name
+    backupEnabled: bool | None = None  # noqa: N815 - API field name
+    backupIncludeApiKeys: bool | None = None  # noqa: N815 - API field name
+    backupPassphrase: str | None = None  # noqa: N815 - API field name
 
 
 def deep_merge(base: dict, override: dict) -> dict:
@@ -153,7 +156,9 @@ async def read_settings():
     password_source = "env" if env_pw else ("config" if config_pw else None)
 
     # Strip secrets from response
-    response = {k: v for k, v in settings.items() if k not in ("password", "cloudToken")}
+    response = {
+        k: v for k, v in settings.items() if k not in ("password", "cloudToken", "backupPassphrase")
+    }
     return {
         **response,
         "isFirstRun": is_first_run,
@@ -174,7 +179,16 @@ def _validate_repo_search_dir(raw: str) -> str:
     return str(path)
 
 
-_OPTIONAL_FIELDS = ("password", "telemetryConsent", "cloudUrl", "cloudToken", "cloudUsername")
+_OPTIONAL_FIELDS = (
+    "password",
+    "telemetryConsent",
+    "cloudUrl",
+    "cloudToken",
+    "cloudUsername",
+    "backupEnabled",
+    "backupIncludeApiKeys",
+    "backupPassphrase",
+)
 
 
 def _copy_optional_fields(updates: SettingsUpdate, update_data: dict[str, object]) -> None:
