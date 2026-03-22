@@ -110,6 +110,75 @@ def _send_cloud_linked_event(cloud_url: str, settings: dict) -> None:
     _task = asyncio.create_task(_send())  # noqa: RUF006
 
 
+# --- Shared prompts proxy ---
+
+_CLOUD_TIMEOUT = 15.0
+
+
+def _cloud_headers(token: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+
+async def _cloud_request(method: str, path: str, **kwargs):
+    """Forward a request to lumbergh-cloud with the stored cloud token."""
+    settings = get_settings()
+    cloud_url = settings.get("cloudUrl", "https://lumbergh.jc.turbo.inc")
+    token = settings.get("cloudToken")
+    if not token:
+        raise HTTPException(status_code=401, detail="Not connected to cloud")
+
+    try:
+        async with httpx.AsyncClient(timeout=_CLOUD_TIMEOUT) as client:
+            resp = await client.request(
+                method,
+                f"{cloud_url}{path}",
+                headers=_cloud_headers(token),
+                **kwargs,
+            )
+            resp.raise_for_status()
+            return resp.json()
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=e.response.status_code, detail=e.response.text)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not reach cloud: {e}")
+
+
+class SharePromptRequest(BaseModel):
+    name: str
+    prompt: str
+
+
+@router.post("/prompts/share")
+async def proxy_share_prompt(body: SharePromptRequest):
+    """Forward share/update request to cloud."""
+    return await _cloud_request("POST", "/api/prompts/share", json=body.model_dump())
+
+
+@router.get("/prompts/shared/{code}")
+async def proxy_get_shared(code: str):
+    """Forward prompt lookup to cloud."""
+    return await _cloud_request("GET", f"/api/prompts/shared/{code}")
+
+
+@router.get("/prompts/shared/{code}/versions")
+async def proxy_get_versions(code: str):
+    """Forward version history lookup to cloud."""
+    return await _cloud_request("GET", f"/api/prompts/shared/{code}/versions")
+
+
+@router.get("/prompts/community")
+async def proxy_community(q: str = ""):
+    """Forward community browse to cloud."""
+    params = f"?q={q}" if q else ""
+    return await _cloud_request("GET", f"/api/prompts/community{params}")
+
+
+@router.post("/prompts/{code}/install")
+async def proxy_install(code: str):
+    """Forward install tracking to cloud."""
+    return await _cloud_request("POST", f"/api/prompts/{code}/install")
+
+
 @router.post("/disconnect")
 async def disconnect():
     """Clear cloud token and username from settings."""
