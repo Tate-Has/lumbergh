@@ -183,6 +183,24 @@ This is what it looks like on your phone. Left is the dashboard -- you can see a
 layout: center
 ---
 
+<div class="max-w-2xl mx-auto text-center">
+
+<p class="text-2xl leading-relaxed italic opacity-90">
+"Being able to code anywhere is a real game changer. Before, I had to lug around my laptop -- now I just pull out my phone."
+</p>
+
+<p class="mt-6 text-sm opacity-50">-- @jcamierpy24</p>
+
+</div>
+
+<!--
+Real user feedback. This is the whole point -- mobile access changes how you work. You don't need your laptop open to keep agents productive.
+-->
+
+---
+layout: center
+---
+
 # Architecture
 
 <br>

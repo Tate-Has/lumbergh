@@ -43,6 +43,10 @@ Lumbergh checks for tmux/git on startup and tells you what's missing.
 - **Mobile-first + PWA** -- responsive design, installable on your phone or tablet ([setup guide](https://voglster.github.io/lumbergh/docs/guides/mobile/))
 - **Dark and light themes** -- toggle with one click
 
+> *"Being able to code anywhere is a real game changer. Before, I had to lug around my laptop -- now I just pull out my phone."*
+>
+> -- @jcamierpy24
+
 ## Development
 
 Want to contribute or hack on Lumbergh?

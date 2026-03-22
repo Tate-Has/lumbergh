@@ -59,6 +59,10 @@ Watch diffs roll in, fire off prompts, check todos, and keep your AI workers on 
 - **Tailscale integration** — auto-detects Tailscale for secure remote access with HTTPS/TLS support
 - **Dark and light themes** — toggle with one click
 
+> *"Being able to code anywhere is a real game changer. Before, I had to lug around my laptop — now I just pull out my phone."*
+>
+> — @jcamierpy24
+
 ## Quick Install
 
 ```bash
