@@ -49,6 +49,7 @@ interface CommunityPrompt {
   tags: string[]
   install_count: number
   version: number
+  is_own?: boolean
 }
 
 // --- Cloud Badge Popover ---
@@ -724,6 +725,11 @@ function CommunitySection({
                     </span>
                     <span className="text-xs text-text-muted">v{p.version}</span>
                     <span className="text-xs text-text-muted">@{p.author_username}</span>
+                    {p.is_own && (
+                      <span className="text-xs px-1.5 py-0.5 bg-blue-500/15 text-blue-400 rounded">
+                        You
+                      </span>
+                    )}
                     {isInstalled ? (
                       <span className="text-green-400 px-1" title="Already installed">
                         <Check size={16} />
