@@ -68,7 +68,7 @@ class BackupScheduler:
             return
 
         # Collect data and check for changes
-        include_api_keys = settings.get("backupIncludeApiKeys", True)
+        include_api_keys = settings.get("backupIncludeApiKeys", False)
         data = await asyncio.get_event_loop().run_in_executor(
             None, collect_backup_data, include_api_keys
         )

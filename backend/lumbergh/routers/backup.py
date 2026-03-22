@@ -3,10 +3,12 @@ Backup proxy router — local endpoints that orchestrate cloud backup operations
 """
 
 import asyncio
+import json
 import logging
 
 import httpx
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from lumbergh.backup import (
@@ -43,7 +45,7 @@ async def push_backup():
     cloud_url, cloud_token, install_id = _get_cloud_config()
     settings = get_settings()
 
-    include_api_keys = settings.get("backupIncludeApiKeys", True)
+    include_api_keys = settings.get("backupIncludeApiKeys", False)
     data = await asyncio.get_event_loop().run_in_executor(
         None, collect_backup_data, include_api_keys
     )
@@ -134,7 +136,7 @@ async def backup_status():
     settings = get_settings()
     return {
         "enabled": settings.get("backupEnabled", False),
-        "includeApiKeys": settings.get("backupIncludeApiKeys", True),
+        "includeApiKeys": settings.get("backupIncludeApiKeys", False),
         "lastBackupTime": settings.get("lastBackupTime"),
         "lastBackupHash": settings.get("lastBackupHash"),
         "hasPassphrase": bool(settings.get("backupPassphrase")),
@@ -182,3 +184,47 @@ async def delete_backup():
     settings_table.insert(current)
 
     return {"status": "ok"}
+
+
+@router.get("/download-local")
+async def download_local_backup():
+    """Download a fresh snapshot of all local data as a JSON file (no cloud required)."""
+    settings = get_settings()
+    include_api_keys = settings.get("backupIncludeApiKeys", False)
+    data = await asyncio.get_event_loop().run_in_executor(
+        None, collect_backup_data, include_api_keys
+    )
+    content = json.dumps(data, indent=2, default=str)
+    return Response(
+        content=content,
+        media_type="application/json",
+        headers={"Content-Disposition": "attachment; filename=lumbergh-backup-local.json"},
+    )
+
+
+@router.get("/download")
+async def download_backup():
+    """Download the last cloud backup as a JSON file."""
+    cloud_url, cloud_token, install_id = _get_cloud_config()
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(
+                f"{cloud_url}/api/backup/{install_id}",
+                headers={"Authorization": f"Bearer {cloud_token}"},
+            )
+            resp.raise_for_status()
+            backup = resp.json()
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            raise HTTPException(status_code=404, detail="No backup found")
+        raise HTTPException(status_code=502, detail=f"Cloud request failed: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Cloud request failed: {e}")
+
+    content = json.dumps(backup, indent=2, default=str)
+    return Response(
+        content=content,
+        media_type="application/json",
+        headers={"Content-Disposition": "attachment; filename=lumbergh-backup.json"},
+    )

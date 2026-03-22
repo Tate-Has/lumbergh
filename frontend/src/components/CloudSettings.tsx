@@ -29,7 +29,6 @@ function BackupSection({ onRefresh }: { onRefresh: () => void }) {
   const [status, setStatus] = useState<BackupStatus | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [showSecurity, setShowSecurity] = useState(false)
   const [passphrase, setPassphrase] = useState('')
   const [restorePassphrase, setRestorePassphrase] = useState('')
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false)
@@ -110,10 +109,18 @@ function BackupSection({ onRefresh }: { onRefresh: () => void }) {
       {status.lastBackupTime && (
         <p className="text-xs text-text-muted">
           Last backed up: {new Date(status.lastBackupTime).toLocaleString()}
+          {' \u00b7 '}
+          <a
+            href={`${getApiBase()}/backup/download`}
+            download="lumbergh-backup.json"
+            className="text-blue-400 hover:text-blue-300"
+          >
+            download
+          </a>
         </p>
       )}
 
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap">
         <button
           type="button"
           onClick={() =>
@@ -144,6 +151,17 @@ function BackupSection({ onRefresh }: { onRefresh: () => void }) {
           Delete backup
         </button>
       </div>
+
+      <p className="text-xs text-text-muted">
+        <a
+          href={`${getApiBase()}/backup/download-local`}
+          download="lumbergh-backup-local.json"
+          className="text-blue-400 hover:text-blue-300"
+        >
+          Export current local data
+        </a>
+        {' \u2014 preview what would be backed up'}
+      </p>
 
       {showRestoreConfirm && (
         <div className="p-3 bg-bg-elevated rounded space-y-2">
@@ -226,19 +244,13 @@ function BackupSection({ onRefresh }: { onRefresh: () => void }) {
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={() => setShowSecurity(!showSecurity)}
-        className="text-xs text-text-muted hover:text-text-tertiary transition-colors"
-      >
-        {showSecurity ? 'Hide security' : 'Security'}
-      </button>
-
-      {showSecurity && (
-        <div className="space-y-2 pl-2 border-l border-border-subtle">
-          {status.hasPassphrase ? (
+      {/* Encryption passphrase — always visible */}
+      <div className="space-y-2">
+        <p className="text-xs font-medium text-text-muted uppercase tracking-wide">Encryption</p>
+        {status.hasPassphrase ? (
+          <>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-text-secondary">Passphrase set</span>
+              <span className="text-sm text-green-400">Encrypted</span>
               <button
                 type="button"
                 onClick={() =>
@@ -254,46 +266,99 @@ function BackupSection({ onRefresh }: { onRefresh: () => void }) {
                 }
                 className="text-xs text-red-400 hover:text-red-300 transition-colors"
               >
-                Clear
+                Remove passphrase
               </button>
             </div>
-          ) : (
+            <p className="text-xs text-text-muted">
+              Backups are encrypted before leaving this machine.
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="text-xs text-yellow-400/80">
+              Not encrypted — backups are stored in plaintext on the server.
+            </p>
             <div className="flex gap-2">
               <input
-                type="password"
+                type="text"
                 value={passphrase}
                 onChange={(e) => setPassphrase(e.target.value)}
-                placeholder="Set passphrase"
-                className="flex-1 px-2 py-1 bg-input-bg text-text-primary rounded border border-input-border focus:outline-none focus:border-blue-500 text-xs"
+                placeholder="Enter a passphrase"
+                className="flex-1 px-2 py-1.5 bg-input-bg text-text-primary rounded border border-input-border focus:outline-none focus:border-blue-500 font-mono text-xs"
               />
               <button
                 type="button"
-                onClick={() =>
-                  apiCall(
-                    `${getApiBase()}/settings`,
-                    {
-                      method: 'PATCH',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ backupPassphrase: passphrase }),
-                    },
-                    () => {
-                      setPassphrase('')
-                      fetchStatus()
-                    }
-                  )
-                }
-                disabled={!passphrase}
-                className="px-2 py-1 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded transition-colors"
+                onClick={() => {
+                  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789'
+                  const generated = Array.from(crypto.getRandomValues(new Uint8Array(20)))
+                    .map((b) => chars[b % chars.length])
+                    .join('')
+                  setPassphrase(generated)
+                }}
+                className="px-2 py-1.5 text-xs text-text-muted hover:text-text-secondary bg-bg-elevated rounded transition-colors"
               >
-                Set
+                Generate
               </button>
             </div>
-          )}
-          <p className="text-xs text-text-muted">
-            Encrypts backup data before upload. Required to restore. Cannot be recovered.
-          </p>
-        </div>
-      )}
+            {passphrase && (
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => navigator.clipboard.writeText(passphrase)}
+                  className="px-2 py-1.5 text-xs text-text-muted hover:text-text-secondary bg-bg-elevated rounded transition-colors"
+                >
+                  Copy
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const blob = new Blob(
+                      [
+                        `Lumbergh Backup Passphrase\n${'='.repeat(26)}\n\n${passphrase}\n\nStore this file somewhere safe. If you lose this passphrase,\nyour encrypted backups cannot be recovered.\n`,
+                      ],
+                      { type: 'text/plain' }
+                    )
+                    const url = URL.createObjectURL(blob)
+                    const a = document.createElement('a')
+                    a.href = url
+                    a.download = 'lumbergh-backup-passphrase.txt'
+                    a.click()
+                    URL.revokeObjectURL(url)
+                  }}
+                  className="px-2 py-1.5 text-xs text-text-muted hover:text-text-secondary bg-bg-elevated rounded transition-colors"
+                >
+                  Save to file
+                </button>
+                <div className="flex-1" />
+                <button
+                  type="button"
+                  onClick={() =>
+                    apiCall(
+                      `${getApiBase()}/settings`,
+                      {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ backupPassphrase: passphrase }),
+                      },
+                      () => {
+                        setPassphrase('')
+                        fetchStatus()
+                      }
+                    )
+                  }
+                  className="px-2 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded transition-colors"
+                >
+                  Set
+                </button>
+              </div>
+            )}
+            <p className="text-xs text-red-400/80 font-medium">
+              If you lose your passphrase, your encrypted backups cannot be recovered. Save it
+              somewhere safe.
+            </p>
+          </>
+        )}
+      </div>
 
       {error && <p className="text-xs text-red-400">{error}</p>}
     </div>

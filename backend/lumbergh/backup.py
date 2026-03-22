@@ -69,7 +69,7 @@ def _collect_shared_md() -> dict:
     return result
 
 
-def collect_backup_data(include_api_keys: bool = True) -> dict:
+def collect_backup_data(include_api_keys: bool = False) -> dict:
     """Collect all local data for backup.
 
     Returns a dict matching the cloud backup schema's `data` field.
