@@ -23,6 +23,8 @@ interface Settings {
   repoSearchDir: string
   gitGraphCommits: number
   ai: AISettings
+  defaultAgent?: string
+  agentProviders?: Record<string, { label: string }>
   passwordSet?: boolean
   passwordSource?: string | null
   telemetryConsent?: boolean | null
@@ -172,6 +174,8 @@ export default function SettingsModal({ onClose }: Props) {
     speaker: string
     isMilton: boolean
   } | null>(null)
+  const [defaultAgent, setDefaultAgent] = useState('claude-code')
+  const [agentProviders, setAgentProviders] = useState<Record<string, { label: string }>>({})
   const [cloudUsername, setCloudUsername] = useState<string | null>(null)
   const [ollamaModels, setOllamaModels] = useState<OllamaModel[]>([])
   const [cloudModels, setCloudModels] = useState<CloudModel[]>([])
@@ -193,6 +197,8 @@ export default function SettingsModal({ onClose }: Props) {
         setPasswordSource(data.passwordSource ?? null)
         setTelemetryConsent(data.telemetryConsent ?? false)
         setCloudUsername(data.cloudUsername ?? null)
+        if (data.defaultAgent) setDefaultAgent(data.defaultAgent)
+        if (data.agentProviders) setAgentProviders(data.agentProviders)
         if (data.ai) {
           setAiProvider(data.ai.provider || 'ollama')
           if (data.ai.providers) {
@@ -270,6 +276,7 @@ export default function SettingsModal({ onClose }: Props) {
       const parsedCommits = parseInt(gitGraphCommits) || 100
       payload.gitGraphCommits = Math.min(1000, Math.max(10, parsedCommits))
       payload.telemetryConsent = telemetryConsent
+      payload.defaultAgent = defaultAgent
       payload.ai = {
         provider: aiProvider,
         providers: providerConfigs,
@@ -497,6 +504,25 @@ export default function SettingsModal({ onClose }: Props) {
                     Number of commits to show in the git graph (10-1000)
                   </p>
                 </div>
+                {Object.keys(agentProviders).length > 1 && (
+                  <div>
+                    <label className="block text-sm text-text-tertiary mb-1">Default Agent</label>
+                    <select
+                      value={defaultAgent}
+                      onChange={(e) => setDefaultAgent(e.target.value)}
+                      className="w-full px-3 py-2 bg-input-bg text-text-primary rounded border border-input-border focus:outline-none focus:border-blue-500 text-sm"
+                    >
+                      {Object.entries(agentProviders).map(([key, provider]) => (
+                        <option key={key} value={key}>
+                          {provider.label}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-text-muted mt-1">
+                      Agent used for new sessions by default
+                    </p>
+                  </div>
+                )}
                 <div className="flex items-center justify-between">
                   <div>
                     <label className="block text-sm text-text-tertiary">
