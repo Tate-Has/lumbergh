@@ -48,6 +48,7 @@ class IdleDetector:
         re.compile(r"thought for \d+s"),  # "thought for Xs" indicator
         re.compile(r"esc to (interrupt|cancel)", re.IGNORECASE),  # Actively processing
         re.compile(r"Reading|Writing|Searching", re.IGNORECASE),  # Cursor agent tool usage
+        re.compile(r"Working \(\d+s", re.IGNORECASE),  # Codex CLI working indicator
     ]
 
     # Patterns indicating idle state (waiting for user input)
@@ -63,6 +64,10 @@ class IdleDetector:
         re.compile(r"Action Required"),  # Gemini CLI approval prompt
         re.compile(r"Apply this change\?"),  # Gemini CLI file write approval
         re.compile(r"Allow (once|execution|for this session)"),  # Gemini CLI permission
+        re.compile(r"Would you like to make the following edits"),  # Codex CLI approval
+        re.compile(r"Yes, proceed|Yes, and don't ask again"),  # Codex CLI approval choices
+        re.compile(r"Press enter to confirm or esc to cancel"),  # Codex CLI confirmation
+        re.compile(r"\d+% left · ~/"),  # Codex CLI status bar (idle)
     ]
 
     # Patterns indicating an error state (agent exited, rate limited, crashed)
