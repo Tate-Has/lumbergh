@@ -15,9 +15,9 @@ from lumbergh.routers.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
-_last_startup_ts: float = 0.0
 _THROTTLE_SECONDS = 24 * 3600  # 24 hours
 _version_cache: str | None = None
+_STAMP_FILE = Path("~/.local/state/lumbergh/last_startup_telemetry").expanduser()
 
 
 def _get_version() -> str:
@@ -52,21 +52,39 @@ def _get_version() -> str:
     return _version_cache
 
 
+def _was_recently_sent() -> bool:
+    """Check if startup telemetry was sent within the throttle window."""
+    try:
+        if not _STAMP_FILE.exists():
+            return False
+        last_sent = float(_STAMP_FILE.read_text().strip())
+        return (time.time() - last_sent) < _THROTTLE_SECONDS
+    except Exception:
+        return False
+
+
+def _mark_sent() -> None:
+    """Persist the current time as the last-sent timestamp."""
+    try:
+        _STAMP_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _STAMP_FILE.write_text(str(time.time()))
+    except Exception:
+        logger.debug("Failed to write telemetry stamp file", exc_info=True)
+
+
 async def send_startup() -> None:
     """Send a startup telemetry event to the cloud if consent is given.
 
-    Throttled to at most once per 24 hours. Silently swallows all errors.
+    Throttled to at most once per 24 hours. Persists timestamp to disk
+    so the throttle survives process restarts.
     """
-    global _last_startup_ts
-
     try:
         settings = get_settings()
 
         if not settings.get("telemetryConsent"):
             return
 
-        now = time.monotonic()
-        if now - _last_startup_ts < _THROTTLE_SECONDS and _last_startup_ts > 0:
+        if _was_recently_sent():
             return
 
         cloud_url = settings.get("cloudUrl", "https://lumbergh.jc.turbo.inc")
@@ -95,7 +113,7 @@ async def send_startup() -> None:
                 },
             )
 
-        _last_startup_ts = now
+        _mark_sent()
         logger.debug("Startup telemetry sent")
     except Exception:
         logger.debug("Startup telemetry failed", exc_info=True)
