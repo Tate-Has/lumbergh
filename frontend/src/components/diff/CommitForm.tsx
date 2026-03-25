@@ -216,6 +216,8 @@ const CommitForm = memo(function CommitForm({
     <div className="p-3 bg-bg-surface border-b border-border-default">
       <div className="flex gap-2">
         <textarea
+          id="commit-message"
+          name="commit-message"
           value={commitMessage}
           onChange={(e) => onCommitMessageChange(e.target.value)}
           onKeyDown={handleKeyDown}

@@ -85,6 +85,7 @@ export default defineConfig({
         ],
       },
       workbox: {
+        disableDevLogs: true,
         // Allow larger bundles (xterm.js is big)
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         // Skip caching for frequently-polled endpoints (causes terminal lag)

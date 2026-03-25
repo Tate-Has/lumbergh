@@ -151,7 +151,12 @@ export function useTerminalSocket({
         const ws = wsRef.current
         // Set to null first so handlers exit early
         wsRef.current = null
-        ws.close()
+        // Only close already-open sockets. CONNECTING sockets will self-close
+        // in onopen (wsRef.current !== ws check) — avoids the browser warning
+        // "WebSocket is closed before the connection is established"
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.close()
+        }
       }
     }
   }, [connect])

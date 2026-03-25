@@ -318,17 +318,60 @@ export default memo(function Terminal({
     // Desktop mouse event interception (capture phase)
     // Fakes shiftKey on all left-click and right-click events so xterm.js
     // bypasses mouse reporting (to tmux) and handles text selection / context
-    // menu natively. Single clicks become no-ops (shift+click = start empty
-    // selection), which is acceptable since mouse clicks in tmux aren't needed.
+    // menu natively. Single clicks are replayed without shiftKey so they
+    // still reach tmux (e.g. clicking tmux tabs).
     const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0
+    let bypass = false
+    let clickStartX = 0
+    let clickStartY = 0
+    let isClick = false
 
     const fakeShift = (e: MouseEvent) => {
       Object.defineProperty(e, 'shiftKey', { get: () => true })
     }
 
     const onMouseEvent = (e: MouseEvent) => {
-      if (isTouch) return
-      if (e.button === 0 || e.button === 2) {
+      if (isTouch || bypass) return
+      if (e.button === 0) {
+        if (e.type === 'mousedown') {
+          clickStartX = e.clientX
+          clickStartY = e.clientY
+          isClick = true
+        } else if (e.type === 'mousemove' && isClick) {
+          const dx = e.clientX - clickStartX
+          const dy = e.clientY - clickStartY
+          if (dx * dx + dy * dy > 25) isClick = false
+        } else if (e.type === 'mouseup' && isClick) {
+          isClick = false
+          fakeShift(e)
+          // Replay unmodified click so tmux sees it (e.g. tab switching)
+          bypass = true
+          const target = e.target as Element
+          target.dispatchEvent(
+            new MouseEvent('mousedown', {
+              bubbles: true,
+              cancelable: true,
+              clientX: clickStartX,
+              clientY: clickStartY,
+              button: 0,
+              buttons: 1,
+            })
+          )
+          target.dispatchEvent(
+            new MouseEvent('mouseup', {
+              bubbles: true,
+              cancelable: true,
+              clientX: e.clientX,
+              clientY: e.clientY,
+              button: 0,
+              buttons: 0,
+            })
+          )
+          bypass = false
+          return
+        }
+        fakeShift(e)
+      } else if (e.button === 2) {
         fakeShift(e)
       }
     }
