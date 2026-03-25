@@ -5,6 +5,7 @@ interface UseTerminalSocketOptions {
   sessionName: string
   onData: (data: string) => void
   onResizeSync?: (cols: number, rows: number) => void
+  onCopyMode?: (active: boolean) => void
   onConnect?: () => void
   onDisconnect?: () => void
 }
@@ -21,6 +22,7 @@ export function useTerminalSocket({
   sessionName,
   onData,
   onResizeSync,
+  onCopyMode,
   onConnect,
   onDisconnect,
 }: UseTerminalSocketOptions): UseTerminalSocketResult {
@@ -35,15 +37,17 @@ export function useTerminalSocket({
   // Store callbacks in refs to avoid recreating connect() on every render
   const onDataRef = useRef(onData)
   const onResizeSyncRef = useRef(onResizeSync)
+  const onCopyModeRef = useRef(onCopyMode)
   const onConnectRef = useRef(onConnect)
   const onDisconnectRef = useRef(onDisconnect)
 
   useEffect(() => {
     onDataRef.current = onData
     onResizeSyncRef.current = onResizeSync
+    onCopyModeRef.current = onCopyMode
     onConnectRef.current = onConnect
     onDisconnectRef.current = onDisconnect
-  }, [onData, onResizeSync, onConnect, onDisconnect])
+  }, [onData, onResizeSync, onCopyMode, onConnect, onDisconnect])
 
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -73,6 +77,8 @@ export function useTerminalSocket({
           onDataRef.current(message.data)
         } else if (message.type === 'resize_sync') {
           onResizeSyncRef.current?.(message.cols, message.rows)
+        } else if (message.type === 'copy_mode') {
+          onCopyModeRef.current?.(message.active)
         } else if (message.type === 'error') {
           setError(message.message)
         } else if (message.type === 'session_dead' || message.type === 'session_not_found') {

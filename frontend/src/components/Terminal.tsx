@@ -53,6 +53,7 @@ export default memo(function Terminal({
 
   // Scroll mode state (tmux copy-mode)
   const [scrollMode, setScrollMode] = useState(false)
+  const scrollModeRef = useRef(false)
 
   // Track terminal focus (for click shield on desktop)
   const [hasFocus, setHasFocus] = useState(false)
@@ -111,6 +112,10 @@ export default memo(function Terminal({
     termRef.current?.write(data)
   }, [])
 
+  const handleCopyMode = useCallback((active: boolean) => {
+    setScrollMode(active)
+  }, [])
+
   // Fit terminal and send resize - used on connect and container resize
   const handleFit = useCallback(() => {
     if (fitAddonRef.current && termRef.current && containerRef.current) {
@@ -154,8 +159,14 @@ export default memo(function Terminal({
     sessionName,
     onData: handleData,
     onResizeSync: handleResizeSync,
+    onCopyMode: handleCopyMode,
     onConnect: handleConnect,
   })
+
+  // Keep scrollModeRef in sync with state
+  useEffect(() => {
+    scrollModeRef.current = scrollMode
+  }, [scrollMode])
 
   // Keep refs updated
   useEffect(() => {
@@ -274,6 +285,20 @@ export default memo(function Terminal({
         }
         return false // Block all event types for Shift+Enter
       }
+      // Auto-exit scroll mode on typing (desktop only)
+      // Send 'q' via WebSocket (same path as the keystroke) so tmux processes them
+      // in order: 'q' exits copy-mode, then the actual character reaches the shell.
+      if (
+        scrollModeRef.current &&
+        event.type === 'keydown' &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        event.key.length === 1
+      ) {
+        sendRef.current('q')
+        setScrollMode(false)
+      }
       return true // Allow default handling for other keys
     })
 
@@ -290,10 +315,48 @@ export default memo(function Terminal({
     term.element?.addEventListener('focusin', handleFocus)
     term.element?.addEventListener('focusout', handleBlur)
 
+    // Desktop mouse event interception (capture phase)
+    // Fakes shiftKey on all left-click and right-click events so xterm.js
+    // bypasses mouse reporting (to tmux) and handles text selection / context
+    // menu natively. Single clicks become no-ops (shift+click = start empty
+    // selection), which is acceptable since mouse clicks in tmux aren't needed.
+    const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0
+
+    const fakeShift = (e: MouseEvent) => {
+      Object.defineProperty(e, 'shiftKey', { get: () => true })
+    }
+
+    const onMouseEvent = (e: MouseEvent) => {
+      if (isTouch) return
+      if (e.button === 0 || e.button === 2) {
+        fakeShift(e)
+      }
+    }
+
+    // Detect scroll-up to immediately flag copy-mode entry
+    // (tmux enters copy-mode on scroll-up when mouse mode is on)
+    const onWheel = (e: WheelEvent) => {
+      if (e.deltaY < 0 && !scrollModeRef.current) {
+        setScrollMode(true)
+      }
+    }
+
+    const el = term.element
+    const mouseEvents = ['mousedown', 'mousemove', 'mouseup', 'contextmenu'] as const
+    if (el && !isTouch) {
+      for (const evt of mouseEvents) el.addEventListener(evt, onMouseEvent, true)
+    }
+    // Wheel listener for all devices (copy-mode detection)
+    el?.addEventListener('wheel', onWheel, true)
+
     return () => {
       initialFitObserver.disconnect()
       term.element?.removeEventListener('focusin', handleFocus)
       term.element?.removeEventListener('focusout', handleBlur)
+      if (el && !isTouch) {
+        for (const evt of mouseEvents) el.removeEventListener(evt, onMouseEvent, true)
+      }
+      el?.removeEventListener('wheel', onWheel, true)
       term.dispose()
       termRef.current = null
       fitAddonRef.current = null

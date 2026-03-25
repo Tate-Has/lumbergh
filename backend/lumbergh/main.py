@@ -404,6 +404,13 @@ async def send_tmux_command(session_name: str, cmd: TmuxCommand):
     return {"status": "ok"}
 
 
+@app.get("/api/session/{session_name}/copy-mode")
+async def get_copy_mode(session_name: str):
+    """Check if the tmux pane is in copy-mode."""
+    mode = (await _run_tmux("display-message", "-p", "-t", session_name, "#{pane_mode}")).strip()
+    return {"active": mode == "copy-mode"}
+
+
 @app.websocket("/api/session/{session_name}/stream")
 async def session_stream(websocket: WebSocket, session_name: str):
     """

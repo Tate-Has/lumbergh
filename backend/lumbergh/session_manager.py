@@ -24,6 +24,7 @@ class ManagedSession:
     pty: TmuxPtySession
     clients: set[WebSocket] = field(default_factory=set)
     read_task: asyncio.Task | None = None
+    copy_mode_task: asyncio.Task | None = None
 
 
 class SessionManager:
@@ -94,8 +95,9 @@ class SessionManager:
                 managed = ManagedSession(pty=pty)
                 self._sessions[session_name] = managed
 
-                # Start the read loop task
+                # Start the read loop and copy-mode monitor tasks
                 managed.read_task = asyncio.create_task(self._broadcast_loop(session_name))
+                managed.copy_mode_task = asyncio.create_task(self._copy_mode_monitor(session_name))
             else:
                 logger.info(f"Reusing existing PTY for session: {session_name}")
                 managed = self._sessions[session_name]
@@ -137,6 +139,13 @@ class SessionManager:
                     managed.read_task.cancel()
                     try:
                         await managed.read_task
+                    except asyncio.CancelledError:
+                        pass
+
+                if managed.copy_mode_task:
+                    managed.copy_mode_task.cancel()
+                    try:
+                        await managed.copy_mode_task
                     except asyncio.CancelledError:
                         pass
 
@@ -250,6 +259,41 @@ class SessionManager:
                 loop.remove_reader(fd)
             except Exception:  # noqa: S110 - cleanup is best-effort
                 pass
+
+    async def _copy_mode_monitor(self, session_name: str) -> None:
+        """Poll tmux pane_mode every 250ms and broadcast copy-mode state changes."""
+        last_active = False
+        try:
+            while True:
+                await asyncio.sleep(0.25)
+                managed = self._sessions.get(session_name)
+                if not managed or not managed.clients:
+                    break
+                try:
+                    proc = await asyncio.create_subprocess_exec(
+                        "tmux",
+                        "display-message",
+                        "-p",
+                        "-t",
+                        session_name,
+                        "#{pane_mode}",
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=1.0)
+                    active = stdout.decode().strip() == "copy-mode"
+                except Exception:  # noqa: S112
+                    continue
+                if active != last_active:
+                    last_active = active
+                    message = {"type": "copy_mode", "active": active}
+                    for client in list(managed.clients):
+                        try:
+                            await client.send_json(message)
+                        except Exception:  # noqa: S110
+                            pass
+        except asyncio.CancelledError:
+            pass
 
     async def _notify_session_dead(self, session_name: str) -> None:
         """Send session_dead message to all connected clients."""
