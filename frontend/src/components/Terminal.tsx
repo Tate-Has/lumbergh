@@ -201,6 +201,7 @@ export default memo(function Terminal({
       fontSize: initialFontSizeRef.current,
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
       scrollback: 10000, // Enable native scrollback for touch scrolling
+      macOptionClickForcesSelection: true,
       theme: {
         background: termBg,
         foreground: termFg,
@@ -326,8 +327,13 @@ export default memo(function Terminal({
     let clickStartY = 0
     let isClick = false
 
+    // xterm.js checks different modifier keys per platform to force selection:
+    //   macOS: event.altKey (+ macOptionClickForcesSelection option)
+    //   Linux/Windows: event.shiftKey
+    const isMac = /mac/i.test(navigator.platform) || /mac/i.test(navigator.userAgent)
+    const forceSelectKey = isMac ? 'altKey' : 'shiftKey'
     const fakeShift = (e: MouseEvent | PointerEvent) => {
-      Object.defineProperty(e, 'shiftKey', { get: () => true })
+      Object.defineProperty(e, forceSelectKey, { get: () => true })
     }
 
     // Unified handler for both mouse and pointer events.
