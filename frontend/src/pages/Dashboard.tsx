@@ -189,6 +189,7 @@ export default function Dashboard() {
     current: string
     latest: string
   } | null>(null)
+  const [currentVersion, setCurrentVersion] = useState<string | null>(null)
   const { theme, setTheme } = useTheme()
 
   const UPDATE_MESSAGES = [
@@ -273,6 +274,7 @@ export default function Dashboard() {
       const res = await fetch(`${getApiBase()}/version`)
       if (res.ok) {
         const data = await res.json()
+        if (data.current) setCurrentVersion(data.current)
         if (data.update_available && data.latest && !isDismissed(data.latest)) {
           setUpdateInfo({ current: data.current, latest: data.latest })
         }
@@ -541,12 +543,25 @@ export default function Dashboard() {
       </main>
 
       {/* Footer */}
-      <footer className="py-4 text-center">
+      <footer className="py-4 text-center flex items-center justify-center gap-2 text-xs text-text-muted">
+        {currentVersion && (
+          <>
+            <a
+              href={`https://github.com/voglster/lumbergh/releases/tag/v${currentVersion}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-amber-400 transition-colors"
+            >
+              v{currentVersion}
+            </a>
+            <span>·</span>
+          </>
+        )}
         <a
           href="https://github.com/voglster/lumbergh"
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 text-xs text-text-muted hover:text-amber-400 transition-colors group"
+          className="inline-flex items-center gap-1.5 hover:text-amber-400 transition-colors group"
         >
           I was told there would be
           <Star size={14} className="group-hover:fill-amber-400 transition-colors" />
