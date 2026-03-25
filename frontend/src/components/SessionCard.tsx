@@ -54,6 +54,7 @@ interface SessionUpdate {
   displayName?: string
   description?: string
   paused?: boolean
+  agentProvider?: string
 }
 
 interface Props {
@@ -135,6 +136,7 @@ export default function SessionCard({ session, onDelete, onUpdate, onReset }: Pr
         sessionName={session.name}
         displayName={session.displayName}
         description={session.description}
+        agentProvider={session.agentProvider ?? null}
         onSave={onUpdate}
         onCancel={() => setIsEditing(false)}
       />

@@ -348,7 +348,12 @@ export default function Dashboard() {
 
   const handleUpdate = async (
     name: string,
-    updates: { displayName?: string; description?: string; paused?: boolean }
+    updates: {
+      displayName?: string
+      description?: string
+      paused?: boolean
+      agentProvider?: string
+    }
   ) => {
     try {
       const res = await fetch(`${getApiBase()}/sessions/${name}`, {

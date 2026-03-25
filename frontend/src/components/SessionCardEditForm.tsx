@@ -1,14 +1,18 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { getApiBase } from '../config'
+import AgentProviderSelect from './create-session/AgentProviderSelect'
 
 interface SessionUpdate {
   displayName?: string
   description?: string
+  agentProvider?: string
 }
 
 interface Props {
   sessionName: string
   displayName: string | null
   description: string | null
+  agentProvider: string | null
   onSave: (name: string, updates: SessionUpdate) => void
   onCancel: () => void
 }
@@ -17,11 +21,25 @@ export default function SessionCardEditForm({
   sessionName,
   displayName,
   description,
+  agentProvider: currentAgentProvider,
   onSave,
   onCancel,
 }: Props) {
   const [editName, setEditName] = useState(displayName || sessionName)
   const [editDescription, setEditDescription] = useState(description || '')
+  const [editAgentProvider, setEditAgentProvider] = useState(currentAgentProvider || '')
+  const [agentProviders, setAgentProviders] = useState<Record<string, { label: string }>>({})
+  const [defaultAgent, setDefaultAgent] = useState('')
+
+  useEffect(() => {
+    fetch(`${getApiBase()}/settings`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.agentProviders) setAgentProviders(data.agentProviders)
+        if (data.defaultAgent) setDefaultAgent(data.defaultAgent)
+      })
+      .catch(() => {})
+  }, [])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -36,6 +54,10 @@ export default function SessionCardEditForm({
     }
     if (trimmedDesc !== (description || '')) {
       updates.description = trimmedDesc
+    }
+    const effectiveCurrentAgent = currentAgentProvider || defaultAgent
+    if (editAgentProvider && editAgentProvider !== effectiveCurrentAgent) {
+      updates.agentProvider = editAgentProvider
     }
 
     if (Object.keys(updates).length > 0) {
@@ -79,6 +101,12 @@ export default function SessionCardEditForm({
             placeholder="Optional description"
           />
         </div>
+        <AgentProviderSelect
+          agentProviders={agentProviders}
+          agentProvider={editAgentProvider || currentAgentProvider || ''}
+          defaultAgent={defaultAgent}
+          onAgentProviderChange={setEditAgentProvider}
+        />
         <div className="flex justify-end gap-2">
           <button
             type="button"
