@@ -185,42 +185,43 @@ export default function SettingsModal({ onClose }: Props) {
   const [restartNeeded, setRestartNeeded] = useState(false)
   const [isLoadingModels, setIsLoadingModels] = useState(false)
 
-  useEffect(() => {
-    const fetchSettings = async () => {
-      try {
-        const res = await fetch(`${getApiBase()}/settings`)
-        if (!res.ok) throw new Error('Failed to fetch settings')
-        const data: Settings = await res.json()
-        setRepoSearchDir(data.repoSearchDir || '')
-        if (data.gitGraphCommits) setGitGraphCommits(String(data.gitGraphCommits))
-        setPasswordSet(data.passwordSet ?? false)
-        setPasswordSource(data.passwordSource ?? null)
-        setTelemetryConsent(data.telemetryConsent ?? false)
-        setCloudUsername(data.cloudUsername ?? null)
-        if (data.defaultAgent) setDefaultAgent(data.defaultAgent)
-        if (data.agentProviders) setAgentProviders(data.agentProviders)
-        if (data.ai) {
-          setAiProvider(data.ai.provider || 'ollama')
-          if (data.ai.providers) {
-            setProviderConfigs((prev) => {
-              const updated = { ...prev }
-              Object.entries(data.ai.providers).forEach(([id, config]) => {
-                if (updated[id]) {
-                  updated[id] = { ...updated[id], ...config }
-                }
-              })
-              return updated
+  const fetchSettings = useCallback(async () => {
+    try {
+      const res = await fetch(`${getApiBase()}/settings`)
+      if (!res.ok) throw new Error('Failed to fetch settings')
+      const data: Settings = await res.json()
+      setRepoSearchDir(data.repoSearchDir || '')
+      if (data.gitGraphCommits) setGitGraphCommits(String(data.gitGraphCommits))
+      setPasswordSet(data.passwordSet ?? false)
+      setPasswordSource(data.passwordSource ?? null)
+      setTelemetryConsent(data.telemetryConsent ?? false)
+      setCloudUsername(data.cloudUsername ?? null)
+      if (data.defaultAgent) setDefaultAgent(data.defaultAgent)
+      if (data.agentProviders) setAgentProviders(data.agentProviders)
+      if (data.ai) {
+        setAiProvider(data.ai.provider || 'ollama')
+        if (data.ai.providers) {
+          setProviderConfigs((prev) => {
+            const updated = { ...prev }
+            Object.entries(data.ai.providers).forEach(([id, config]) => {
+              if (updated[id]) {
+                updated[id] = { ...updated[id], ...config }
+              }
             })
-          }
+            return updated
+          })
         }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load settings')
-      } finally {
-        setIsLoading(false)
       }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load settings')
+    } finally {
+      setIsLoading(false)
     }
-    fetchSettings()
   }, [])
+
+  useEffect(() => {
+    fetchSettings()
+  }, [fetchSettings])
 
   const fetchOllamaModels = useCallback(async () => {
     setIsLoadingModels(true)
@@ -654,7 +655,7 @@ export default function SettingsModal({ onClose }: Props) {
             )}
 
             {/* Cloud Tab */}
-            {activeTab === 'cloud' && <CloudSettings />}
+            {activeTab === 'cloud' && <CloudSettings onConnected={fetchSettings} />}
 
             {/* Security Tab */}
             {activeTab === 'security' && (

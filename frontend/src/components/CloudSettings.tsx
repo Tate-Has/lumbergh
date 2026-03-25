@@ -365,7 +365,7 @@ function BackupSection({ onRefresh }: { onRefresh: () => void }) {
   )
 }
 
-export default function CloudSettings() {
+export default function CloudSettings({ onConnected }: { onConnected?: () => void }) {
   const [cloudUrl, setCloudUrl] = useState(DEFAULT_CLOUD_URL)
   const [cloudUsername, setCloudUsername] = useState<string | null>(null)
   const [cloudConnecting, setCloudConnecting] = useState(false)
@@ -429,6 +429,7 @@ export default function CloudSettings() {
             setCloudUsername(pollData.username)
             setCloudConnecting(false)
             setCloudUserCode(null)
+            onConnected?.()
             return
           }
           if (pollData.status === 'expired') {
