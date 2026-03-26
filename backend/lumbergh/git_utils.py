@@ -484,14 +484,24 @@ def get_graph_log(cwd: Path, limit: int = 100) -> dict:
         if commit.hexsha not in stash_hashes
     ]
 
-    # Insert stash nodes before their parent commits
+    # Insert stash nodes just above their parent commits (date-ordered)
     for entry in stash_entries:
         stash_node = _stash_entry_to_node(entry)
-        insert_idx = next(
+        parent_idx = next(
             (i for i, c in enumerate(commits) if c["hash"] == entry["parent"]),
-            0,
+            None,
         )
-        commits.insert(insert_idx, stash_node)
+        if parent_idx is not None:
+            commits.insert(parent_idx, stash_node)
+        else:
+            # Parent not in visible commits — insert by date so stash
+            # appears in chronological position instead of at the top.
+            stash_date = entry["date"]
+            insert_idx = next(
+                (i for i, c in enumerate(commits) if c["relativeDate"] <= stash_date),
+                len(commits),
+            )
+            commits.insert(insert_idx, stash_node)
 
     branches = [
         {
