@@ -652,6 +652,10 @@
         <p>Built-in AI chat pane for reviewing and coordinating work across sessions.</p>
       </div>
       <div class="feature">
+        <h3>Password Auth</h3>
+        <p>Optional password protection with cookie-based sessions. Set via env var or settings.</p>
+      </div>
+      <div class="feature">
         <h3>Mobile-First</h3>
         <p>Responsive design + PWA support. Install it on your phone or tablet.</p>
       </div>
@@ -853,6 +857,14 @@ brew install tmux git         # macOS</code></pre>
       <div class="caption">Dark and light themes &mdash; toggle with one click</div>
     </div>
 
+    <h3 style="margin-top: 1.5rem; margin-bottom: 0.75rem;">Password Authentication</h3>
+    <p>Lumbergh supports optional password protection. When a password is set, all routes require authentication via a login page. There are two ways to set a password:</p>
+    <ul style="margin-left: 1.5rem; margin-bottom: 1rem;">
+      <li><strong><code>LUMBERGH_PASSWORD</code> env var</strong> &mdash; takes precedence. Set it before launching Lumbergh.</li>
+      <li><strong>Security tab in Settings</strong> &mdash; set or change the password from the dashboard UI.</li>
+    </ul>
+    <p>Sessions use HMAC-signed cookies that last 30 days. Restarting the server invalidates all sessions (signing key is regenerated). If no password is configured, auth is completely disabled.</p>
+
     <h3 style="margin-top: 1.5rem; margin-bottom: 0.75rem;">Data Storage</h3>
     <p>All data lives in <code>~/.config/lumbergh/</code>:</p>
     <ul style="margin-left: 1.5rem; margin-bottom: 1rem;">
@@ -901,9 +913,9 @@ brew install tmux git         # macOS</code></pre>
       </li>
     </ol>
 
-    <div class="callout warn">
-      <strong>No authentication built in</strong>
-      <p>Lumbergh has no login system &mdash; it trusts your network. Don't expose it directly to the public internet. Use Tailscale or an SSH tunnel for remote access.</p>
+    <div class="callout tip">
+      <strong>Optional password protection</strong>
+      <p>Lumbergh supports optional password authentication. Set a password via the <code>LUMBERGH_PASSWORD</code> environment variable or in the Security tab of Settings. When enabled, users must log in before accessing the dashboard. Cookie-based sessions last 30 days. If no password is set, auth is disabled and Lumbergh trusts your network &mdash; use Tailscale or an SSH tunnel if you don't set a password.</p>
     </div>
   </section>
 
