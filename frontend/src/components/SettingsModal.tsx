@@ -30,6 +30,7 @@ interface Settings {
   telemetryConsent?: boolean | null
   cloudUsername?: string
   tabVisibility?: Record<string, boolean>
+  showSessionDots?: boolean
 }
 
 interface OllamaModel {
@@ -149,6 +150,7 @@ const PROVIDERS: ProviderDef[] = [
   },
 ]
 
+// eslint-disable-next-line complexity
 export default function SettingsModal({ onClose }: Props) {
   const [activeTab, setActiveTab] = useState<TabId>('general')
   const [repoSearchDir, setRepoSearchDir] = useState('')
@@ -184,6 +186,7 @@ export default function SettingsModal({ onClose }: Props) {
     prompts: true,
     shared: true,
   })
+  const [showSessionDots, setShowSessionDots] = useState(true)
   const [cloudUsername, setCloudUsername] = useState<string | null>(null)
   const [ollamaModels, setOllamaModels] = useState<OllamaModel[]>([])
   const [cloudModels, setCloudModels] = useState<CloudModel[]>([])
@@ -222,6 +225,7 @@ export default function SettingsModal({ onClose }: Props) {
       if (data.defaultAgent) setDefaultAgent(data.defaultAgent)
       if (data.agentProviders) setAgentProviders(data.agentProviders)
       if (data.tabVisibility) setTabVisibility(data.tabVisibility)
+      if (data.showSessionDots != null) setShowSessionDots(data.showSessionDots)
       if (data.ai) applyAiSettings(data.ai)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load settings')
@@ -290,6 +294,7 @@ export default function SettingsModal({ onClose }: Props) {
       payload.telemetryConsent = telemetryConsent
       payload.defaultAgent = defaultAgent
       payload.tabVisibility = tabVisibility
+      payload.showSessionDots = showSessionDots
       payload.ai = {
         provider: aiProvider,
         providers: providerConfigs,
@@ -575,6 +580,31 @@ export default function SettingsModal({ onClose }: Props) {
                   <p className="text-xs text-text-muted mt-1">
                     Tabs shown in the session detail view by default
                   </p>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="block text-sm text-text-tertiary">
+                      Session Navigator Dots
+                    </label>
+                    <p className="text-xs text-text-muted mt-0.5">
+                      Show session dots in the terminal header for quick switching
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={showSessionDots}
+                    onClick={() => setShowSessionDots(!showSessionDots)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      showSessionDots ? 'bg-blue-600' : 'bg-control-bg-hover'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        showSessionDots ? 'translate-x-5.5' : 'translate-x-0.5'
+                      }`}
+                    />
+                  </button>
                 </div>
                 <div className="flex items-center justify-between">
                   <div>

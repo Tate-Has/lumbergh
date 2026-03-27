@@ -71,12 +71,26 @@ export default function SessionNavigatorDots({ currentSessionName }: Props) {
 
   return (
     <div className="flex-1 flex items-center justify-center">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-1.5">
         {sessions.map((s) => {
           const status = getSessionStatus(s)
           const colors = statusColorClasses[status.color]
           const isCurrent = s.name === currentSessionName
-          const initial = (s.displayName || s.name).charAt(0).toUpperCase()
+          const label = s.displayName || s.name
+          const initial = (() => {
+            // Hyphenated: first letter of first two parts
+            if (label.includes('-')) {
+              const parts = label.split('-')
+              return (parts[0][0] + parts[1][0]).toUpperCase()
+            }
+            // CamelCase: first letter + first uppercase after it
+            const camelMatch = label.match(/^(.).*?([A-Z])/)
+            if (camelMatch) {
+              return (camelMatch[1] + camelMatch[2]).toUpperCase()
+            }
+            // Fallback: first two letters
+            return label.slice(0, 2).toUpperCase()
+          })()
           const isPulsing = alerting[s.name]
 
           return (
@@ -86,8 +100,8 @@ export default function SessionNavigatorDots({ currentSessionName }: Props) {
               title={`${s.displayName || s.name} — ${status.label}`}
               className={`rounded-full transition-all ${colors.dot} flex items-center justify-center font-bold text-black/60 ${
                 isCurrent
-                  ? `w-5 h-5 text-[11px] ring-2 ${statusRingClasses[status.color]} ring-offset-1 ring-offset-[var(--bg-surface)]`
-                  : 'w-3.5 h-3.5 text-[9px] hover:scale-125'
+                  ? `w-7 h-7 text-sm ring-2 ${statusRingClasses[status.color]} ring-offset-1 ring-offset-[var(--bg-surface)]`
+                  : 'w-7 h-7 text-sm hover:scale-110'
               } ${isPulsing ? 'animate-[pulse-dot_1.2s_ease-in-out_3]' : ''}`}
             >
               {initial}

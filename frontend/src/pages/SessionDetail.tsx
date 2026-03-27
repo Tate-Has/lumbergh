@@ -84,6 +84,7 @@ export default function SessionDetail() {
   const [mobileTab, setMobileTab] = useState<MobileTab>('terminal')
   const [diffData, setDiffData] = useState<DiffData | null>(null)
   const [showTelemetryOptIn, setShowTelemetryOptIn] = useState(false)
+  const [showSessionDots, setShowSessionDots] = useState(true)
   const [globalTabVisibility, setGlobalTabVisibility] =
     useState<TabVisibility>(DEFAULT_TAB_VISIBILITY)
   const [sessionTabVisibility, setSessionTabVisibility] = useState<TabVisibility | null>(null)
@@ -109,6 +110,7 @@ export default function SessionDetail() {
       .then((data) => {
         if (data.telemetryConsent == null) setShowTelemetryOptIn(true)
         if (data.tabVisibility) setGlobalTabVisibility(data.tabVisibility)
+        if (data.showSessionDots != null) setShowSessionDots(data.showSessionDots)
       })
       .catch(() => {})
   }, [])
@@ -414,6 +416,7 @@ export default function SessionDetail() {
           onBack={isDesktop ? handleBack : undefined}
           onReset={handleReset}
           onCycleSession={handleCycleSession}
+          showSessionDots={showSessionDots}
           isVisible={isDesktop || mobileTab === 'terminal'}
         />
       ) : (

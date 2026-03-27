@@ -16,6 +16,7 @@ interface TerminalProps {
   onBack?: () => void
   onReset?: () => void
   onCycleSession?: (direction: 'next' | 'prev') => void
+  showSessionDots?: boolean
   isVisible?: boolean
 }
 
@@ -26,6 +27,7 @@ export default memo(function Terminal({
   onBack,
   onReset,
   onCycleSession,
+  showSessionDots = true,
   isVisible = true,
 }: TerminalProps) {
   const { theme } = useTheme()
@@ -572,6 +574,7 @@ export default memo(function Terminal({
         onBack={onBack}
         onReset={onReset}
         onCycleSession={onCycleSession}
+        showSessionDots={showSessionDots}
       />
 
       {/* Error display (only show if session is not dead - dead sessions have their own overlay) */}

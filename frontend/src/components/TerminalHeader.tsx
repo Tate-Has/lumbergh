@@ -26,6 +26,7 @@ interface Props {
   onBack?: () => void
   onReset?: () => void
   onCycleSession?: (direction: 'next' | 'prev') => void
+  showSessionDots?: boolean
 }
 
 export default function TerminalHeader({
@@ -45,6 +46,7 @@ export default function TerminalHeader({
   onBack,
   onReset,
   onCycleSession,
+  showSessionDots = true,
 }: Props) {
   return (
     <div className="bg-bg-surface border-b border-border-default">
@@ -81,7 +83,7 @@ export default function TerminalHeader({
             </span>
           )}
         </span>
-        <SessionNavigatorDots currentSessionName={sessionName} />
+        {showSessionDots && <SessionNavigatorDots currentSessionName={sessionName} />}
         <div className="flex items-center gap-2 shrink-0">
           {isTouchDevice && (
             <button
