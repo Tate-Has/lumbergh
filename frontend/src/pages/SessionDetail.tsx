@@ -12,6 +12,7 @@ import PromptTemplates from '../components/PromptTemplates'
 import SharedFiles from '../components/SharedFiles'
 import TelemetryOptIn from '../components/TelemetryOptIn'
 import GitTab from '../components/graph/GitTab'
+import SessionNavigatorDots from '../components/SessionNavigatorDots'
 import { useIsDesktop } from '../hooks/useMediaQuery'
 
 type RightPanel = 'git' | 'files' | 'todos' | 'prompts' | 'shared'
@@ -641,6 +642,12 @@ export default function SessionDetail() {
             </button>
             {/* Separator */}
             <div className="w-px shrink-0 bg-border-default my-1" />
+            {showSessionDots && name && (
+              <>
+                <SessionNavigatorDots compact currentSessionName={name} />
+                <div className="w-px shrink-0 bg-border-default my-1" />
+              </>
+            )}
             {visibleMobileTabs.map((tab) => (
               <button
                 key={tab.id}

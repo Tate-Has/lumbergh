@@ -14,9 +14,10 @@ const statusRingClasses: Record<string, string> = {
 
 interface Props {
   currentSessionName: string
+  compact?: boolean
 }
 
-export default function SessionNavigatorDots({ currentSessionName }: Props) {
+export default function SessionNavigatorDots({ currentSessionName, compact = false }: Props) {
   const isDesktop = useIsDesktop()
   const navigate = useNavigate()
   const [sessions, setSessions] = useState<SessionBase[]>([])
@@ -67,48 +68,66 @@ export default function SessionNavigatorDots({ currentSessionName }: Props) {
     return () => clearInterval(interval)
   }, [])
 
-  if (!isDesktop) return null
+  if (!compact && !isDesktop) return null
+
+  const getInitial = (label: string) => {
+    if (label.includes('-')) {
+      const parts = label.split('-')
+      return (parts[0][0] + parts[1][0]).toUpperCase()
+    }
+    const camelMatch = label.match(/^(.).*?([A-Z])/)
+    if (camelMatch) {
+      return (camelMatch[1] + camelMatch[2]).toUpperCase()
+    }
+    return label.slice(0, 2).toUpperCase()
+  }
+
+  const dots = sessions.map((s) => {
+    const status = getSessionStatus(s)
+    const colors = statusColorClasses[status.color]
+    const isCurrent = s.name === currentSessionName
+    const isPulsing = alerting[s.name]
+
+    if (compact) {
+      return (
+        <button
+          key={s.name}
+          onClick={() => navigate(`/session/${s.name}`)}
+          title={`${s.displayName || s.name} — ${status.label}`}
+          className={`shrink-0 rounded-full transition-all ${colors.dot} flex items-center justify-center font-bold text-black/60 text-[8px] ${
+            isCurrent
+              ? `w-6 h-6 ring-2 ${statusRingClasses[status.color]} ring-offset-1 ring-offset-[var(--bg-surface)]`
+              : 'w-5 h-5 hover:scale-110'
+          } ${isPulsing ? 'animate-[pulse-dot_1.2s_ease-in-out_3]' : ''}`}
+        >
+          {getInitial(s.displayName || s.name)}
+        </button>
+      )
+    }
+
+    return (
+      <button
+        key={s.name}
+        onClick={() => navigate(`/session/${s.name}`)}
+        title={`${s.displayName || s.name} — ${status.label}`}
+        className={`rounded-full transition-all ${colors.dot} flex items-center justify-center font-bold text-black/60 ${
+          isCurrent
+            ? `w-7 h-7 text-sm ring-2 ${statusRingClasses[status.color]} ring-offset-1 ring-offset-[var(--bg-surface)]`
+            : 'w-7 h-7 text-sm hover:scale-110'
+        } ${isPulsing ? 'animate-[pulse-dot_1.2s_ease-in-out_3]' : ''}`}
+      >
+        {getInitial(s.displayName || s.name)}
+      </button>
+    )
+  })
+
+  if (compact) {
+    return <div className="flex items-center gap-1 shrink-0">{dots}</div>
+  }
 
   return (
     <div className="flex-1 flex items-center justify-center">
-      <div className="flex items-center gap-1.5">
-        {sessions.map((s) => {
-          const status = getSessionStatus(s)
-          const colors = statusColorClasses[status.color]
-          const isCurrent = s.name === currentSessionName
-          const label = s.displayName || s.name
-          const initial = (() => {
-            // Hyphenated: first letter of first two parts
-            if (label.includes('-')) {
-              const parts = label.split('-')
-              return (parts[0][0] + parts[1][0]).toUpperCase()
-            }
-            // CamelCase: first letter + first uppercase after it
-            const camelMatch = label.match(/^(.).*?([A-Z])/)
-            if (camelMatch) {
-              return (camelMatch[1] + camelMatch[2]).toUpperCase()
-            }
-            // Fallback: first two letters
-            return label.slice(0, 2).toUpperCase()
-          })()
-          const isPulsing = alerting[s.name]
-
-          return (
-            <button
-              key={s.name}
-              onClick={() => navigate(`/session/${s.name}`)}
-              title={`${s.displayName || s.name} — ${status.label}`}
-              className={`rounded-full transition-all ${colors.dot} flex items-center justify-center font-bold text-black/60 ${
-                isCurrent
-                  ? `w-7 h-7 text-sm ring-2 ${statusRingClasses[status.color]} ring-offset-1 ring-offset-[var(--bg-surface)]`
-                  : 'w-7 h-7 text-sm hover:scale-110'
-              } ${isPulsing ? 'animate-[pulse-dot_1.2s_ease-in-out_3]' : ''}`}
-            >
-              {initial}
-            </button>
-          )
-        })}
-      </div>
+      <div className="flex items-center gap-1.5">{dots}</div>
     </div>
   )
 }
