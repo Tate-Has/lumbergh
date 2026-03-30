@@ -1599,3 +1599,38 @@ async def session_status_summary(name: str, body: StatusSummaryInput):
 
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"AI summary generation failed: {e}")
+
+
+@router.get("/{name}/summary")
+async def get_session_summary(name: str, force: bool = False):
+    """Get AI-generated summary of recent session activity.
+
+    Based on tmux scrollback buffer with recency bias.
+    Auto-generates on first request, then caches with a 3-minute cooldown.
+    Only regenerates when git state has changed AND cooldown has expired.
+    Pass force=true to bypass cooldown and regenerate immediately.
+    """
+    from lumbergh.ai.session_summary import get_or_generate_summary
+    from lumbergh.idle_monitor import idle_monitor
+    from lumbergh.routers.settings import get_settings
+
+    workdir = get_session_workdir(name)
+    state = idle_monitor.get_state(name)
+
+    settings = get_settings()
+    ai_settings = settings.get("ai", {})
+    provider_name = ai_settings.get("provider", "ollama")
+    providers_config = ai_settings.get("providers", {})
+    model = providers_config.get(provider_name, {}).get("model", "")
+
+    result = await get_or_generate_summary(
+        session_name=name,
+        workdir=workdir,
+        ai_settings=ai_settings,
+        settings=settings,
+        idle_state=state.value if hasattr(state, "value") else str(state),
+        force=force,
+    )
+    result["provider"] = provider_name
+    result["model"] = model
+    return result

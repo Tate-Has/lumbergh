@@ -76,6 +76,35 @@ def capture_pane_content(session_name: str) -> str:
         return ""
 
 
+def capture_scrollback(session_name: str, max_lines: int = 500) -> str:
+    """Capture scrollback history from the active pane (plain text, no ANSI).
+
+    Returns up to ``max_lines`` lines from the scrollback buffer.
+    """
+    server = libtmux.Server()
+    try:
+        session = server.sessions.get(session_name=session_name)
+    except ObjectDoesNotExist:
+        return ""
+    if not session:
+        return ""
+
+    window = session.active_window
+    pane = window.active_pane
+    if pane is None:
+        return ""
+
+    try:
+        # Negative start = lines before the current visible area
+        # No escape_sequences = plain text (cheaper for AI to parse)
+        content = pane.capture_pane(start=-max_lines, end="-")
+        if isinstance(content, list):
+            return "\n".join(content)
+        return str(content)
+    except Exception:
+        return ""
+
+
 class TmuxPtySession:
     """
     Manages a PTY connected to a tmux session for bidirectional I/O.

@@ -11,6 +11,8 @@ import Scratchpad from '../components/Scratchpad'
 import PromptTemplates from '../components/PromptTemplates'
 import SharedFiles from '../components/SharedFiles'
 import TelemetryOptIn from '../components/TelemetryOptIn'
+import SessionSummaryOverlay from '../components/SessionSummaryBanner'
+import { isSummaryDismissed, dismissSummary, enableSummary } from '../hooks/useSessionSummary'
 import GitTab from '../components/graph/GitTab'
 import SessionNavigatorDots from '../components/SessionNavigatorDots'
 import { useIsDesktop } from '../hooks/useMediaQuery'
@@ -90,6 +92,7 @@ export default function SessionDetail() {
     useState<TabVisibility>(DEFAULT_TAB_VISIBILITY)
   const [sessionTabVisibility, setSessionTabVisibility] = useState<TabVisibility | null>(null)
   const [showTabSettings, setShowTabSettings] = useState(false)
+  const [showSummary, setShowSummary] = useState(() => !isSummaryDismissed())
   const tabSettingsRef = useRef<HTMLDivElement>(null)
   const focusFnRef = useRef<(() => void) | null>(null)
 
@@ -224,6 +227,20 @@ export default function SessionDetail() {
     } catch (err) {
       console.error('Failed to save session dots setting:', err)
     }
+  }, [])
+
+  const handleDismissSummary = useCallback(() => {
+    dismissSummary()
+    setShowSummary(false)
+  }, [])
+
+  const handleTempHideSummary = useCallback(() => {
+    setShowSummary(false)
+  }, [])
+
+  const handleShowSummary = useCallback(() => {
+    enableSummary()
+    setShowSummary(true)
   }, [])
 
   const handleFocusReady = useCallback((fn: () => void) => {
@@ -422,7 +439,7 @@ export default function SessionDetail() {
   // mobileTabs is now computed as visibleMobileTabs above
 
   const renderTerminal = () => (
-    <div className="h-full" data-testid="terminal-container">
+    <div className="h-full relative" data-testid="terminal-container">
       {name ? (
         <Terminal
           sessionName={name}
@@ -432,11 +449,20 @@ export default function SessionDetail() {
           onCycleSession={handleCycleSession}
           showSessionDots={showSessionDots}
           isVisible={isDesktop || mobileTab === 'terminal'}
+          showSummary={showSummary}
+          onShowSummary={handleShowSummary}
         />
       ) : (
         <div className="flex items-center justify-center h-full text-text-muted">
           No session selected
         </div>
+      )}
+      {showSummary && name && (
+        <SessionSummaryOverlay
+          sessionName={name}
+          onDismiss={handleDismissSummary}
+          onTempHide={handleTempHideSummary}
+        />
       )}
     </div>
   )
