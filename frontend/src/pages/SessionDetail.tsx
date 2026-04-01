@@ -92,7 +92,7 @@ export default function SessionDetail() {
     useState<TabVisibility>(DEFAULT_TAB_VISIBILITY)
   const [sessionTabVisibility, setSessionTabVisibility] = useState<TabVisibility | null>(null)
   const [showTabSettings, setShowTabSettings] = useState(false)
-  const [showSummary, setShowSummary] = useState(() => !isSummaryDismissed())
+  const [showSummary, setShowSummary] = useState(false)
   const tabSettingsRef = useRef<HTMLDivElement>(null)
   const focusFnRef = useRef<(() => void) | null>(null)
 
@@ -119,7 +119,7 @@ export default function SessionDetail() {
       .catch(() => {})
   }, [])
 
-  // Fetch session metadata for per-session tab visibility
+  // Fetch session metadata for per-session tab visibility + summary auto-show
   useEffect(() => {
     if (!name) return
     fetch(`${getApiBase()}/sessions`)
@@ -128,6 +128,15 @@ export default function SessionDetail() {
         const session = (data.sessions || []).find((s: { name: string }) => s.name === name)
         if (session?.tabVisibility) {
           setSessionTabVisibility(session.tabVisibility)
+        }
+        // Auto-show summary if: not dismissed, active session, untouched for 30+ min
+        if (session && !isSummaryDismissed() && session.alive && !session.paused) {
+          const STALE_MINUTES = 30
+          const lastUsed = session.lastUsedAt ? new Date(session.lastUsedAt).getTime() : 0
+          const minutesSinceTouch = (Date.now() - lastUsed) / 60_000
+          if (minutesSinceTouch >= STALE_MINUTES) {
+            setShowSummary(true)
+          }
         }
       })
       .catch(() => {})
