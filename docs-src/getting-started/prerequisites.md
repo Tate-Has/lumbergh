@@ -71,7 +71,7 @@ For other methods, see the [uv installation docs](https://docs.astral.sh/uv/gett
 
 ## Development Only
 
-### Node.js 18+
+### Node.js 20.19+
 
 Only required if you're working on Lumbergh itself. Not needed for normal usage.
 
