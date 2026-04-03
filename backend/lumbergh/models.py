@@ -169,6 +169,7 @@ class DeleteBranchInput(BaseModel):
 
     branch: str
     delete_remote: bool = False
+    remote_only: bool = False
 
 
 class StatusSummaryInput(BaseModel):

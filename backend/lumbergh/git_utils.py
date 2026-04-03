@@ -932,16 +932,34 @@ def checkout_branch(cwd: Path, branch: str, reset_to: str | None = None) -> dict
         return {"error": str(e)}
 
 
-def delete_branch(cwd: Path, branch: str, delete_remote: bool = False) -> dict:
+def delete_branch(
+    cwd: Path,
+    branch: str,
+    delete_remote: bool = False,
+    remote_only: bool = False,
+) -> dict:
     """
-    Delete a local branch (and optionally its remote tracking branch).
+    Delete a branch locally and/or on the remote.
 
     Refuses to delete the currently checked-out branch.
+    When remote_only=True, only the remote tracking branch is deleted.
     """
     try:
         repo = get_repo(cwd)
     except InvalidGitRepositoryError:
         return {"error": "Not a git repository"}
+
+    message = ""
+
+    if remote_only:
+        # Strip origin/ prefix if present for the push --delete command
+        remote_name = branch.removeprefix("origin/")
+        try:
+            repo.git.push("origin", "--delete", remote_name)
+            message = f"Deleted remote branch 'origin/{remote_name}'"
+        except GitCommandError as e:
+            return {"error": f"Failed to delete remote branch: {e}"}
+        return {"status": "success", "message": message}
 
     current = get_current_branch(cwd)
     if branch == current:

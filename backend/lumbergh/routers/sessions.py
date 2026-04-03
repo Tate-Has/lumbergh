@@ -920,7 +920,12 @@ async def session_git_delete_branch(name: str, body: DeleteBranchInput):
 
     try:
         result = await _run_git(
-            delete_branch, workdir, body.branch, body.delete_remote, timeout=GIT_WRITE_TIMEOUT
+            delete_branch,
+            workdir,
+            body.branch,
+            body.delete_remote,
+            body.remote_only,
+            timeout=GIT_WRITE_TIMEOUT,
         )
         if "error" in result:
             status_code = 409 if "current branch" in result["error"].lower() else 400

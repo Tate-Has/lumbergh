@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { MoreVertical, Monitor, Cloud, Archive, Tag } from 'lucide-react'
+import { MoreVertical, Monitor, Cloud, Archive, Tag, AlertTriangle, Trash2 } from 'lucide-react'
 import { getApiBase } from '../../config'
 import type { GraphData } from '../diff/types'
 import { computeGraphLayout, laneColor } from './graphLayout'
@@ -120,6 +120,115 @@ function WipRow({
   )
 }
 
+function DeleteBranchModal({
+  sessionName,
+  branch,
+  onDone,
+  onCancel,
+}: {
+  sessionName?: string
+  branch: { name: string; local: boolean; remote: boolean } | null
+  onDone: () => void
+  onCancel: () => void
+}) {
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [deleteRemote, setDeleteRemote] = useState(false)
+
+  const handleConfirm = useCallback(async () => {
+    if (!sessionName || !branch) return
+    setIsDeleting(true)
+    try {
+      const remoteOnly = !branch.local && branch.remote
+      const res = await fetch(`${getApiBase()}/sessions/${sessionName}/git/delete-branch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          branch: branch.name,
+          delete_remote: deleteRemote,
+          remote_only: remoteOnly,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        alert(data.detail || `Delete failed (HTTP ${res.status})`)
+        return
+      }
+      onDone()
+    } catch {
+      alert('Failed to delete branch')
+    } finally {
+      setIsDeleting(false)
+    }
+  }, [sessionName, branch, deleteRemote, onDone])
+
+  // Reset checkbox when branch changes
+  useEffect(() => {
+    setDeleteRemote(false)
+  }, [branch?.name])
+
+  if (!branch) return null
+
+  const isRemoteOnly = !branch.local && branch.remote
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/50"
+      onClick={() => !isDeleting && onCancel()}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape' && !isDeleting) onCancel()
+      }}
+    >
+      <div
+        className="w-full sm:max-w-sm mx-0 sm:mx-4 bg-bg-surface border border-red-500/30 rounded-t-2xl sm:rounded-xl shadow-xl p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-2.5 mb-3">
+          <div className="p-2 rounded-lg bg-red-500/15">
+            <AlertTriangle size={18} className="text-red-400" />
+          </div>
+          <h3 className="text-lg font-semibold text-text-primary">Delete branch</h3>
+        </div>
+        <p className="text-sm text-text-secondary mb-1">
+          Are you sure you want to delete {isRemoteOnly ? 'the remote branch' : 'the branch'}{' '}
+          <code className="font-mono font-medium text-red-400">{branch.name}</code>?
+        </p>
+        <p className="text-xs text-text-muted mb-4">
+          Commits will remain in the repository until garbage collected.
+        </p>
+        {branch.local && branch.remote && (
+          <label className="flex items-center gap-2 mb-4 cursor-pointer group">
+            <input
+              type="checkbox"
+              checked={deleteRemote}
+              onChange={(e) => setDeleteRemote(e.target.checked)}
+              className="w-4 h-4 rounded border-border-default bg-bg-elevated text-red-500 focus:ring-red-500/30 accent-red-500"
+            />
+            <span className="text-sm text-text-secondary group-hover:text-text-primary">
+              Also delete remote branch
+            </span>
+          </label>
+        )}
+        <div className="flex flex-col-reverse sm:flex-row gap-2 sm:justify-end">
+          <button
+            onClick={onCancel}
+            disabled={isDeleting}
+            className="px-4 py-2.5 rounded-lg text-sm font-medium bg-bg-elevated text-text-secondary hover:bg-control-bg-hover"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleConfirm}
+            disabled={isDeleting}
+            className="px-4 py-2.5 rounded-lg text-sm font-medium bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+          >
+            {isDeleting ? 'Deleting...' : 'Delete'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function GitGraph({
   sessionName,
   onSelectCommit,
@@ -159,6 +268,11 @@ export default function GitGraph({
     hash: string
     x: number
     y: number
+  } | null>(null)
+  const [deleteBranchConfirm, setDeleteBranchConfirm] = useState<{
+    name: string
+    local: boolean
+    remote: boolean
   } | null>(null)
   const [expandedRow, setExpandedRow] = useState<number | null>(null)
   const expandedRowTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -1530,11 +1644,41 @@ export default function GitGraph({
                         Reset local to here
                       </button>
                     )}
+                    {!isCurrent && (
+                      <>
+                        <div className="mx-2 my-1 border-t border-border-default" />
+                        <button
+                          onClick={() => {
+                            setDeleteBranchConfirm({
+                              name: menuBranch.name,
+                              local: menuBranch.local,
+                              remote: menuBranch.remote,
+                            })
+                            setMenuBranch(null)
+                          }}
+                          className="w-full text-left px-3 py-1.5 text-sm text-red-400 hover:bg-red-500/10 hover:text-red-300 flex items-center gap-2"
+                        >
+                          <Trash2 size={14} />
+                          Delete branch
+                        </button>
+                      </>
+                    )}
                   </div>
                 )
               })()}
           </div>
         )}
+
+        {/* Delete branch confirmation modal */}
+        <DeleteBranchModal
+          sessionName={sessionName}
+          branch={deleteBranchConfirm}
+          onDone={() => {
+            setDeleteBranchConfirm(null)
+            afterAction()
+          }}
+          onCancel={() => setDeleteBranchConfirm(null)}
+        />
       </div>
     </div>
   )
