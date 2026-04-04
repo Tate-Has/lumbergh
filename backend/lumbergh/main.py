@@ -370,16 +370,18 @@ async def send_to_session(session_name: str, body: SendInput):
 
     if len(text) > 128:
         # For large text, use load-buffer + paste-buffer (much faster than send-keys
-        # which processes each character individually through tmux's key pipeline)
-        await _run_tmux("load-buffer", "-", input_data=text)
+        # which processes each character individually through tmux's key pipeline).
+        # Include trailing newline in the buffer itself so the Enter is delivered
+        # atomically with the text — a separate send-keys Enter can race.
+        buf = text + "\n" if body.send_enter else text
+        await _run_tmux("load-buffer", "-", input_data=buf)
         await _run_tmux("paste-buffer", "-t", session_name, "-d", "-p")
     else:
         # For short text, send-keys -l is fine
         await _run_tmux("send-keys", "-t", session_name, "-l", text)
-
-    # Send Enter key separately (without -l so it's interpreted as a key)
-    if body.send_enter:
-        await _run_tmux("send-keys", "-t", session_name, "Enter")
+        # Send Enter key separately (without -l so it's interpreted as a key)
+        if body.send_enter:
+            await _run_tmux("send-keys", "-t", session_name, "Enter")
 
     # Buffer the message for AI commit context
     if body.send_enter:
