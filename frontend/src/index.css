@@ -19,6 +19,26 @@
   --color-input-border: var(--input-border);
   --color-terminal-bg: var(--terminal-bg);
   --color-terminal-fg: var(--terminal-fg);
+  /* Focus Workspace tokens */
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-navy: var(--navy);
+  --color-orange-subtle: var(--orange-subtle);
+  --color-priority-high: var(--priority-high);
+  --color-priority-high-bg: var(--priority-high-bg);
+  --color-priority-med: var(--priority-med);
+  --color-priority-med-bg: var(--priority-med-bg);
+  --color-priority-low: var(--priority-low);
+  --color-priority-low-bg: var(--priority-low-bg);
+  --color-status-running: var(--status-running);
+  --color-status-running-bg: var(--status-running-bg);
+  --color-status-waiting: var(--status-waiting);
+  --color-status-waiting-bg: var(--status-waiting-bg);
+  --color-waiting-col-bg: var(--waiting-col-bg);
+  --shadow-sm: 0 1px 3px var(--shadow);
+  --shadow-card-hover: 0 2px 8px var(--shadow-hover);
+  --shadow-modal: var(--shadow-lg);
+  --opacity-done: var(--done-opacity);
 }
 
 /* ── Dark theme (default) ── */
@@ -121,4 +141,513 @@ body {
   padding-right: env(safe-area-inset-right);
   padding-bottom: env(safe-area-inset-bottom);
   padding-left: env(safe-area-inset-left);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Focus Workspace — scoped color palette + component styles
+   Applied via .focus-view wrapper on the FocusWorkspace page.
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Focus dark palette (warm charcoal) ── */
+.focus-view {
+  --bg-base: #2a2d33;
+  --bg-surface: #33373e;
+  --bg-elevated: #3d4148;
+  --bg-sunken: #252830;
+  --bg-overlay: rgba(0, 0, 0, 0.5);
+  --text-primary: #eaebec;
+  --text-secondary: #c5c8ce;
+  --text-tertiary: #787d87;
+  --text-muted: #959aa4;
+  --accent: #f19a1a;
+  --accent-hover: #faab3e;
+  --border-default: #444950;
+  --border-subtle: #383c43;
+  --control-bg: #33373e;
+  --control-bg-hover: #3a3f46;
+  --input-bg: #3d4148;
+  --input-border: #444950;
+  --shadow: rgba(0, 0, 0, 0.3);
+  --shadow-hover: rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.45);
+  --orange-subtle: rgba(241, 154, 26, 0.13);
+  --navy: #eaebec;
+  --priority-high: #f27a7d;
+  --priority-high-bg: rgba(242, 122, 125, 0.15);
+  --priority-med: #f19a1a;
+  --priority-med-bg: rgba(241, 154, 26, 0.15);
+  --priority-low: #959aa4;
+  --priority-low-bg: rgba(149, 154, 164, 0.15);
+  --status-running: #4cc38a;
+  --status-running-bg: rgba(76, 195, 138, 0.15);
+  --status-waiting: #f0b730;
+  --status-waiting-bg: rgba(240, 183, 48, 0.15);
+  --waiting-col-bg: rgba(240, 183, 48, 0.06);
+  --done-opacity: 0.4;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: 'Archivo', sans-serif;
+}
+
+/* Focus light palette */
+:root:not(.dark) .focus-view {
+  --bg-base: #f5f5f3;
+  --bg-surface: #ecebe8;
+  --bg-elevated: #ffffff;
+  --bg-sunken: #eeeeed;
+  --bg-overlay: rgba(0, 0, 0, 0.4);
+  --text-primary: #1d2024;
+  --text-secondary: #4a5060;
+  --text-tertiary: #a0a6b0;
+  --text-muted: #7c8290;
+  --accent: #f18a00;
+  --accent-hover: #d97a00;
+  --border-default: #d5d7da;
+  --border-subtle: #e8e9eb;
+  --control-bg: #ecebe8;
+  --control-bg-hover: #e4e3df;
+  --input-bg: #ffffff;
+  --input-border: #d5d7da;
+  --shadow: rgba(29, 32, 36, 0.04);
+  --shadow-hover: rgba(29, 32, 36, 0.07);
+  --shadow-lg: 0 4px 16px rgba(29, 32, 36, 0.1);
+  --orange-subtle: rgba(241, 138, 0, 0.07);
+  --navy: #201e41;
+  --priority-high: #e5484d;
+  --priority-high-bg: rgba(229, 72, 77, 0.1);
+  --priority-med: #f18a00;
+  --priority-med-bg: rgba(241, 138, 0, 0.1);
+  --priority-low: #7c8290;
+  --priority-low-bg: rgba(124, 130, 144, 0.1);
+  --status-running: #30a46c;
+  --status-running-bg: rgba(48, 164, 108, 0.1);
+  --status-waiting: #e5a000;
+  --status-waiting-bg: rgba(229, 160, 0, 0.1);
+  --waiting-col-bg: rgba(229, 160, 0, 0.04);
+  --done-opacity: 0.45;
+}
+
+/* ── Focus component styles ── */
+
+.focus-view .topbar-btn {
+  background: none;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.focus-view .topbar-btn:hover {
+  background: var(--bg-surface);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.focus-view .topbar-btn.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.focus-view .today-card.completed {
+  opacity: var(--done-opacity);
+}
+.focus-view .today-card.completed .today-card-title {
+  text-decoration: line-through;
+}
+.focus-view .today-card.completed .check-icon {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.focus-view .today-card.completed .check-icon::after {
+  content: '';
+  width: 6px;
+  height: 3px;
+  border-left: 2px solid #fff;
+  border-bottom: 2px solid #fff;
+  transform: rotate(-45deg) translateY(-1px);
+}
+
+.focus-view .session-status.working {
+  color: var(--status-running);
+}
+.focus-view .session-status.working .session-dot {
+  background: var(--status-running);
+  animation: focus-pulse 1.5s ease-in-out infinite;
+}
+.focus-view .session-status.idle {
+  color: var(--text-muted);
+}
+.focus-view .session-status.idle .session-dot {
+  background: var(--text-muted);
+}
+.focus-view .session-status.error {
+  color: var(--priority-high);
+}
+.focus-view .session-status.error .session-dot {
+  background: var(--priority-high);
+}
+.focus-view .session-status.stalled {
+  color: var(--status-waiting);
+}
+.focus-view .session-status.stalled .session-dot {
+  background: var(--status-waiting);
+}
+.focus-view .session-status.paused {
+  color: #3b82f6;
+}
+.focus-view .session-status.paused .session-dot {
+  background: #3b82f6;
+}
+.focus-view .session-status.unknown {
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+.focus-view .session-status.unknown .session-dot {
+  background: var(--text-muted);
+}
+
+@keyframes focus-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.8);
+  }
+}
+
+.focus-view .inbox-drag-grip {
+  cursor: grab;
+  opacity: 0.3;
+  font-size: 0.75rem;
+  user-select: none;
+  padding: 0 4px 0 0;
+  color: var(--text-secondary);
+}
+.focus-view .inbox-item:hover .inbox-drag-grip {
+  opacity: 0.7;
+}
+.focus-view .inbox-item.dragging .inbox-drag-grip {
+  opacity: 1;
+}
+
+.focus-view .modal-field {
+  margin-bottom: 10px;
+}
+.focus-view .modal-btn {
+  padding: 7px 16px;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--border-default);
+  transition: all 0.15s ease;
+}
+
+.focus-view mark.archive-highlight {
+  background: var(--accent);
+  color: #fff;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.focus-view .filter-menu-item.selected .check-mark::after {
+  content: '';
+  width: 5px;
+  height: 3px;
+  border-left: 1.5px solid #fff;
+  border-bottom: 1.5px solid #fff;
+  transform: rotate(-45deg) translateY(-0.5px);
+}
+
+/* ── Focus DnD states ── */
+.focus-view .dragging {
+  opacity: 0.5;
+  transform: scale(0.97);
+}
+.focus-view .touch-ghost {
+  border-radius: 8px;
+  overflow: hidden;
+}
+.focus-view .insert-line {
+  height: 3px;
+  background: var(--accent);
+  border-radius: 2px;
+  margin: 2px 8px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.focus-view .insert-line.visible {
+  opacity: 1;
+}
+.focus-view .panel.drag-over {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+  background: var(--orange-subtle);
+}
+.focus-view .board-col.drag-over {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+  background: var(--orange-subtle) !important;
+}
+.focus-view .board-col.collapsed-col.drag-over {
+  background: var(--orange-subtle) !important;
+}
+.focus-view .swimlane-cell.drag-over {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+  background: var(--orange-subtle) !important;
+}
+.focus-view .swimlane-row.dragging-row {
+  opacity: 0.4;
+}
+.focus-view .swimlane-row.drag-over-row {
+  border-top: 2px solid var(--accent);
+}
+.focus-view .swimlane-label .drag-handle {
+  cursor: grab;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  margin-right: 6px;
+  opacity: 0.4;
+  user-select: none;
+}
+.focus-view .swimlane-label:hover .drag-handle {
+  opacity: 1;
+}
+.focus-view [draggable='true'] {
+  cursor: grab;
+}
+.focus-view [draggable='true']:active {
+  cursor: grabbing;
+}
+
+/* ── Focus pomodoro states ── */
+.focus-view .topbar-timer.break {
+  background: rgba(48, 164, 108, 0.08);
+  border-color: var(--status-running);
+}
+.focus-view .topbar-timer.break .pomo-countdown {
+  color: var(--status-running);
+}
+.focus-view .today-card.pomo-active {
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 1px var(--accent),
+    0 0 12px var(--orange-subtle);
+  animation: focus-pomo-pulse 2s ease-in-out infinite;
+}
+.focus-view .today-card.pomo-active .today-card-pomo {
+  display: none;
+}
+@keyframes focus-pomo-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px var(--accent),
+      0 0 8px var(--orange-subtle);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px var(--accent),
+      0 0 16px var(--orange-subtle);
+  }
+}
+
+/* ── Focus scrollbar ── */
+.focus-view ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.focus-view ::-webkit-scrollbar-track {
+  background: transparent;
+}
+.focus-view ::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: 3px;
+}
+.focus-view ::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* ── Focus mobile action bar ── */
+.focus-view .mobile-action-bar {
+  display: none;
+}
+
+/* ── Focus responsive: tablet ── */
+@media (max-width: 1024px) {
+  .focus-view .top-split {
+    grid-template-columns: 1fr;
+  }
+  .focus-view .board-col {
+    min-width: 170px;
+    max-width: none;
+  }
+  .focus-view .swimlane-label {
+    width: 90px;
+  }
+  .focus-view .swimlane-header-row {
+    padding-left: 102px;
+  }
+  .focus-view .swimlane-cell {
+    min-width: 130px;
+  }
+}
+
+/* ── Focus responsive: mobile ── */
+@media (max-width: 767px) {
+  .focus-view .topbar {
+    padding: 8px 12px;
+  }
+  .focus-view .topbar h1 {
+    font-size: 0.95rem;
+  }
+  .focus-view .topbar .date {
+    display: none;
+  }
+  .focus-view .topbar-btn {
+    min-height: 36px;
+    padding: 8px 12px;
+  }
+  .focus-view .main-content {
+    padding: 14px 12px;
+    gap: 12px;
+  }
+  .focus-view .top-split {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .focus-view .today-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+  }
+  .focus-view .panel {
+    padding: 10px;
+    border-radius: 8px;
+  }
+  .focus-view .today-card {
+    padding: 12px;
+  }
+  .focus-view .today-card .check-icon {
+    width: 28px;
+    height: 28px;
+  }
+  .focus-view .today-card-pomo {
+    opacity: 1;
+    width: 28px;
+    height: 28px;
+    font-size: 0.7rem;
+  }
+  .focus-view .session-card {
+    padding: 12px 14px;
+  }
+  .focus-view .board-columns {
+    gap: 8px;
+    scroll-snap-type: x mandatory;
+  }
+  .focus-view .board-col {
+    min-width: 260px;
+    max-width: 80vw;
+    scroll-snap-align: start;
+    flex-shrink: 0;
+  }
+  .focus-view .board-col.collapsed-col {
+    min-width: 32px;
+    max-width: 32px;
+  }
+  .focus-view #swimlaneToggle {
+    display: none !important;
+  }
+  .focus-view .modal-overlay.active {
+    align-items: stretch;
+    justify-content: stretch;
+  }
+  .focus-view .modal {
+    width: 100%;
+    max-width: 100vw;
+    height: 100%;
+    max-height: 100vh;
+    border-radius: 0;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .focus-view .modal-actions {
+    margin-top: auto;
+    padding-top: 16px;
+  }
+  .focus-view .archive-overlay.active {
+    align-items: stretch;
+    justify-content: stretch;
+  }
+  .focus-view .archive-modal {
+    width: 100%;
+    max-width: 100vw;
+    max-height: 100vh;
+    border-radius: 0;
+  }
+  .focus-view .shortcut-modal {
+    width: 100%;
+    max-width: 100vw;
+    border-radius: 0;
+  }
+  .focus-view .filter-menu {
+    position: fixed;
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    border-radius: 12px 12px 0 0;
+    max-height: 50vh;
+    z-index: 110;
+  }
+  .focus-view .filter-menu-item {
+    padding: 10px 14px;
+    font-size: 0.85rem;
+  }
+  .focus-view .kanban-card .kanban-promote-btn {
+    opacity: 1;
+  }
+  .focus-view .mobile-action-bar {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--bg-elevated);
+    border-top: 1px solid var(--border-default);
+    padding: 8px 12px;
+    gap: 8px;
+    z-index: 90;
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
+  .focus-view .mobile-action-btn {
+    flex: 1;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    padding: 10px 8px;
+    font-family: inherit;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    cursor: pointer;
+    text-align: center;
+  }
+  .focus-view .mobile-action-btn:active {
+    background: var(--orange-subtle);
+    border-color: var(--accent);
+  }
+  .focus-view .main-content {
+    padding-bottom: 70px;
+  }
 }

@@ -31,7 +31,7 @@ from lumbergh.git_utils import (
     stage_all_and_commit,
 )
 from lumbergh.models import CommitInput, RevertFileInput, SendInput, TmuxCommand
-from lumbergh.routers import ai, backup, cloud, notes, sessions, settings, shared, tmux
+from lumbergh.routers import ai, backup, cloud, focus, notes, sessions, settings, shared, tmux
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +126,7 @@ app.include_router(cloud.router)
 app.include_router(backup.router)
 app.include_router(shared.router)
 app.include_router(tmux.router)
+app.include_router(focus.router)
 
 # Project root (parent of backend/)
 PROJECT_ROOT = Path(__file__).parent.parent.parent

@@ -8,7 +8,7 @@ from pathlib import Path
 
 from tinydb import TinyDB
 
-from lumbergh.constants import CONFIG_DIR, PROJECTS_DIR, SESSIONS_DATA_DIR
+from lumbergh.constants import CONFIG_DIR, FOCUS_DIR, PROJECTS_DIR, SESSIONS_DATA_DIR
 
 
 def _resolve_main_repo(project_path: Path) -> Path:
@@ -151,3 +151,55 @@ def save_single_document_value(table, key: str, value):
     table.truncate()
     table.insert({key: value})
     return value
+
+
+# ── Focus Workspace data access ──
+
+
+def _ensure_focus_tinydb_format(path: Path):
+    """Convert flat JSON to TinyDB format if needed.
+
+    Focus data files may be in flat dict format (e.g., {"tasks": [...]}).
+    TinyDB expects its own format: {"_default": {"1": {...}}}.
+    Converts in-place on first access; no-op when already in TinyDB format.
+    """
+    import json
+
+    if not path.exists():
+        return
+
+    try:
+        with open(path, encoding="utf-8") as f:
+            raw = json.load(f)
+    except (json.JSONDecodeError, ValueError, FileNotFoundError):
+        return
+
+    if "_default" in raw:
+        return
+
+    # Flat format → migrate to TinyDB
+    path.unlink()
+    db = TinyDB(str(path))
+    db.insert(raw)
+    db.close()
+
+
+def get_focus_tasks_db() -> TinyDB:
+    """Get a fresh TinyDB instance for Focus tasks."""
+    path = FOCUS_DIR / "tasks.json"
+    _ensure_focus_tinydb_format(path)
+    return TinyDB(str(path))
+
+
+def get_focus_archive_db() -> TinyDB:
+    """Get a fresh TinyDB instance for Focus archive."""
+    path = FOCUS_DIR / "archive.json"
+    _ensure_focus_tinydb_format(path)
+    return TinyDB(str(path))
+
+
+def get_focus_notes_db() -> TinyDB:
+    """Get a fresh TinyDB instance for Focus notes."""
+    path = FOCUS_DIR / "notes.json"
+    _ensure_focus_tinydb_format(path)
+    return TinyDB(str(path))
