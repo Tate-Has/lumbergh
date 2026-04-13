@@ -133,25 +133,16 @@ class TestSessionStatusBadge:
         assert badge_count == 0, \
             f"Expected 0 session badges for a task with no session, got {badge_count}"
 
-    def test_badge_click_opens_lumbergh(self, page):
-        """Clicking the session badge opens the Lumbergh session URL in a new tab."""
+    def test_badge_click_navigates_to_session(self, page):
+        """Clicking the session badge navigates to the session detail page."""
         seed_tasks({"tasks": [TASK_WITH_SESSION]})
         _mock_sessions(page, [
             {"name": "test-sess", "alive": True, "idleState": "working", "displayName": None}
         ])
         page.goto(BASE_URL)
-
-        # Intercept window.open before interacting
-        page.evaluate("window._openedUrls = []; window.open = (url) => window._openedUrls.push(url)")
-
         page.wait_for_selector('.session-badge', timeout=8000)
         page.locator('.session-badge').first.click()
-
-        opened = page.evaluate("window._openedUrls")
-        lumbergh_urls = [u for u in opened if u and 'localhost:8420' in u]
-        assert len(lumbergh_urls) >= 1, f"Expected Lumbergh URL in opened URLs, got: {opened}"
-        assert lumbergh_urls[0] == 'http://localhost:8420/session/test-sess', \
-            f"Expected Lumbergh session URL, got: {lumbergh_urls[0]}"
+        page.wait_for_url('**/session/test-sess', timeout=3000)
 
     def test_lumbergh_offline_shows_gray(self, page):
         """When Lumbergh API is unreachable, badge shows gray 'Offline' state."""

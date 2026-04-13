@@ -8,7 +8,7 @@ interface TodayPanelProps {
   pomo: PomodoroState
   onToggleComplete: (taskId: string) => void
   onStartPomo: (taskId: string) => void
-  onLaunchSession: (task: Task) => void
+  onOpenSessionPicker: (task: Task) => void
   onEditTask: (task: Task) => void
   onAddTask: () => void
   onDropTask: (taskId: string, beforeTaskId: string | null) => void
@@ -34,7 +34,7 @@ export default function TodayPanel({
   pomo,
   onToggleComplete,
   onStartPomo,
-  onLaunchSession,
+  onOpenSessionPicker,
   onEditTask,
   onAddTask,
   onDropTask,
@@ -108,7 +108,7 @@ export default function TodayPanel({
               dragHandlers={dragHandlers.getDragHandlers(task.id)}
               onToggleComplete={() => onToggleComplete(task.id)}
               onStartPomo={() => onStartPomo(task.id)}
-              onLaunchSession={() => onLaunchSession(task)}
+              onOpenSessionPicker={() => onOpenSessionPicker(task)}
               onEdit={() => onEditTask(task)}
               sessionStatus={sessionStatusMap[task.session_name]}
               onDetachSession={() => onDetachSession(task.id)}

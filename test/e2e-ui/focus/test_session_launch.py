@@ -68,6 +68,12 @@ def setup_lumbergh_mocks(page, session_response=None):
                 content_type="application/json",
                 body=json.dumps(session_response),
             )
+        elif route.request.method == "GET":
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({"sessions": []}),
+            )
         else:
             route.continue_()
 
@@ -78,11 +84,15 @@ def setup_lumbergh_mocks(page, session_response=None):
 
 
 def open_create_session_modal(page, task_index=0):
-    """Hover the nth today card and click its launch button to open the modal."""
+    """Hover the nth today card, click launch to open picker, then Create New to open modal."""
     cards = page.locator(".today-card")
     cards.nth(task_index).hover()
     page.wait_for_timeout(200)
     cards.nth(task_index).locator(".today-card-launch").click()
+    # Wait for session picker to appear
+    page.locator('.session-picker').wait_for(state="visible", timeout=3000)
+    # Click "Create New Session..." in the picker
+    page.locator('text=Create New Session').click()
     page.locator('[data-testid="create-session-modal-overlay"]').wait_for(state="visible")
 
 
@@ -299,6 +309,12 @@ class TestCreateSessionModal:
                     content_type="application/json",
                     body=json.dumps({"name": "fix-auth-flow", "existing": False}),
                 )
+            elif route.request.method == "GET":
+                route.fulfill(
+                    status=200,
+                    content_type="application/json",
+                    body=json.dumps({"sessions": []}),
+                )
             else:
                 route.continue_()
 
@@ -373,6 +389,12 @@ class TestCreateSessionModal:
                     content_type="application/json",
                     body=json.dumps({"name": slug, "existing": False}),
                 )
+            elif route.request.method == "GET":
+                route.fulfill(
+                    status=200,
+                    content_type="application/json",
+                    body=json.dumps({"sessions": []}),
+                )
             else:
                 route.continue_()
 
@@ -411,8 +433,9 @@ class TestCreateSessionModal:
         data = read_tasks()
         task = next(t for t in data["tasks"] if t["id"] == "t-no-session")
         assert task["session_name"] != "", f"session_name should be set after submit: {task}"
-        assert task["session_status"] == "working", (
-            f"session_status should be 'working' after submit: {task}"
+        # session_status is derived from live polling, not stored on creation
+        assert task["session_status"] == "", (
+            f"session_status should be empty after submit (not stored on creation): {task}"
         )
 
 
@@ -453,16 +476,20 @@ class TestDetachSession:
         )
 
     def test_detach_shows_launch_button(self, page):
-        """After detaching, the card has no .today-card-launch.linked button."""
+        """After detaching, the card shows the launch button again and no session badge."""
         seed_tasks({"tasks": [TASK_WITH_SESSION]})
         setup_lumbergh_mocks(page)
         page.goto(BASE_URL)
         page.wait_for_selector(".today-card")
 
-        # Confirm there is a linked button before detach
-        linked_before = page.locator(".today-card-launch.linked")
-        assert linked_before.count() == 1, (
-            f"Expected 1 linked launch button before detach, got {linked_before.count()}"
+        # Before detach: linked card hides the launch button and shows a session badge
+        launch_before = page.locator(".today-card-launch")
+        assert launch_before.count() == 0, (
+            f"Expected 0 launch buttons before detach (linked card hides it), got {launch_before.count()}"
+        )
+        badges_before = page.locator(".session-badge")
+        assert badges_before.count() >= 1, (
+            f"Expected at least 1 session badge before detach, got {badges_before.count()}"
         )
 
         # Hover and detach
@@ -477,9 +504,13 @@ class TestDetachSession:
         ):
             detach_btn.click()
 
-        # After detach: no linked launch buttons
+        # After detach: unlinked card shows the launch button, no session badge
         page.wait_for_timeout(300)
-        linked_after = page.locator(".today-card-launch.linked")
-        assert linked_after.count() == 0, (
-            f"Expected 0 linked launch buttons after detach, got {linked_after.count()}"
+        launch_after = page.locator(".today-card-launch")
+        assert launch_after.count() >= 1, (
+            f"Expected at least 1 launch button after detach (unlinked card shows it), got {launch_after.count()}"
+        )
+        badges_after = page.locator(".session-badge")
+        assert badges_after.count() == 0, (
+            f"Expected 0 session badges after detach, got {badges_after.count()}"
         )

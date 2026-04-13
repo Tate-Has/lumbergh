@@ -4,8 +4,9 @@ import FocusSessionCard from './FocusSessionCard'
 interface InFlightPanelProps {
   tasks: Task[]
   onEditTask: (task: Task) => void
-  onLaunchSession: (task: Task) => void
-  onUpdateCheckIn: (taskId: string, note: string) => void
+  onOpenSessionPicker: (task: Task) => void
+  sessionStatusMap: Record<string, { color: string; pulse: boolean; label: string }>
+  onDetachSession: (taskId: string) => void
   dropZoneHandlers: {
     onDragOver: (e: React.DragEvent) => void
     onDragLeave: (e: React.DragEvent) => void
@@ -21,8 +22,9 @@ interface InFlightPanelProps {
 export default function InFlightPanel({
   tasks,
   onEditTask,
-  onLaunchSession,
-  onUpdateCheckIn,
+  onOpenSessionPicker,
+  sessionStatusMap,
+  onDetachSession,
   dropZoneHandlers,
   getDragHandlers,
 }: InFlightPanelProps) {
@@ -44,7 +46,10 @@ export default function InFlightPanel({
           </span>
         </div>
       </div>
-      <div className="sessions-list flex flex-col gap-2.5" id="sessionsList">
+      <div
+        className="sessions-list grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-3"
+        id="sessionsList"
+      >
         {sessionTasks.length === 0 ? (
           <div className="empty-state text-[0.8rem] text-text-muted text-center p-5 italic">
             No in-flight work. Drag tasks here for ongoing background work.
@@ -56,8 +61,9 @@ export default function InFlightPanel({
               task={task}
               dragHandlers={getDragHandlers(task.id)}
               onEdit={() => onEditTask(task)}
-              onLaunchSession={() => onLaunchSession(task)}
-              onUpdateCheckIn={(note) => onUpdateCheckIn(task.id, note)}
+              onOpenSessionPicker={() => onOpenSessionPicker(task)}
+              sessionStatus={task.session_name ? sessionStatusMap[task.session_name] : undefined}
+              onDetachSession={() => onDetachSession(task.id)}
             />
           ))
         )}

@@ -14,10 +14,68 @@ interface TodayCardProps {
   }
   onToggleComplete: () => void
   onStartPomo: () => void
-  onLaunchSession: () => void
+  onOpenSessionPicker: () => void
   onEdit: () => void
   sessionStatus?: { color: string; pulse: boolean; label: string }
   onDetachSession?: () => void
+}
+
+function SessionArea({
+  task,
+  sessionStatus,
+  onOpenSessionPicker,
+  onDetachSession,
+}: {
+  task: Task
+  sessionStatus?: { color: string; pulse: boolean; label: string }
+  onOpenSessionPicker: () => void
+  onDetachSession?: () => void
+}) {
+  const navigate = useNavigate()
+
+  if (task.session_name) {
+    const color = sessionStatus?.color || 'gray'
+    return (
+      <div className="session-badge-row absolute bottom-2 right-2 flex items-center gap-1.5">
+        <button
+          className={`session-badge inline-flex items-center gap-[5px] text-[0.65rem] font-semibold uppercase tracking-[0.03em] cursor-pointer hover:opacity-80 transition-opacity ${statusColorClasses[color]?.text || 'text-text-tertiary'}`}
+          onClick={(e) => {
+            e.stopPropagation()
+            navigate('/session/' + task.session_name)
+          }}
+          title={`Open session in Lumbergh (${sessionStatus?.label || 'Loading...'})`}
+        >
+          <span
+            className={`session-dot w-2 h-2 rounded-full shrink-0 ${statusColorClasses[color]?.dot || 'bg-gray-500'} ${sessionStatus?.pulse ? 'animate-pulse' : ''}`}
+          />
+          <span className="session-label">{sessionStatus?.label || 'Loading...'}</span>
+        </button>
+        <button
+          className="session-detach text-text-muted hover:text-red-400 text-[0.6rem] cursor-pointer transition-colors opacity-0 group-hover:opacity-100"
+          onClick={(e) => {
+            e.stopPropagation()
+            onDetachSession?.()
+          }}
+          title="Detach session"
+        >
+          ✕
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <button
+      className="today-card-launch absolute bottom-2 right-2 w-[22px] h-[22px] border border-border-default rounded-full bg-transparent text-text-muted text-[0.5rem] font-bold cursor-pointer flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-150 font-mono hover:border-status-running hover:text-status-running hover:bg-status-running-bg"
+      title="Launch session"
+      onClick={(e) => {
+        e.stopPropagation()
+        onOpenSessionPicker()
+      }}
+    >
+      {'>'}_
+    </button>
+  )
 }
 
 export default memo(function TodayCard({
@@ -26,14 +84,13 @@ export default memo(function TodayCard({
   dragHandlers,
   onToggleComplete,
   onStartPomo,
-  onLaunchSession,
+  onOpenSessionPicker,
   onEdit,
   sessionStatus,
   onDetachSession,
 }: TodayCardProps) {
-  const navigate = useNavigate()
   const cardClass =
-    `today-card group bg-bg-surface border border-border-subtle rounded-lg px-3.5 py-3 min-h-[72px] cursor-pointer transition-all duration-150 relative hover:border-accent hover:shadow-card-hover hover:-translate-y-px` +
+    `today-card group bg-bg-surface border border-border-subtle rounded-lg px-3.5 pt-3 pb-8 min-h-[72px] cursor-pointer transition-all duration-150 relative hover:border-accent hover:shadow-card-hover hover:-translate-y-px` +
     (task.completed ? ' completed' : '') +
     (isPomActive ? ' pomo-active' : '')
 
@@ -51,40 +108,16 @@ export default memo(function TodayCard({
     onEdit()
   }
 
-  function handleCheckClick(e: React.MouseEvent) {
-    e.stopPropagation()
-    onToggleComplete()
-  }
-
-  function handlePomoClick(e: React.MouseEvent) {
-    e.stopPropagation()
-    onStartPomo()
-  }
-
-  function handleLaunchClick(e: React.MouseEvent) {
-    e.stopPropagation()
-    onLaunchSession()
-  }
-
-  function handleBadgeClick(e: React.MouseEvent) {
-    e.stopPropagation()
-    if (task.session_name) {
-      navigate('/session/' + task.session_name)
-    }
-  }
-
-  function handleDetachClick(e: React.MouseEvent) {
-    e.stopPropagation()
-    onDetachSession?.()
-  }
-
   return (
     <div className={cardClass} data-task-id={task.id} onClick={handleCardClick} {...dragHandlers}>
       <div
         className="check-icon absolute top-2 right-2 w-[18px] h-[18px] border-2 border-border-default rounded-full flex items-center justify-center transition-all duration-150 shrink-0 cursor-pointer z-[2] group-hover:border-accent"
-        onClick={handleCheckClick}
+        onClick={(e) => {
+          e.stopPropagation()
+          onToggleComplete()
+        }}
       />
-      <div className="today-card-title text-[0.82rem] font-semibold text-text-primary mb-1.5">
+      <div className="today-card-title text-[0.82rem] font-semibold text-text-primary mb-1.5 pr-6">
         {task.title}
       </div>
       {task.project && (
@@ -92,41 +125,22 @@ export default memo(function TodayCard({
           {task.project}
         </div>
       )}
-      {task.session_name && sessionStatus && (
-        <div className="session-badge-row flex items-center gap-1.5 mt-1">
-          <button
-            className={`session-badge inline-flex items-center gap-[5px] text-[0.65rem] font-semibold uppercase tracking-[0.03em] cursor-pointer hover:opacity-80 transition-opacity ${statusColorClasses[sessionStatus.color]?.text || 'text-text-tertiary'}`}
-            onClick={handleBadgeClick}
-            title={`Open session in Lumbergh (${sessionStatus.label})`}
-          >
-            <span
-              className={`session-dot w-2 h-2 rounded-full shrink-0 ${statusColorClasses[sessionStatus.color]?.dot || 'bg-gray-500'} ${sessionStatus.pulse ? 'animate-pulse' : ''}`}
-            />
-            <span className="session-label">{sessionStatus.label}</span>
-          </button>
-          <button
-            className="session-detach text-text-muted hover:text-red-400 text-[0.6rem] cursor-pointer transition-colors opacity-0 group-hover:opacity-100"
-            onClick={handleDetachClick}
-            title="Detach session"
-          >
-            ✕
-          </button>
-        </div>
-      )}
+      <SessionArea
+        task={task}
+        sessionStatus={sessionStatus}
+        onOpenSessionPicker={onOpenSessionPicker}
+        onDetachSession={onDetachSession}
+      />
       <SubtaskProgress subtasks={task.subtasks} />
       <button
         className="today-card-pomo absolute bottom-2 left-2 w-[22px] h-[22px] border border-border-default rounded-full bg-transparent text-text-muted text-[0.6rem] cursor-pointer flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-150 hover:border-accent hover:text-accent hover:bg-orange-subtle"
         title="Start focus timer"
-        onClick={handlePomoClick}
+        onClick={(e) => {
+          e.stopPropagation()
+          onStartPomo()
+        }}
       >
         {'\u25B6'}
-      </button>
-      <button
-        className={`today-card-launch absolute bottom-2 right-2 w-[22px] h-[22px] border border-border-default rounded-full bg-transparent text-text-muted text-[0.5rem] font-bold cursor-pointer flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-150 font-mono hover:border-status-running hover:text-status-running hover:bg-status-running-bg${task.session_name ? ' linked !opacity-70 !border-status-running !text-status-running group-hover:!opacity-100' : ''}`}
-        title={task.session_name ? 'Open session' : 'Launch session'}
-        onClick={handleLaunchClick}
-      >
-        {'>'}_
       </button>
     </div>
   )

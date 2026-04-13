@@ -98,14 +98,21 @@ class TestLaunchButtonRendering:
         buttons = page.locator('.session-card-launch')
         assert buttons.count() == 2, f"Expected 2 launch buttons (running+waiting), got {buttons.count()}"
 
-    def test_launch_button_linked_class(self, page):
-        """Launch button gets 'linked' class when session is set."""
+    def test_launch_button_hidden_when_linked(self, page):
+        """Launch button is hidden on linked cards; session badge shown instead."""
         seed_tasks(TASKS_WITH_SESSION)
         page.goto(BASE_URL)
         page.wait_for_selector('.today-card')
 
-        linked = page.locator('.today-card-launch.linked')
-        assert linked.count() == 1, f"Expected 1 linked launch button, got {linked.count()}"
+        # Linked card should NOT have a launch button
+        launch_btns = page.locator('.today-card-launch')
+        # Only unlinked today cards should show launch buttons
+        # TASKS_WITH_SESSION has 1 linked + 1 unlinked today card
+        assert launch_btns.count() == 1, f"Expected 1 launch button (unlinked only), got {launch_btns.count()}"
+
+        # Linked card should have a session badge
+        badges = page.locator('.session-badge')
+        assert badges.count() == 1, f"Expected 1 session badge, got {badges.count()}"
 
     def test_launch_button_visible_on_hover(self, page):
         """Launch button becomes visible when hovering a today card."""
@@ -129,7 +136,13 @@ class TestSessionModal:
     """Verify the session creation modal."""
 
     def test_launch_opens_session_modal(self, page):
-        """Clicking launch on a card without session opens the session modal."""
+        """Clicking launch on a card without session opens the session picker then modal."""
+        page.route('**localhost:8420/api/sessions', lambda route: route.fulfill(
+            status=200,
+            content_type='application/json',
+            body='{"sessions": []}'
+        ) if route.request.method == 'GET' else route.continue_())
+
         seed_tasks(TASKS_NO_SESSION)
         page.goto(BASE_URL)
         page.wait_for_selector('.today-card')
@@ -137,13 +150,22 @@ class TestSessionModal:
         page.locator('.today-card').first.hover()
         page.wait_for_timeout(200)
         page.locator('.today-card-launch').first.click()
-        page.wait_for_selector('[data-testid="create-session-modal-overlay"].active')
+        # Wait for session picker, then click Create New Session
+        page.locator('.session-picker').wait_for(state='visible', timeout=3000)
+        page.locator('text=Create New Session').click()
+        page.wait_for_selector('[data-testid="create-session-modal-overlay"]')
 
         modal = page.locator('[data-testid="create-session-modal-overlay"]')
         assert modal.is_visible(), "Session modal should be visible"
 
     def test_session_modal_prefills_task_title(self, page):
         """Session modal description should be pre-filled with task title."""
+        page.route('**localhost:8420/api/sessions', lambda route: route.fulfill(
+            status=200,
+            content_type='application/json',
+            body='{"sessions": []}'
+        ) if route.request.method == 'GET' else route.continue_())
+
         seed_tasks(TASKS_NO_SESSION)
         page.goto(BASE_URL)
         page.wait_for_selector('.today-card')
@@ -151,7 +173,9 @@ class TestSessionModal:
         page.locator('.today-card').first.hover()
         page.wait_for_timeout(200)
         page.locator('.today-card-launch').first.click()
-        page.wait_for_selector('[data-testid="create-session-modal-overlay"].active')
+        page.locator('.session-picker').wait_for(state='visible', timeout=3000)
+        page.locator('text=Create New Session').click()
+        page.wait_for_selector('[data-testid="create-session-modal-overlay"]')
 
         desc = page.locator('[data-testid="session-description-input"]').input_value()
         assert 'Fix auth flow' in desc, f"Expected task title in description, got: {desc}"
@@ -161,6 +185,12 @@ class TestSessionModal:
 
     def test_mode_toggle_shows_correct_fields(self, page):
         """Mode toggle switches between existing/new/worktree forms."""
+        page.route('**localhost:8420/api/sessions', lambda route: route.fulfill(
+            status=200,
+            content_type='application/json',
+            body='{"sessions": []}'
+        ) if route.request.method == 'GET' else route.continue_())
+
         seed_tasks(TASKS_NO_SESSION)
         page.goto(BASE_URL)
         page.wait_for_selector('.today-card')
@@ -168,7 +198,9 @@ class TestSessionModal:
         page.locator('.today-card').first.hover()
         page.wait_for_timeout(200)
         page.locator('.today-card-launch').first.click()
-        page.wait_for_selector('[data-testid="create-session-modal-overlay"].active')
+        page.locator('.session-picker').wait_for(state='visible', timeout=3000)
+        page.locator('text=Create New Session').click()
+        page.wait_for_selector('[data-testid="create-session-modal-overlay"]')
 
         # Existing mode is active by default — button should exist and show "Existing Repo"
         existing_btn = page.locator('[data-mode="existing"]')
@@ -201,11 +233,24 @@ class TestSessionModal:
             content_type='application/json',
             body='{"repoSearchDir": "/home/user/src", "agentProviders": {}, "defaultAgent": "", "tabVisibility": {}}'
         ))
-        page.route('**localhost:8420/api/sessions', lambda route: route.fulfill(
-            status=200,
-            content_type='application/json',
-            body='{"name": "fix-auth-flow", "status": "working"}'
-        ) if route.request.method == 'POST' else route.continue_())
+
+        def handle_sessions(route):
+            if route.request.method == 'POST':
+                route.fulfill(
+                    status=200,
+                    content_type='application/json',
+                    body='{"name": "fix-auth-flow", "status": "working"}'
+                )
+            elif route.request.method == 'GET':
+                route.fulfill(
+                    status=200,
+                    content_type='application/json',
+                    body='{"sessions": []}'
+                )
+            else:
+                route.continue_()
+
+        page.route('**localhost:8420/api/sessions', handle_sessions)
         page.route('**localhost:8420/api/directories/validate**', lambda route: route.fulfill(
             status=200,
             content_type='application/json',
@@ -219,7 +264,9 @@ class TestSessionModal:
         page.locator('.today-card').first.hover()
         page.wait_for_timeout(200)
         page.locator('.today-card-launch').first.click()
-        page.wait_for_selector('[data-testid="create-session-modal-overlay"].active')
+        page.locator('.session-picker').wait_for(state='visible', timeout=3000)
+        page.locator('text=Create New Session').click()
+        page.wait_for_selector('[data-testid="create-session-modal-overlay"]')
 
         # Switch to manual entry and enter a path
         page.locator('text=Enter path manually').click()
@@ -241,6 +288,12 @@ class TestSessionModal:
 
     def test_cancel_closes_modal(self, page):
         """Cancel button closes the session modal without changes."""
+        page.route('**localhost:8420/api/sessions', lambda route: route.fulfill(
+            status=200,
+            content_type='application/json',
+            body='{"sessions": []}'
+        ) if route.request.method == 'GET' else route.continue_())
+
         seed_tasks(TASKS_NO_SESSION)
         page.goto(BASE_URL)
         page.wait_for_selector('.today-card')
@@ -248,7 +301,9 @@ class TestSessionModal:
         page.locator('.today-card').first.hover()
         page.wait_for_timeout(200)
         page.locator('.today-card-launch').first.click()
-        page.wait_for_selector('[data-testid="create-session-modal-overlay"].active')
+        page.locator('.session-picker').wait_for(state='visible', timeout=3000)
+        page.locator('text=Create New Session').click()
+        page.wait_for_selector('[data-testid="create-session-modal-overlay"]')
 
         page.locator('[data-testid="create-session-modal-overlay"] button:has-text("Cancel")').click()
         page.wait_for_timeout(300)

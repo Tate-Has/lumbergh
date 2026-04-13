@@ -1,5 +1,7 @@
 import { memo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import type { Task } from '../../types/focus'
+import { statusColorClasses } from '../../utils/sessionStatus'
 
 interface SessionCardProps {
   task: Task
@@ -9,79 +11,109 @@ interface SessionCardProps {
     onDragEnd: (e: React.DragEvent) => void
   }
   onEdit: () => void
-  onLaunchSession: () => void
-  onUpdateCheckIn: (note: string) => void
+  onOpenSessionPicker: () => void
+  sessionStatus?: { color: string; pulse: boolean; label: string }
+  onDetachSession?: () => void
+}
+
+function SessionArea({
+  task,
+  sessionStatus,
+  onOpenSessionPicker,
+  onDetachSession,
+}: {
+  task: Task
+  sessionStatus?: { color: string; pulse: boolean; label: string }
+  onOpenSessionPicker: () => void
+  onDetachSession?: () => void
+}) {
+  const navigate = useNavigate()
+
+  if (task.session_name) {
+    const color = sessionStatus?.color || 'gray'
+    return (
+      <div className="session-badge-row absolute bottom-2 right-2 flex items-center gap-1.5">
+        <button
+          className={`session-badge inline-flex items-center gap-[5px] text-[0.65rem] font-semibold uppercase tracking-[0.03em] cursor-pointer hover:opacity-80 transition-opacity ${statusColorClasses[color]?.text || 'text-text-tertiary'}`}
+          onClick={(e) => {
+            e.stopPropagation()
+            navigate('/session/' + task.session_name)
+          }}
+          title={`Open session (${sessionStatus?.label || 'Loading...'})`}
+        >
+          <span
+            className={`session-dot w-2 h-2 rounded-full shrink-0 ${statusColorClasses[color]?.dot || 'bg-gray-500'} ${sessionStatus?.pulse ? 'animate-pulse' : ''}`}
+          />
+          <span className="session-label">{sessionStatus?.label || 'Loading...'}</span>
+        </button>
+        <button
+          className="session-detach text-text-muted hover:text-red-400 text-[0.6rem] cursor-pointer transition-colors opacity-0 group-hover:opacity-100"
+          onClick={(e) => {
+            e.stopPropagation()
+            onDetachSession?.()
+          }}
+          title="Detach session"
+        >
+          ✕
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <button
+      className="session-card-launch absolute bottom-2 right-2 w-[22px] h-[22px] border border-border-default rounded-full bg-transparent text-text-muted text-[0.5rem] font-bold cursor-pointer flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-150 font-mono hover:border-status-running hover:text-status-running hover:bg-status-running-bg"
+      title="Launch session"
+      onClick={(e) => {
+        e.stopPropagation()
+        onOpenSessionPicker()
+      }}
+    >
+      {'>'}_
+    </button>
+  )
 }
 
 export default memo(function SessionCard({
   task,
   dragHandlers,
   onEdit,
-  onLaunchSession,
-  onUpdateCheckIn,
+  onOpenSessionPicker,
+  sessionStatus,
+  onDetachSession,
 }: SessionCardProps) {
-  const handleCardClick = (e: React.MouseEvent) => {
+  function handleCardClick(e: React.MouseEvent) {
     const target = e.target as HTMLElement
-    if (target.tagName === 'INPUT' || target.closest('.session-card-launch')) return
+    if (
+      target.closest('.session-card-launch') ||
+      target.closest('.session-badge') ||
+      target.closest('.session-detach')
+    )
+      return
     onEdit()
   }
 
-  const handleLaunchClick = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    onLaunchSession()
-  }
-
-  const handleCheckInInput = (e: React.FormEvent<HTMLInputElement>) => {
-    onUpdateCheckIn(e.currentTarget.value)
-  }
-
-  const sessDot =
-    task.session_name && task.session_status ? (
-      <span
-        className={`session-status inline-flex items-center gap-[5px] text-[0.65rem] font-semibold mt-1 uppercase tracking-[0.03em] ${task.session_status}`}
-      >
-        <span className="session-dot w-2 h-2 rounded-full shrink-0"></span>
-        <span className="session-label">{task.session_status}</span>
-      </span>
-    ) : null
-
   return (
     <div
-      className="session-card bg-bg-surface border border-border-subtle rounded-lg px-3.5 py-3 transition-all duration-150 hover:border-accent hover:shadow-card-hover"
+      className="session-card group bg-bg-surface border border-border-subtle rounded-lg px-3.5 pt-3 pb-8 min-h-[72px] cursor-pointer transition-all duration-150 relative hover:border-accent hover:shadow-card-hover hover:-translate-y-px"
       data-task-id={task.id}
       onClick={handleCardClick}
       {...dragHandlers}
     >
-      <div className="session-card-top flex items-center justify-between mb-1">
-        <span className="session-card-title text-[0.82rem] font-semibold text-text-primary">
-          {task.title}
-        </span>
-        <div className="session-card-meta flex items-center gap-2">
-          {task.project && (
-            <span className="session-card-project text-[0.72rem] font-medium text-accent">
-              {task.project}
-            </span>
-          )}
-          <button
-            className={`session-card-launch w-5 h-5 border border-border-default rounded-full bg-transparent text-text-muted text-[0.45rem] font-bold cursor-pointer inline-flex items-center justify-center transition-all duration-150 font-mono shrink-0 hover:border-status-running hover:text-status-running hover:bg-status-running-bg${task.session_name ? ' linked !border-status-running !text-status-running' : ''}`}
-            title={task.session_name ? 'Open session' : 'Launch session'}
-            onClick={handleLaunchClick}
-          >
-            {'>'}_
-          </button>
-          {sessDot}
+      <div className="session-card-title text-[0.82rem] font-semibold text-text-primary mb-1.5 pr-6">
+        {task.title}
+      </div>
+      {task.project && (
+        <div className="session-card-project text-[0.72rem] font-medium text-accent">
+          {task.project}
         </div>
-      </div>
-      <div className="session-card-checkin mt-1.5">
-        <input
-          className="w-full bg-bg-elevated border border-border-subtle rounded-md px-2.5 py-1.5 text-xs text-text-primary outline-none transition-[border-color] duration-150 focus:border-accent placeholder:text-text-muted"
-          type="text"
-          defaultValue={task.check_in_note}
-          placeholder="Check-in note..."
-          data-task-id={task.id}
-          onInput={handleCheckInInput}
-        />
-      </div>
+      )}
+      <SessionArea
+        task={task}
+        sessionStatus={sessionStatus}
+        onOpenSessionPicker={onOpenSessionPicker}
+        onDetachSession={onDetachSession}
+      />
     </div>
   )
 })

@@ -34,6 +34,7 @@ import ShortcutOverlay from '../components/focus/ShortcutOverlay'
 import Toast from '../components/focus/Toast'
 import MobileActionBar from '../components/focus/MobileActionBar'
 import ConfirmDialog from '../components/focus/ConfirmDialog'
+import SessionPicker from '../components/focus/SessionPicker'
 
 // ---------------------------------------------------------------------------
 // Inner component (needs to be inside TaskProvider)
@@ -94,6 +95,7 @@ function FocusWorkspaceInner() {
   const [doneCollapsed, setDoneCollapsed] = useLocalStorage('doneCollapsed', true)
   const [swimlaneMode, setSwimlaneMode] = useState(false)
   const [swimlaneOrder, setSwimlaneOrder] = useLocalStorage<string[]>('swimlaneOrder', [])
+  const [pickerTask, setPickerTask] = useState<Task | null>(null)
   const [confirmDialog, setConfirmDialog] = useState<{
     message: string
     onConfirm: () => void
@@ -129,9 +131,18 @@ function FocusWorkspaceInner() {
       editingTask !== null ||
       newTaskStatus !== null ||
       sessionTask !== null ||
+      pickerTask !== null ||
       showArchiveModal ||
       showShortcuts
-  }, [editingTask, newTaskStatus, sessionTask, showArchiveModal, showShortcuts, modalOpenRef])
+  }, [
+    editingTask,
+    newTaskStatus,
+    sessionTask,
+    pickerTask,
+    showArchiveModal,
+    showShortcuts,
+    modalOpenRef,
+  ])
 
   // -------------------------------------------------------------------------
   // Touch DnD
@@ -178,6 +189,8 @@ function FocusWorkspaceInner() {
           } else if (editingTask !== null || newTaskStatus !== null) {
             setEditingTask(null)
             setNewTaskStatus(null)
+          } else if (pickerTask !== null) {
+            setPickerTask(null)
           } else if (sessionTask !== null) {
             setSessionTask(null)
           } else if (showArchiveModal) {
@@ -196,6 +209,7 @@ function FocusWorkspaceInner() {
         showShortcuts,
         editingTask,
         newTaskStatus,
+        pickerTask,
         sessionTask,
         showArchiveModal,
         projectFilterOpen,
@@ -308,16 +322,36 @@ function FocusWorkspaceInner() {
   )
 
   // -------------------------------------------------------------------------
-  // Handler: Session
+  // Handler: Session picker + linking
   // -------------------------------------------------------------------------
-  const handleLaunchSession = useCallback((task: Task) => {
-    setSessionTask(task)
+  const linkedSessionNames = useMemo(
+    () => tasks.filter((t) => t.session_name && t.id !== pickerTask?.id).map((t) => t.session_name),
+    [tasks, pickerTask]
+  )
+
+  const handleOpenSessionPicker = useCallback((task: Task) => {
+    setPickerTask(task)
   }, [])
+
+  const handleLinkSession = useCallback(
+    (sessionName: string) => {
+      if (!pickerTask) return
+      updateTask(pickerTask.id, { session_name: sessionName })
+      setPickerTask(null)
+      showToast('Session linked: ' + sessionName)
+    },
+    [pickerTask, updateTask, showToast]
+  )
+
+  const handleCreateNewFromPicker = useCallback(() => {
+    setSessionTask(pickerTask)
+    setPickerTask(null)
+  }, [pickerTask])
 
   const handleSessionCreated = useCallback(
     (sessionName: string) => {
       if (!sessionTask) return
-      updateTask(sessionTask.id, { session_name: sessionName, session_status: 'working' })
+      updateTask(sessionTask.id, { session_name: sessionName })
       setSessionTask(null)
       showToast('Session created: ' + sessionName)
       navigate('/session/' + sessionName)
@@ -360,16 +394,6 @@ function FocusWorkspaceInner() {
   const handleInboxUpdateTitle = useCallback(
     (taskId: string, newTitle: string) => {
       updateTask(taskId, { title: newTitle })
-    },
-    [updateTask]
-  )
-
-  // -------------------------------------------------------------------------
-  // Handler: In Flight check-in note
-  // -------------------------------------------------------------------------
-  const handleUpdateCheckIn = useCallback(
-    (taskId: string, note: string) => {
-      updateTask(taskId, { check_in_note: note })
     },
     [updateTask]
   )
@@ -614,7 +638,7 @@ function FocusWorkspaceInner() {
             pomo={pomo}
             onToggleComplete={handleToggleComplete}
             onStartPomo={handleStartPomo}
-            onLaunchSession={handleLaunchSession}
+            onOpenSessionPicker={handleOpenSessionPicker}
             onEditTask={handleEditTask}
             onAddTask={useCallback(() => handleAddTask('today'), [handleAddTask])}
             onDropTask={handleTodayDrop}
@@ -626,8 +650,9 @@ function FocusWorkspaceInner() {
           <InFlightPanel
             tasks={tasks}
             onEditTask={handleEditTask}
-            onLaunchSession={handleLaunchSession}
-            onUpdateCheckIn={handleUpdateCheckIn}
+            onOpenSessionPicker={handleOpenSessionPicker}
+            sessionStatusMap={sessionStatusMap}
+            onDetachSession={handleDetachSession}
             dropZoneHandlers={inFlightDropHandlers}
             getDragHandlers={getDragHandlers}
           />
@@ -699,6 +724,14 @@ function FocusWorkspaceInner() {
         task={sessionTask}
         onClose={useCallback(() => setSessionTask(null), [])}
         onSessionCreated={handleSessionCreated}
+      />
+
+      <SessionPicker
+        isOpen={pickerTask !== null}
+        onClose={useCallback(() => setPickerTask(null), [])}
+        linkedSessionNames={linkedSessionNames}
+        onLinkSession={handleLinkSession}
+        onCreateNew={handleCreateNewFromPicker}
       />
 
       <ArchiveModal
