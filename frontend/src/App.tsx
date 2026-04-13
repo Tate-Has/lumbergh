@@ -5,6 +5,7 @@ import FocusWorkspace from './pages/FocusWorkspace'
 import LoginPage from './pages/LoginPage'
 import SessionDetail from './pages/SessionDetail'
 import TabBar from './components/TabBar'
+import AppHeader from './components/AppHeader'
 
 function App() {
   const { loading, authenticated } = useAuth()
@@ -13,11 +14,12 @@ function App() {
   if (loading) return null
   if (!authenticated) return <LoginPage />
 
-  const showTabBar = !location.pathname.startsWith('/session/')
+  const showChrome = !location.pathname.startsWith('/session/')
 
   return (
     <>
-      {showTabBar && <TabBar />}
+      {showChrome && <TabBar />}
+      {showChrome && <AppHeader />}
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/focus" element={<FocusWorkspace />} />

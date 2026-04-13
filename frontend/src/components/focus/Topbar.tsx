@@ -1,4 +1,3 @@
-import dayjs from 'dayjs'
 import type { PomodoroState } from '../../types/focus'
 
 interface TopbarProps {
@@ -6,10 +5,6 @@ interface TopbarProps {
   onPomoPause: () => void
   onPomoResume: () => void
   onPomoStop: () => void
-  onOpenArchive: () => void
-  onToggleShortcuts: () => void
-  onToggleTheme: () => void
-  themeName: string
 }
 
 function formatRemaining(remaining: number): string {
@@ -20,27 +15,15 @@ function formatRemaining(remaining: number): string {
   )
 }
 
-export default function Topbar({
-  pomo,
-  onPomoPause,
-  onPomoResume,
-  onPomoStop,
-  onOpenArchive,
-  onToggleShortcuts,
-  onToggleTheme,
-  themeName,
-}: TopbarProps) {
-  return (
-    <div className="topbar flex justify-between items-center px-8 py-3.5 border-b border-border-default shrink-0 bg-bg-base">
-      <div className="topbar-left flex items-center gap-3">
-        <h1 className="text-[1.1rem] font-bold tracking-tight text-navy">Focus Workspace</h1>
-        <span className="date text-[0.82rem] text-text-muted font-medium" id="currentDate">
-          {dayjs().format('ddd, MMM D')}
-        </span>
-      </div>
+export default function Topbar({ pomo, onPomoPause, onPomoResume, onPomoStop }: TopbarProps) {
+  const showBar = pomo.active
 
+  if (!showBar) return null
+
+  return (
+    <div className="topbar flex justify-center items-center px-8 py-2 border-b border-border-subtle shrink-0">
       <div
-        className={`topbar-timer items-center gap-2 px-3 py-1 rounded-lg bg-orange-subtle border border-accent text-[0.8rem] font-semibold text-text-primary transition-opacity duration-200${pomo.phase === 'break' ? ' break' : ''}${pomo.active ? ' flex' : ' hidden'}`}
+        className={`topbar-timer flex items-center gap-2 px-3 py-1 rounded-lg bg-orange-subtle border border-accent text-[0.8rem] font-semibold text-text-primary${pomo.phase === 'break' ? ' break' : ''}`}
         id="pomoTimer"
       >
         <span className="pomo-icon text-base">{'\uD83C\uDF45'}</span>
@@ -88,28 +71,6 @@ export default function Topbar({
           onClick={onPomoStop}
         >
           {'\u2715'}
-        </button>
-      </div>
-
-      <div className="topbar-actions flex items-center gap-2">
-        <button className="topbar-btn" id="archiveBtn" title="View archive" onClick={onOpenArchive}>
-          Archive
-        </button>
-        <button
-          className="topbar-btn"
-          id="shortcutHelpBtn"
-          title="Keyboard shortcuts (?)"
-          onClick={onToggleShortcuts}
-        >
-          ?
-        </button>
-        <button
-          className="topbar-btn"
-          id="themeToggle"
-          title="Toggle theme"
-          onClick={onToggleTheme}
-        >
-          {themeName === 'dark' ? 'Light' : 'Dark'}
         </button>
       </div>
     </div>

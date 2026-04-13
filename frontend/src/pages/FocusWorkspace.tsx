@@ -382,6 +382,15 @@ function FocusWorkspaceInner() {
     setShowArchiveModal(true)
   }, [openArchive])
 
+  // Listen for archive event from AppHeader
+  useEffect(() => {
+    const handler = () => {
+      handleOpenArchive()
+    }
+    window.addEventListener('lumbergh:open-archive', handler)
+    return () => window.removeEventListener('lumbergh:open-archive', handler)
+  }, [handleOpenArchive])
+
   const handleArchiveDone = useCallback(() => {
     const doneTasks = tasks.filter((t) => t.status === 'done')
     if (!doneTasks.length) return
@@ -596,16 +605,7 @@ function FocusWorkspaceInner() {
   // -------------------------------------------------------------------------
   return (
     <div className="focus-view flex flex-col h-full">
-      <Topbar
-        pomo={pomo}
-        onPomoPause={pomoPause}
-        onPomoResume={pomoResume}
-        onPomoStop={pomoStop}
-        onOpenArchive={handleOpenArchive}
-        onToggleShortcuts={useCallback(() => setShowShortcuts((prev) => !prev), [])}
-        onToggleTheme={toggleTheme}
-        themeName={theme}
-      />
+      <Topbar pomo={pomo} onPomoPause={pomoPause} onPomoResume={pomoResume} onPomoStop={pomoStop} />
 
       <div className="main-content flex-1 overflow-y-auto px-8 py-6 flex flex-col gap-5">
         <div className="top-split grid grid-cols-[1fr_1fr] gap-5">
