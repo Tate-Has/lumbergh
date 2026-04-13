@@ -184,6 +184,39 @@ body {
   --status-waiting-bg: rgba(240, 183, 48, 0.15);
   --waiting-col-bg: rgba(240, 183, 48, 0.06);
   --done-opacity: 0.4;
+
+  /* Override Tailwind @theme tokens so utility classes pick up focus palette */
+  --color-bg-base: #2a2d33;
+  --color-bg-surface: #33373e;
+  --color-bg-elevated: #3d4148;
+  --color-bg-sunken: #252830;
+  --color-bg-overlay: rgba(0, 0, 0, 0.5);
+  --color-text-primary: #eaebec;
+  --color-text-secondary: #c5c8ce;
+  --color-text-tertiary: #787d87;
+  --color-text-muted: #959aa4;
+  --color-border-default: #444950;
+  --color-border-subtle: #383c43;
+  --color-control-bg: #33373e;
+  --color-control-bg-hover: #3a3f46;
+  --color-input-bg: #3d4148;
+  --color-input-border: #444950;
+  --color-accent: #f19a1a;
+  --color-accent-hover: #faab3e;
+  --color-navy: #eaebec;
+  --color-orange-subtle: rgba(241, 154, 26, 0.13);
+  --color-priority-high: #f27a7d;
+  --color-priority-high-bg: rgba(242, 122, 125, 0.15);
+  --color-priority-med: #f19a1a;
+  --color-priority-med-bg: rgba(241, 154, 26, 0.15);
+  --color-priority-low: #959aa4;
+  --color-priority-low-bg: rgba(149, 154, 164, 0.15);
+  --color-status-running: #4cc38a;
+  --color-status-running-bg: rgba(76, 195, 138, 0.15);
+  --color-status-waiting: #f0b730;
+  --color-status-waiting-bg: rgba(240, 183, 48, 0.15);
+  --color-waiting-col-bg: rgba(240, 183, 48, 0.06);
+
   background: var(--bg-base);
   color: var(--text-primary);
   font-family: 'Archivo', sans-serif;
@@ -225,6 +258,38 @@ body {
   --status-waiting-bg: rgba(229, 160, 0, 0.1);
   --waiting-col-bg: rgba(229, 160, 0, 0.04);
   --done-opacity: 0.45;
+
+  /* Override Tailwind @theme tokens for light focus palette */
+  --color-bg-base: #f5f5f3;
+  --color-bg-surface: #ecebe8;
+  --color-bg-elevated: #ffffff;
+  --color-bg-sunken: #eeeeed;
+  --color-bg-overlay: rgba(0, 0, 0, 0.4);
+  --color-text-primary: #1d2024;
+  --color-text-secondary: #4a5060;
+  --color-text-tertiary: #a0a6b0;
+  --color-text-muted: #7c8290;
+  --color-border-default: #d5d7da;
+  --color-border-subtle: #e8e9eb;
+  --color-control-bg: #ecebe8;
+  --color-control-bg-hover: #e4e3df;
+  --color-input-bg: #ffffff;
+  --color-input-border: #d5d7da;
+  --color-accent: #f18a00;
+  --color-accent-hover: #d97a00;
+  --color-navy: #201e41;
+  --color-orange-subtle: rgba(241, 138, 0, 0.07);
+  --color-priority-high: #e5484d;
+  --color-priority-high-bg: rgba(229, 72, 77, 0.1);
+  --color-priority-med: #f18a00;
+  --color-priority-med-bg: rgba(241, 138, 0, 0.1);
+  --color-priority-low: #7c8290;
+  --color-priority-low-bg: rgba(124, 130, 144, 0.1);
+  --color-status-running: #30a46c;
+  --color-status-running-bg: rgba(48, 164, 108, 0.1);
+  --color-status-waiting: #e5a000;
+  --color-status-waiting-bg: rgba(229, 160, 0, 0.1);
+  --color-waiting-col-bg: rgba(229, 160, 0, 0.04);
 }
 
 /* ── Focus component styles ── */
