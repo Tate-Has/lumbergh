@@ -325,7 +325,7 @@ export default function SessionDetail() {
   )
 
   const handleBack = useCallback(() => {
-    navigate('/')
+    navigate(sessionStorage.getItem('lumbergh:lastView') || '/')
   }, [navigate])
 
   const handleReset = useCallback(async () => {
@@ -689,9 +689,9 @@ export default function SessionDetail() {
           <div className="flex gap-1 px-2 py-1 bg-bg-surface border-b border-border-default overflow-x-auto scrollbar-hide">
             {/* Back button */}
             <button
-              onClick={() => navigate('/')}
+              onClick={() => navigate(sessionStorage.getItem('lumbergh:lastView') || '/')}
               className="shrink-0 px-2 py-1.5 text-text-tertiary hover:text-text-primary transition-colors"
-              title="Back to Dashboard"
+              title="Back"
             >
               <ArrowLeft size={16} />
             </button>
