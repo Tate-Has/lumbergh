@@ -315,8 +315,8 @@ function FocusWorkspaceInner() {
   // Handler: Pomodoro
   // -------------------------------------------------------------------------
   const handleStartPomo = useCallback(
-    (taskId: string) => {
-      pomoStart(taskId, tasks)
+    (taskId: string, durationSeconds?: number) => {
+      pomoStart(taskId, tasks, durationSeconds)
     },
     [pomoStart, tasks]
   )

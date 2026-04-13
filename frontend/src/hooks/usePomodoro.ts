@@ -7,12 +7,12 @@ declare global {
   }
 }
 
-const POMO_WORK = 25 * 60
+const POMO_WORK_DEFAULT = 25 * 60
 const POMO_BREAK = 5 * 60
 
 export interface UsePomodoro {
   pomo: PomodoroState
-  pomoStart: (taskId: string, tasks: Task[]) => void
+  pomoStart: (taskId: string, tasks: Task[], durationSeconds?: number) => void
   pomoPause: () => void
   pomoResume: () => void
   pomoStop: () => void
@@ -48,8 +48,9 @@ export function usePomodoro(): UsePomodoro {
     taskId: null,
     taskTitle: '',
     phase: 'work',
-    remaining: POMO_WORK,
+    remaining: POMO_WORK_DEFAULT,
     intervalId: null,
+    workDuration: POMO_WORK_DEFAULT,
   })
 
   // eslint-disable-next-line react-hooks/refs -- reading ref in useState initializer is intentional; only runs once at mount
@@ -73,15 +74,16 @@ export function usePomodoro(): UsePomodoro {
     ref.remaining--
 
     if (ref.remaining <= 0) {
+      const workMins = Math.round(ref.workDuration / 60)
       if (ref.phase === 'work') {
         ref.phase = 'break'
         ref.remaining = POMO_BREAK
-        pomoNotify('Time for a break!', 'You focused for 25 minutes. Take 5.')
+        pomoNotify('Time for a break!', `You focused for ${workMins} minutes. Take 5.`)
         pomoChime()
       } else {
         ref.phase = 'work'
-        ref.remaining = POMO_WORK
-        pomoNotify("Break's over!", 'Ready for another 25-minute focus session.')
+        ref.remaining = ref.workDuration
+        pomoNotify("Break's over!", `Ready for another ${workMins}-minute focus session.`)
         pomoChime()
       }
     }
@@ -100,7 +102,7 @@ export function usePomodoro(): UsePomodoro {
   }, [])
 
   const pomoStart = useCallback(
-    (taskId: string, tasks: Task[]) => {
+    (taskId: string, tasks: Task[], durationSeconds?: number) => {
       // Clear existing interval if active
       if (pomoRef.current.active && pomoRef.current.intervalId) {
         clearInterval(pomoRef.current.intervalId)
@@ -112,6 +114,7 @@ export function usePomodoro(): UsePomodoro {
       }
 
       const task = tasks.find((t) => t.id === taskId)
+      const workDuration = durationSeconds ?? POMO_WORK_DEFAULT
       const intervalId = setInterval(() => tickRef.current(), 1000)
 
       updatePomo({
@@ -120,7 +123,8 @@ export function usePomodoro(): UsePomodoro {
         taskId,
         taskTitle: task ? task.title : '',
         phase: 'work',
-        remaining: POMO_WORK,
+        remaining: workDuration,
+        workDuration,
         intervalId,
       })
     },
@@ -154,7 +158,8 @@ export function usePomodoro(): UsePomodoro {
       taskId: null,
       taskTitle: '',
       phase: 'work',
-      remaining: POMO_WORK,
+      remaining: POMO_WORK_DEFAULT,
+      workDuration: POMO_WORK_DEFAULT,
       intervalId: null,
     })
   }, [updatePomo])

@@ -7,7 +7,7 @@ interface TodayPanelProps {
   tasks: Task[]
   pomo: PomodoroState
   onToggleComplete: (taskId: string) => void
-  onStartPomo: (taskId: string) => void
+  onStartPomo: (taskId: string, durationSeconds?: number) => void
   onOpenSessionPicker: (task: Task) => void
   onEditTask: (task: Task) => void
   onAddTask: () => void
@@ -107,7 +107,7 @@ export default function TodayPanel({
               isPomActive={isPomActive(task)}
               dragHandlers={dragHandlers.getDragHandlers(task.id)}
               onToggleComplete={() => onToggleComplete(task.id)}
-              onStartPomo={() => onStartPomo(task.id)}
+              onStartPomo={(duration?: number) => onStartPomo(task.id, duration)}
               onOpenSessionPicker={() => onOpenSessionPicker(task)}
               onEdit={() => onEditTask(task)}
               sessionStatus={sessionStatusMap[task.session_name]}

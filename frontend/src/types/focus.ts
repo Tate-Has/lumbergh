@@ -31,6 +31,7 @@ export interface PomodoroState {
   taskTitle: string
   phase: 'work' | 'break'
   remaining: number
+  workDuration: number
   intervalId: ReturnType<typeof setInterval> | null
 }
 

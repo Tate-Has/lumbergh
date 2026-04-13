@@ -47,21 +47,26 @@ export default function Topbar({ pomo, onPomoPause, onPomoResume, onPomoStop }: 
         </span>
         {pomo.running ? (
           <button
-            className="pomo-btn bg-transparent border border-border-default rounded px-1.5 py-0.5 text-[0.72rem] cursor-pointer text-text-secondary transition-all duration-150 hover:border-accent hover:text-accent"
+            className="pomo-btn bg-transparent border border-border-default rounded px-1.5 py-0.5 cursor-pointer text-text-secondary transition-all duration-150 hover:border-accent hover:text-accent flex items-center justify-center"
             id="pomoPauseBtn"
             title="Pause"
             onClick={onPomoPause}
           >
-            {'\u25AE\u25AE'}
+            <svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor">
+              <rect x="1" y="1" width="3" height="10" rx="0.5" />
+              <rect x="6" y="1" width="3" height="10" rx="0.5" />
+            </svg>
           </button>
         ) : (
           <button
-            className="pomo-btn bg-transparent border border-border-default rounded px-1.5 py-0.5 text-[0.72rem] cursor-pointer text-text-secondary transition-all duration-150 hover:border-accent hover:text-accent"
+            className="pomo-btn bg-transparent border border-border-default rounded px-1.5 py-0.5 cursor-pointer text-text-secondary transition-all duration-150 hover:border-accent hover:text-accent flex items-center justify-center"
             id="pomoPauseBtn"
             title="Resume"
             onClick={onPomoResume}
           >
-            {'\u25B6'}
+            <svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor">
+              <polygon points="1,1 9,6 1,11" />
+            </svg>
           </button>
         )}
         <button
