@@ -187,11 +187,8 @@ class IdleMonitor:
         old_state = self._states.get(session_name, SessionState.UNKNOWN)
         if state != old_state:
             logger.info(f"Session {session_name} state: {old_state.value} -> {state.value}")
-        self._states[session_name] = state
-
-        # Persist every poll (not just on change) so the DB stays fresh and
-        # a transient write failure does not leave us permanently stale.
-        await self._persist_state(session_name, state)
+            self._states[session_name] = state
+            await self._persist_state(session_name, state)
 
     async def _persist_state(self, session_name: str, state: SessionState) -> None:
         loop = asyncio.get_event_loop()
