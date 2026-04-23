@@ -26,15 +26,17 @@ function App() {
   const showChrome = !location.pathname.startsWith('/session/')
 
   return (
-    <>
+    <div className="h-full flex flex-col">
       {showChrome && <TabBar />}
       {showChrome && <AppHeader />}
-      <Routes>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/focus" element={<FocusWorkspace />} />
-        <Route path="/session/:name" element={<SessionDetail />} />
-      </Routes>
-    </>
+      <div className="flex-1 min-h-0">
+        <Routes>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/focus" element={<FocusWorkspace />} />
+          <Route path="/session/:name" element={<SessionDetail />} />
+        </Routes>
+      </div>
+    </div>
   )
 }
 
