@@ -28,7 +28,7 @@ export default function InFlightPanel({
   dropZoneHandlers,
   getDragHandlers,
 }: InFlightPanelProps) {
-  const sessionTasks = tasks.filter((t) => t.status === 'running' || t.status === 'waiting')
+  const sessionTasks = tasks.filter((t) => t.status === 'running')
 
   return (
     <div
