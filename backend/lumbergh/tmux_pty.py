@@ -51,27 +51,31 @@ def capture_pane_content(session_name: str) -> str:
     """Capture the current visible content of the active pane.
 
     Returns the terminal content with ANSI escape codes preserved.
+    Uses a single ``tmux capture-pane`` subprocess call instead of
+    libtmux (which spawns 4+ subprocesses per call for session/window/pane
+    resolution and can cause GIL contention when called concurrently).
     """
-    server = libtmux.Server()
-    try:
-        session = server.sessions.get(session_name=session_name)
-    except ObjectDoesNotExist:
-        return ""
-    if not session:
-        return ""
+    import subprocess
 
-    window = session.active_window
-    pane = window.active_pane
-    if pane is None:
-        return ""
-
-    # capture_pane returns the pane content
-    # escape_sequences=True includes ANSI escape codes (colors)
     try:
-        content = pane.capture_pane(start="-", end="-", escape_sequences=True)
-        if isinstance(content, list):
-            return "\r\n".join(content) + "\r\n"
-        return str(content) + "\r\n"
+        result = subprocess.run(
+            [
+                "tmux",
+                "capture-pane",
+                "-t",
+                session_name,
+                "-p",  # print to stdout
+                "-e",  # include escape sequences (ANSI colors)
+                "-S",
+                "-",  # start of scrollback
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode != 0:
+            return ""
+        return result.stdout
     except Exception:
         return ""
 
@@ -81,26 +85,26 @@ def capture_scrollback(session_name: str, max_lines: int = 500) -> str:
 
     Returns up to ``max_lines`` lines from the scrollback buffer.
     """
-    server = libtmux.Server()
-    try:
-        session = server.sessions.get(session_name=session_name)
-    except ObjectDoesNotExist:
-        return ""
-    if not session:
-        return ""
-
-    window = session.active_window
-    pane = window.active_pane
-    if pane is None:
-        return ""
+    import subprocess
 
     try:
-        # Negative start = lines before the current visible area
-        # No escape_sequences = plain text (cheaper for AI to parse)
-        content = pane.capture_pane(start=-max_lines, end="-")
-        if isinstance(content, list):
-            return "\n".join(content)
-        return str(content)
+        result = subprocess.run(
+            [
+                "tmux",
+                "capture-pane",
+                "-t",
+                session_name,
+                "-p",  # print to stdout
+                "-S",
+                str(-max_lines),  # N lines before visible area
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode != 0:
+            return ""
+        return result.stdout.rstrip("\n")
     except Exception:
         return ""
 
