@@ -40,6 +40,7 @@ export default memo(function Terminal({
   const fitAddonRef = useRef<FitAddon | null>(null)
   const sendRef = useRef<(data: string) => void>(() => {})
   const sendResizeRef = useRef<(cols: number, rows: number) => void>(() => {})
+  const sendViaApiRef = useRef<(text: string, sendEnter?: boolean) => Promise<void>>(async () => {})
   // Track last known dimensions for stability check
   const lastDimensionsRef = useRef<{ width: number; height: number } | null>(null)
   // Track whether a remote client resized the PTY (cleared on local re-fit)
@@ -184,6 +185,10 @@ export default memo(function Terminal({
     sendRef.current = send
     sendResizeRef.current = sendResize
   }, [send, sendResize])
+
+  useEffect(() => {
+    sendViaApiRef.current = sendViaApi
+  }, [sendViaApi])
 
   // Expose send function to parent
   useEffect(() => {
@@ -434,6 +439,31 @@ export default memo(function Terminal({
     // Wheel listener for all devices (copy-mode detection)
     el?.addEventListener('wheel', onWheel, true)
 
+    // Intercept multiline paste (e.g. from SSMS) and route through tmux paste-buffer.
+    // xterm.js's default path wraps content in bracketed-paste markers and ships it
+    // over the WebSocket as one onData chunk, but the backend's sync PTY write can
+    // do a partial write on large buffers, dropping the trailing ESC[201~ — Claude
+    // Code then sees the embedded \r\n as Enter and submits just the first line.
+    // Routing through /send uses `tmux load-buffer | paste-buffer -p`, which wraps
+    // bracketed-paste markers atomically server-side.
+    const textarea = term.textarea ?? term.element?.querySelector('textarea')
+    const onPaste = (e: ClipboardEvent) => {
+      const cd = e.clipboardData
+      if (!cd) return
+      // Let the global image-paste handler (SessionDetail) deal with image payloads.
+      for (const item of cd.items) {
+        if (item.type.startsWith('image/')) return
+      }
+      const text = cd.getData('text/plain')
+      if (!text || !/[\r\n]/.test(text)) return // Single-line: let xterm handle it
+      e.preventDefault()
+      e.stopPropagation()
+      // Normalize CRLF → LF so tmux paste-buffer treats it as one multiline block
+      const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+      sendViaApiRef.current(normalized, false)
+    }
+    textarea?.addEventListener('paste', onPaste, true)
+
     return () => {
       initialFitObserver.disconnect()
       term.element?.removeEventListener('focusin', handleFocus)
@@ -442,6 +472,7 @@ export default memo(function Terminal({
         for (const evt of interceptEvents) el.removeEventListener(evt, onMouseEvent, true)
       }
       el?.removeEventListener('wheel', onWheel, true)
+      textarea?.removeEventListener('paste', onPaste, true)
       term.dispose()
       termRef.current = null
       fitAddonRef.current = null
