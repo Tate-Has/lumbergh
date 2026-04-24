@@ -1,14 +1,6 @@
-import {
-  ArrowLeft,
-  ChevronUp,
-  ChevronDown,
-  Minus,
-  Plus,
-  MoreHorizontal,
-  Eraser,
-  Brain,
-} from 'lucide-react'
+import { ChevronUp, ChevronDown, Minus, Plus, MoreHorizontal, Eraser, Brain } from 'lucide-react'
 import SessionNavigatorDots from './SessionNavigatorDots'
+import ViewToggle from './ViewToggle'
 
 interface Props {
   sessionName: string
@@ -24,7 +16,6 @@ interface Props {
   onSendViaApi: (text: string) => void
   onSendTmuxCommand: (command: string) => void
   onFit: () => void
-  onBack?: () => void
   onReset?: () => void
   onCycleSession?: (direction: 'next' | 'prev') => void
   showSessionDots?: boolean
@@ -46,7 +37,6 @@ export default function TerminalHeader({
   onSendViaApi,
   onSendTmuxCommand,
   onFit,
-  onBack,
   onReset,
   onCycleSession,
   showSessionDots = true,
@@ -57,20 +47,8 @@ export default function TerminalHeader({
     <div className="bg-bg-surface border-b border-border-default">
       {/* Main row */}
       <div className="flex items-center gap-2 p-2">
-        <div className="flex items-center gap-2 shrink-0">
-          {onBack && (
-            <>
-              <button
-                onClick={onBack}
-                className="text-text-tertiary hover:text-text-primary transition-colors"
-                title="Back to Dashboard"
-              >
-                <ArrowLeft size={16} />
-              </button>
-              <div className="w-px h-4 bg-border-subtle mx-1" />
-            </>
-          )}
-        </div>
+        <ViewToggle size="compact" />
+        <div className="w-px h-4 bg-border-subtle" />
         <span
           onClick={onCycleSession ? (e) => onCycleSession(e.shiftKey ? 'prev' : 'next') : undefined}
           className={`shrink-0 flex items-center gap-1 text-sm font-semibold text-text-secondary ${onCycleSession ? 'cursor-pointer group hover:text-text-primary transition-colors' : 'pointer-events-none'}`}

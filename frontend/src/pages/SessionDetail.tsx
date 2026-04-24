@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Settings } from 'lucide-react'
+import { Settings } from 'lucide-react'
 import { getApiBase } from '../config'
 import Terminal from '../components/Terminal'
 import FileBrowser from '../components/FileBrowser'
@@ -16,6 +16,7 @@ import ScratchPromoteBanner from '../components/ScratchPromoteBanner'
 import { isSummaryDismissed, dismissSummary, enableSummary } from '../hooks/useSessionSummary'
 import GitTab from '../components/graph/GitTab'
 import SessionNavigatorDots from '../components/SessionNavigatorDots'
+import ViewToggle from '../components/ViewToggle'
 import { useIsDesktop } from '../hooks/useMediaQuery'
 
 type RightPanel = 'git' | 'files' | 'todos' | 'prompts' | 'shared'
@@ -336,10 +337,6 @@ export default function SessionDetail() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [handleCycleSession])
 
-  const handleBack = useCallback(() => {
-    navigate(sessionStorage.getItem('lumbergh:lastView') || '/')
-  }, [navigate])
-
   const handleReset = useCallback(async () => {
     if (!name) return
     try {
@@ -480,7 +477,6 @@ export default function SessionDetail() {
         <Terminal
           sessionName={name}
           onFocusReady={handleFocusReady}
-          onBack={isDesktop ? handleBack : undefined}
           onReset={handleReset}
           onCycleSession={handleCycleSession}
           showSessionDots={showSessionDots}
@@ -699,14 +695,7 @@ export default function SessionDetail() {
         <div className="flex-1 min-h-0 flex flex-col">
           {/* Tab navigation with back button */}
           <div className="flex gap-1 px-2 py-1 bg-bg-surface border-b border-border-default overflow-x-auto scrollbar-hide">
-            {/* Back button */}
-            <button
-              onClick={() => navigate(sessionStorage.getItem('lumbergh:lastView') || '/')}
-              className="shrink-0 px-2 py-1.5 text-text-tertiary hover:text-text-primary transition-colors"
-              title="Back"
-            >
-              <ArrowLeft size={16} />
-            </button>
+            <ViewToggle size="compact" />
             {/* Separator */}
             <div className="w-px shrink-0 bg-border-default my-1" />
             {showSessionDots && name && (
