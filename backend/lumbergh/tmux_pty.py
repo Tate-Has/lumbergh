@@ -303,7 +303,7 @@ class TmuxPtySession:
                 if message.get("type") == "input":
                     data = message.get("data", "")
                     if data:
-                        self.write(data.encode("utf-8"))
+                        await self.write_async(data.encode("utf-8"))
 
                 elif message.get("type") == "resize":
                     cols = message.get("cols", 80)
