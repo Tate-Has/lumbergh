@@ -20,7 +20,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from tinydb import Query
 
-from lumbergh.constants import IGNORE_DIRS, REPO_SEARCH_SKIP_DIRS, SCRATCH_DIR
+from lumbergh.constants import IGNORE_DIRS, REPO_SEARCH_SKIP_DIRS, SCRATCH_DIR, TMUX_CMD
 from lumbergh.db_utils import (
     get_project_db,
     get_session_data_db,
@@ -82,6 +82,7 @@ from lumbergh.models import (
     TodoMoveRequest,
 )
 from lumbergh.providers import get_launch_command
+from lumbergh.tmux_pty import IS_WINDOWS
 
 logger = logging.getLogger(__name__)
 
@@ -185,7 +186,7 @@ def create_tmux_session(
         RuntimeError: If tmux session creation fails
     """
     result = subprocess.run(
-        ["tmux", "new-session", "-d", "-s", name, "-c", str(workdir)],
+        [TMUX_CMD, "new-session", "-d", "-s", name, "-c", str(workdir)],
         capture_output=True,
         text=True,
     )
@@ -196,14 +197,14 @@ def create_tmux_session(
     venv_activate = find_venv_activate(workdir)
     if venv_activate:
         subprocess.run(
-            ["tmux", "send-keys", "-t", name, f"source {venv_activate}", "Enter"],
+            [TMUX_CMD, "send-keys", "-t", name, f"source {venv_activate}", "Enter"],
             capture_output=True,
             text=True,
         )
 
     # Start the agent
     subprocess.run(
-        ["tmux", "send-keys", "-t", name, launch_command, "Enter"],
+        [TMUX_CMD, "send-keys", "-t", name, launch_command, "Enter"],
         capture_output=True,
         text=True,
     )
@@ -232,13 +233,52 @@ async def search_directories(query: str = ""):
 
 def get_tmux_server() -> libtmux.Server:
     """Get the tmux server instance."""
-    return libtmux.Server()
+    return libtmux.Server(tmux_bin=TMUX_CMD)
+
+
+def _get_live_sessions_psmux_fallback() -> dict[str, dict]:
+    """Parse `psmux list-sessions` text output (Windows path).
+
+    libtmux's `-F` format flags don't always work against psmux, so when
+    libtmux returns nothing on Windows we fall back to plain text parsing.
+    """
+    try:
+        result = subprocess.run(
+            [TMUX_CMD, "list-sessions"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return {}
+        sessions: dict[str, dict] = {}
+        # Default format: "name: N windows (created ...)"
+        pattern = re.compile(r"^([^:]+):\s+(\d+)\s+windows")
+        for line in result.stdout.splitlines():
+            match = pattern.match(line)
+            if match:
+                name = match.group(1)
+                windows = int(match.group(2))
+                sessions[name] = {
+                    "name": name,
+                    "id": f"${len(sessions)}",  # synthetic id
+                    "windows": windows,
+                    "attached": False,
+                    "alive": True,
+                }
+        return sessions
+    except Exception:
+        return {}
 
 
 def get_live_sessions() -> dict[str, dict]:
     """Get live tmux sessions as a dict keyed by name."""
     try:
         server = get_tmux_server()
+        sessions_list = list(server.sessions)
+        if not sessions_list and IS_WINDOWS:
+            # libtmux can return [] under psmux even when sessions exist.
+            return _get_live_sessions_psmux_fallback()
         return {
             s.name: {
                 "name": s.name,
@@ -247,10 +287,12 @@ def get_live_sessions() -> dict[str, dict]:
                 "attached": bool(s.session_attached),
                 "alive": True,
             }
-            for s in server.sessions
+            for s in sessions_list
             if s.name is not None
         }
     except Exception:
+        if IS_WINDOWS:
+            return _get_live_sessions_psmux_fallback()
         return {}
 
 
@@ -293,7 +335,7 @@ def _remove_scratch_session(name: str, meta: dict, live: dict) -> None:
     """Remove a single scratch session: kill tmux, delete dir, remove from DB."""
     if name in live:
         subprocess.run(
-            ["tmux", "kill-session", "-t", name],
+            [TMUX_CMD, "kill-session", "-t", name],
             capture_output=True,
             text=True,
         )
@@ -751,14 +793,14 @@ async def reset_session(name: str):
 
     # Kill all windows in the session
     subprocess.run(
-        ["tmux", "kill-window", "-t", f"{name}:", "-a"],
+        [TMUX_CMD, "kill-window", "-t", f"{name}:", "-a"],
         capture_output=True,
         text=True,
     )
     # -a kills all windows except current, so also kill the remaining one
     # by respawning it instead
     subprocess.run(
-        ["tmux", "respawn-window", "-t", f"{name}:", "-k", "-c", str(workdir)],
+        [TMUX_CMD, "respawn-window", "-t", f"{name}:", "-k", "-c", str(workdir)],
         capture_output=True,
         text=True,
     )
@@ -769,14 +811,14 @@ async def reset_session(name: str):
     venv_activate = find_venv_activate(workdir)
     if venv_activate:
         subprocess.run(
-            ["tmux", "send-keys", "-t", name, f"source {venv_activate}", "Enter"],
+            [TMUX_CMD, "send-keys", "-t", name, f"source {venv_activate}", "Enter"],
             capture_output=True,
             text=True,
         )
 
     # Start the agent
     subprocess.run(
-        ["tmux", "send-keys", "-t", name, launch_cmd, "Enter"],
+        [TMUX_CMD, "send-keys", "-t", name, launch_cmd, "Enter"],
         capture_output=True,
         text=True,
     )
@@ -791,7 +833,7 @@ async def reset_session(name: str):
 
 def _get_pane_pid(name: str) -> str:
     result = subprocess.run(
-        ["tmux", "display-message", "-t", name, "-p", "#{pane_pid}"],
+        [TMUX_CMD, "display-message", "-t", name, "-p", "#{pane_pid}"],
         capture_output=True,
         text=True,
     )
@@ -907,14 +949,14 @@ async def resume_session(name: str, force: bool = False):
         venv_activate = find_venv_activate(workdir)
         if venv_activate:
             subprocess.run(
-                ["tmux", "send-keys", "-t", name, f"source {venv_activate}", "Enter"],
+                [TMUX_CMD, "send-keys", "-t", name, f"source {venv_activate}", "Enter"],
                 capture_output=True,
                 text=True,
             )
 
         # Start the agent
         subprocess.run(
-            ["tmux", "send-keys", "-t", name, launch_cmd, "Enter"],
+            [TMUX_CMD, "send-keys", "-t", name, launch_cmd, "Enter"],
             capture_output=True,
             text=True,
         )
@@ -952,7 +994,7 @@ async def delete_session(name: str, cleanup_worktree: bool = False):
     # Kill the tmux session first
     if name in live:
         result = subprocess.run(
-            ["tmux", "kill-session", "-t", name],
+            [TMUX_CMD, "kill-session", "-t", name],
             capture_output=True,
             text=True,
         )
@@ -997,7 +1039,7 @@ def get_session_workdir(name: str) -> Path:
 
     try:
         result = subprocess.run(
-            ["tmux", "display-message", "-t", name, "-p", "#{pane_current_path}"],
+            [TMUX_CMD, "display-message", "-t", name, "-p", "#{pane_current_path}"],
             capture_output=True,
             text=True,
         )

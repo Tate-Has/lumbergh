@@ -11,7 +11,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
-from lumbergh.tmux_pty import TmuxPtySession, capture_pane_content
+from lumbergh.constants import TMUX_CMD
+from lumbergh.tmux_pty import IS_WINDOWS, TmuxPtySession, capture_pane_content
 
 logger = logging.getLogger(__name__)
 
@@ -217,45 +218,31 @@ class SessionManager:
     async def _broadcast_loop(self, session_name: str) -> None:
         """Read from PTY and broadcast to all connected clients.
 
-        Uses loop.add_reader (epoll) for fd watching with output batching.
-        Accumulates data for up to ~16ms before sending to reduce WebSocket
-        message frequency during rapid terminal output (e.g. Claude streaming).
+        On Unix, uses loop.add_reader (epoll) for fd watching with output
+        batching. Accumulates data for up to ~16ms before sending to reduce
+        WebSocket message frequency during rapid terminal output.
+
+        On Windows, winpty handles aren't selectable, so we fall back to a
+        polling loop that runs the blocking-ish read in a thread executor.
         """
         managed = self._sessions.get(session_name)
-        if not managed or managed.pty.master_fd is None:
+        if not managed:
+            return
+
+        if IS_WINDOWS:
+            await self._broadcast_loop_windows(session_name)
+            return
+
+        if managed.pty.master_fd is None:
             return
 
         fd = managed.pty.master_fd
         loop = asyncio.get_event_loop()
-        consecutive_eof = 0
         data_ready = asyncio.Event()
         loop.add_reader(fd, data_ready.set)
 
         try:
-            while True:
-                await data_ready.wait()
-                data_ready.clear()
-
-                managed = self._sessions.get(session_name)
-                if not managed:
-                    break
-
-                data = managed.pty.read()
-                if data == b"":
-                    consecutive_eof, should_break = await self._check_eof(
-                        session_name, managed, consecutive_eof
-                    )
-                    if should_break:
-                        break
-                    continue
-
-                consecutive_eof = 0
-                if not data:
-                    continue
-
-                batched = await self._batch_drain(data, managed, data_ready)
-                await self._broadcast_data(managed, batched)
-
+            await self._broadcast_loop_unix(session_name, data_ready)
         except asyncio.CancelledError:
             pass
         except Exception as e:
@@ -265,6 +252,65 @@ class SessionManager:
                 loop.remove_reader(fd)
             except Exception:  # noqa: S110 - cleanup is best-effort
                 pass
+
+    async def _broadcast_loop_unix(self, session_name: str, data_ready: asyncio.Event) -> None:
+        consecutive_eof = 0
+        while True:
+            await data_ready.wait()
+            data_ready.clear()
+
+            managed = self._sessions.get(session_name)
+            if not managed:
+                break
+
+            data = managed.pty.read()
+            if data == b"":
+                consecutive_eof, should_break = await self._check_eof(
+                    session_name, managed, consecutive_eof
+                )
+                if should_break:
+                    break
+                continue
+
+            consecutive_eof = 0
+            if not data:
+                continue
+
+            batched = await self._batch_drain(data, managed, data_ready)
+            await self._broadcast_data(managed, batched)
+
+    async def _broadcast_loop_windows(self, session_name: str) -> None:
+        """Polling-based broadcast loop for Windows winpty PTYs."""
+        loop = asyncio.get_event_loop()
+        consecutive_eof = 0
+        try:
+            while True:
+                managed = self._sessions.get(session_name)
+                if not managed:
+                    break
+
+                data = await loop.run_in_executor(None, managed.pty.read)
+
+                if data == b"":
+                    consecutive_eof, should_break = await self._check_eof(
+                        session_name, managed, consecutive_eof
+                    )
+                    if should_break:
+                        break
+                    continue
+
+                if not data:
+                    # No data available — wait briefly to prevent busy loop.
+                    await asyncio.sleep(0.01)
+                    continue
+
+                consecutive_eof = 0
+                await self._broadcast_data(managed, data)
+                await asyncio.sleep(0.005)  # yield
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.error(f"Windows broadcast loop error: {e}")
 
     async def _poll_copy_mode(self, session_name: str) -> bool | None:
         """Return True/False for copy-mode active, or None if the probe failed.
@@ -276,7 +322,7 @@ class SessionManager:
         proc = None
         try:
             proc = await asyncio.create_subprocess_exec(
-                "tmux",
+                TMUX_CMD,
                 "display-message",
                 "-p",
                 "-t",

@@ -1,22 +1,41 @@
 """
 PTY-based tmux session attachment for bidirectional terminal I/O.
+
+On Unix this uses the standard `pty` module to fork a tmux attach.
+On Windows this uses `pywinpty` to spawn `psmux` (a PowerShell-based tmux
+clone, installed via `uv tool install psmux`). psmux speaks enough of the
+tmux CLI that libtmux mostly works against it, with a few subprocess
+fallbacks for `-F` format-flag incompatibilities.
 """
 
 import asyncio
-import fcntl
 import os
-import pty
+import re
 import struct
-import termios
+import subprocess
+import sys
 
 import libtmux
 from libtmux._internal.query_list import ObjectDoesNotExist
+
+from lumbergh.constants import TMUX_CMD
+
+IS_WINDOWS = sys.platform == "win32"
+
+if not IS_WINDOWS:
+    import fcntl
+    import pty
+    import termios
+
+
+def _tmux_server() -> libtmux.Server:
+    return libtmux.Server(tmux_bin=TMUX_CMD)
 
 
 def list_tmux_sessions() -> list[dict]:
     """List all available tmux sessions."""
     try:
-        server = libtmux.Server()
+        server = _tmux_server()
         sessions = server.sessions
         return [
             {
@@ -33,18 +52,34 @@ def list_tmux_sessions() -> list[dict]:
 
 def get_session_pane_id(session_name: str) -> str:
     """Get the active pane ID for a session."""
-    server = libtmux.Server()
+    server = _tmux_server()
     try:
         session = server.sessions.get(session_name=session_name)
+        if session:
+            window = session.active_window
+            pane = window.active_pane
+            if pane is not None and pane.id is not None:
+                return pane.id
     except ObjectDoesNotExist:
-        raise ValueError(f"Session '{session_name}' not found")
-    if not session:
-        raise ValueError(f"Session '{session_name}' not found")
-    window = session.active_window
-    pane = window.active_pane
-    if pane is None or pane.id is None:
-        raise ValueError(f"No active pane in session '{session_name}'")
-    return pane.id
+        pass
+    except Exception:  # noqa: S110 - falls through to psmux fallback / ValueError
+        pass
+
+    # Fallback for psmux: libtmux's -F format flags don't always work.
+    if IS_WINDOWS:
+        try:
+            result = subprocess.run(
+                [TMUX_CMD, "display-message", "-t", session_name, "-p", "#{pane_id}"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return result.stdout.strip()
+        except Exception:  # noqa: S110 - fallback path, ValueError raised below
+            pass
+
+    raise ValueError(f"Session '{session_name}' not found or no active pane")
 
 
 def capture_pane_content(session_name: str) -> str:
@@ -55,12 +90,10 @@ def capture_pane_content(session_name: str) -> str:
     libtmux (which spawns 4+ subprocesses per call for session/window/pane
     resolution and can cause GIL contention when called concurrently).
     """
-    import subprocess
-
     try:
         result = subprocess.run(
             [
-                "tmux",
+                TMUX_CMD,
                 "capture-pane",
                 "-t",
                 session_name,
@@ -85,12 +118,10 @@ def capture_scrollback(session_name: str, max_lines: int = 500) -> str:
 
     Returns up to ``max_lines`` lines from the scrollback buffer.
     """
-    import subprocess
-
     try:
         result = subprocess.run(
             [
-                "tmux",
+                TMUX_CMD,
                 "capture-pane",
                 "-t",
                 session_name,
@@ -109,61 +140,120 @@ def capture_scrollback(session_name: str, max_lines: int = 500) -> str:
         return ""
 
 
-class TmuxPtySession:
-    """
-    Manages a PTY connected to a tmux session for bidirectional I/O.
+def _session_exists(session_name: str) -> bool:
+    """Check whether a tmux/psmux session exists.
 
-    Uses `tmux attach-session` in a PTY to get proper terminal emulation.
+    On Windows, libtmux's session lookup against psmux is unreliable, so
+    fall back to `has-session` / `list-sessions` text parsing.
+    """
+    try:
+        server = _tmux_server()
+        if server.sessions.get(session_name=session_name) is not None:
+            return True
+    except Exception:  # noqa: S110 - falls through to Windows fallback / False
+        pass
+
+    if IS_WINDOWS:
+        try:
+            result = subprocess.run(
+                [TMUX_CMD, "has-session", "-t", session_name],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if result.returncode == 0:
+                return True
+        except Exception:  # noqa: S110 - try list-sessions next
+            pass
+        try:
+            result = subprocess.run(
+                [TMUX_CMD, "list-sessions"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if result.returncode == 0:
+                pattern = re.compile(rf"^{re.escape(session_name)}:")
+                for line in result.stdout.splitlines():
+                    if pattern.match(line):
+                        return True
+        except Exception:  # noqa: S110 - last resort, return False below
+            pass
+
+    return False
+
+
+class TmuxPtySession:
+    """Manages a PTY connected to a tmux/psmux session for bidirectional I/O.
+
+    Uses standard `pty` on Unix and `pywinpty` on Windows.
     """
 
     def __init__(self, session_name: str):
         self.session_name = session_name
+        # Unix-only fields
         self.master_fd: int | None = None
         self.pid: int | None = None
+        # Windows-only field (winpty.PTY)
+        self.pty_win = None
         self.cols = 80
         self.rows = 24
 
     def spawn(self) -> None:
         """Spawn a PTY running tmux attach."""
-        # Verify session exists
-        server = libtmux.Server()
-        try:
-            session = server.sessions.get(session_name=self.session_name)
-        except ObjectDoesNotExist:
-            raise ValueError(f"Session '{self.session_name}' not found")
-        if not session:
+        if not _session_exists(self.session_name):
             raise ValueError(f"Session '{self.session_name}' not found")
 
-        # Fork a PTY
+        if IS_WINDOWS:
+            self._spawn_windows()
+        else:
+            self._spawn_unix()
+
+    def _spawn_unix(self) -> None:
         pid, fd = pty.fork()
 
         if pid == 0:
             # Child process - exec tmux attach
             os.execlp(
-                "tmux",
-                "tmux",
+                TMUX_CMD,
+                TMUX_CMD,
                 "attach-session",
                 "-t",
                 self.session_name,
             )
         else:
-            # Parent process
             self.pid = pid
             self.master_fd = fd
-
-            # Set non-blocking
             flags = fcntl.fcntl(fd, fcntl.F_GETFL)
             fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
-
-            # Set initial size
             self._set_winsize(self.cols, self.rows)
+
+    def _spawn_windows(self) -> None:
+        import shutil
+
+        import winpty  # type: ignore[import-not-found]
+
+        cmd_path = shutil.which(TMUX_CMD)
+        if not cmd_path:
+            raise FileNotFoundError(
+                f"Could not find {TMUX_CMD} in PATH (install with: uv tool install psmux)"
+            )
+
+        pty_win = winpty.PTY(self.cols, self.rows)
+        pty_win.spawn(cmd_path, f"attach-session -t {self.session_name}")
+        self.pty_win = pty_win
 
     def _set_winsize(self, cols: int, rows: int) -> None:
         """Set the PTY window size."""
-        if self.master_fd is None:
-            return
         self.cols = cols
         self.rows = rows
+        if IS_WINDOWS:
+            if self.pty_win is not None:
+                self.pty_win.set_size(cols, rows)
+            return
+
+        if self.master_fd is None:
+            return
         winsize = struct.pack("HHHH", rows, cols, 0, 0)
         fcntl.ioctl(self.master_fd, termios.TIOCSWINSZ, winsize)
 
@@ -173,16 +263,26 @@ class TmuxPtySession:
 
     def write(self, data: bytes) -> None:
         """Write data to the PTY (send keystrokes to terminal)."""
+        if IS_WINDOWS:
+            if self.pty_win is not None:
+                self.pty_win.write(data.decode("utf-8", errors="replace"))
+            return
+
         if self.master_fd is not None:
             os.write(self.master_fd, data)
 
     async def write_async(self, data: bytes) -> None:
         """Write data to the PTY with proper backpressure handling.
 
-        Handles short writes and BlockingIOError on non-blocking fds,
-        which is critical for large pastes that exceed the kernel's
-        PTY input buffer (~4KB).
+        On Unix, handles short writes and BlockingIOError on non-blocking
+        fds, which is critical for large pastes that exceed the kernel's
+        PTY input buffer (~4KB). On Windows, pywinpty handles buffering
+        internally so we just delegate to the synchronous write.
         """
+        if IS_WINDOWS:
+            self.write(data)
+            return
+
         if self.master_fd is None:
             return
         loop = asyncio.get_event_loop()
@@ -208,6 +308,19 @@ class TmuxPtySession:
             b'': EOF/PTY died (session terminated)
             None: No data available yet (non-blocking)
         """
+        if IS_WINDOWS:
+            if self.pty_win is None:
+                return b""
+            try:
+                data = self.pty_win.read(blocking=False)
+                if not data:
+                    if not self.pty_win.isalive():
+                        return b""
+                    return None
+                return data.encode("utf-8", errors="replace")
+            except Exception:
+                return b""
+
         if self.master_fd is None:
             return b""  # Already closed
         try:
@@ -219,14 +332,16 @@ class TmuxPtySession:
 
     def is_alive(self) -> bool:
         """Check if the underlying tmux session still exists."""
-        try:
-            server = libtmux.Server()
-            return server.sessions.get(session_name=self.session_name) is not None
-        except Exception:
-            return False
+        return _session_exists(self.session_name)
 
     def close(self) -> None:
         """Close the PTY connection."""
+        if IS_WINDOWS:
+            if self.pty_win is not None:
+                del self.pty_win
+                self.pty_win = None
+            return
+
         if self.master_fd is not None:
             try:
                 os.close(self.master_fd)

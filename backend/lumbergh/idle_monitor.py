@@ -25,13 +25,14 @@ from datetime import UTC, datetime
 
 import libtmux
 
+from lumbergh.constants import TMUX_CMD
 from lumbergh.db_utils import (
     get_session_data_db,
     recover_session_data_db,
     session_data_lock,
 )
 from lumbergh.idle_detector import SessionState, classify_overrides
-from lumbergh.tmux_pty import capture_pane_content
+from lumbergh.tmux_pty import IS_WINDOWS, capture_pane_content
 
 logger = logging.getLogger(__name__)
 
@@ -153,8 +154,34 @@ class IdleMonitor:
 
     def _get_live_session_names(self) -> list[str]:
         try:
-            server = libtmux.Server()
-            return [s.name for s in server.sessions if s.name is not None]
+            server = libtmux.Server(tmux_bin=TMUX_CMD)
+            names = [s.name for s in server.sessions if s.name is not None]
+            if names or not IS_WINDOWS:
+                return names
+        except Exception:
+            if not IS_WINDOWS:
+                return []
+
+        # Windows fallback: psmux's `-F` format flags don't always work
+        # under libtmux, so parse the default `list-sessions` output.
+        try:
+            import subprocess
+
+            result = subprocess.run(
+                [TMUX_CMD, "list-sessions"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if result.returncode != 0:
+                return []
+            names = []
+            pattern = re.compile(r"^([^:]+):")
+            for line in result.stdout.splitlines():
+                match = pattern.match(line)
+                if match:
+                    names.append(match.group(1))
+            return names
         except Exception:
             return []
 
