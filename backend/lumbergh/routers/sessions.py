@@ -777,29 +777,69 @@ async def reset_session(name: str):
     }
 
 
-@router.post("/{name}/pause")
-async def pause_session(name: str):
-    """Pause a session by killing the Claude Code process (and its MCP children)."""
-    live = get_live_sessions()
-
-    if name not in live:
-        raise HTTPException(status_code=404, detail=f"Session '{name}' is not running")
-
-    # Get the shell PID from tmux
+def _get_pane_pid(name: str) -> str:
     result = subprocess.run(
         ["tmux", "display-message", "-t", name, "-p", "#{pane_pid}"],
         capture_output=True,
         text=True,
     )
-    shell_pid = result.stdout.strip()
+    return result.stdout.strip()
 
-    # Kill child processes of the shell (i.e. the Claude Code process)
+
+def _list_pane_children(pane_pid: str) -> list[dict]:
+    """Return [{pid, command}] for direct children of the pane shell."""
+    if not pane_pid:
+        return []
+    result = subprocess.run(
+        ["ps", "-o", "pid=,comm=", "--ppid", pane_pid],
+        capture_output=True,
+        text=True,
+    )
+    children: list[dict] = []
+    for line in result.stdout.strip().splitlines():
+        parts = line.strip().split(None, 1)
+        if len(parts) == 2 and parts[0].isdigit():
+            children.append({"pid": int(parts[0]), "command": parts[1]})
+    return children
+
+
+def _kill_pane_children(pane_pid: str) -> None:
+    if not pane_pid:
+        return
     subprocess.run(
-        ["pkill", "-TERM", "-P", shell_pid],
+        ["pkill", "-TERM", "-P", pane_pid],
         capture_output=True,
         text=True,
     )
 
+
+@router.post("/{name}/pause")
+async def pause_session(name: str, force: bool = False):
+    """Pause a session by killing the Claude Code process (and its MCP children).
+
+    If the pane has more than one child process (e.g. extra shells the user
+    started), responds 409 with the list of extras so the UI can confirm.
+    Pass `?force=true` to skip the check.
+    """
+    live = get_live_sessions()
+
+    if name not in live:
+        raise HTTPException(status_code=404, detail=f"Session '{name}' is not running")
+
+    shell_pid = _get_pane_pid(name)
+    children = _list_pane_children(shell_pid)
+
+    if not force and len(children) > 1:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "extra_children",
+                "message": "Pane has extra processes that will also be killed.",
+                "children": children,
+            },
+        )
+
+    _kill_pane_children(shell_pid)
     await asyncio.sleep(0.5)
 
     # Mark as paused in TinyDB
@@ -813,8 +853,12 @@ async def pause_session(name: str):
 
 
 @router.post("/{name}/resume")
-async def resume_session(name: str):
-    """Resume a paused session by restarting Claude Code with --continue."""
+async def resume_session(name: str, force: bool = False):
+    """Resume a paused session by restarting Claude Code with --continue.
+
+    If the pane has extra child processes, responds 409 with the list so the
+    UI can confirm before killing them. Pass `?force=true` to skip the check.
+    """
     live = get_live_sessions()
     stored = get_stored_sessions()
 
@@ -830,19 +874,21 @@ async def resume_session(name: str):
     launch_cmd = _resolve_launch_command(session_meta.get("agent_provider"))
 
     if name in live:
-        # Kill any stale child processes before starting fresh
-        result = subprocess.run(
-            ["tmux", "display-message", "-t", name, "-p", "#{pane_pid}"],
-            capture_output=True,
-            text=True,
-        )
-        shell_pid = result.stdout.strip()
-        if shell_pid:
-            subprocess.run(
-                ["pkill", "-TERM", "-P", shell_pid],
-                capture_output=True,
-                text=True,
+        shell_pid = _get_pane_pid(name)
+        children = _list_pane_children(shell_pid)
+
+        if not force and len(children) > 1:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "extra_children",
+                    "message": "Pane has extra processes that will also be killed.",
+                    "children": children,
+                },
             )
+
+        if shell_pid:
+            _kill_pane_children(shell_pid)
             await asyncio.sleep(0.5)
 
         # Activate venv if found
