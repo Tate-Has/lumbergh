@@ -529,6 +529,36 @@ export default function Dashboard() {
     }
   }
 
+  const handlePauseResume = async (name: string, paused: boolean): Promise<'ok' | 'cancelled'> => {
+    const endpoint = paused ? 'pause' : 'resume'
+    const callEndpoint = (force: boolean) =>
+      fetch(`${getApiBase()}/sessions/${name}/${endpoint}${force ? '?force=true' : ''}`, {
+        method: 'POST',
+      })
+
+    let res = await callEndpoint(false)
+    if (res.status === 409) {
+      const data = await res.json()
+      const children: { pid: number; command: string }[] = data.detail?.children || []
+      const list = children.map((c) => `  • ${c.command} (pid ${c.pid})`).join('\n')
+      const verb = paused ? 'pausing' : 'resuming'
+      const ok = window.confirm(
+        `This pane has extra processes that will be killed when ${verb}:\n\n${list}\n\nContinue?`
+      )
+      if (!ok) return 'cancelled'
+      res = await callEndpoint(true)
+    }
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      const message =
+        typeof data.detail === 'string'
+          ? data.detail
+          : data.detail?.message || `Failed to ${endpoint} session`
+      throw new Error(message)
+    }
+    return 'ok'
+  }
+
   const handleUpdate = async (
     name: string,
     updates: {
@@ -542,16 +572,9 @@ export default function Dashboard() {
     }
   ) => {
     try {
-      // Route pause/resume to dedicated endpoints
       if (updates.paused !== undefined) {
-        const endpoint = updates.paused ? 'pause' : 'resume'
-        const res = await fetch(`${getApiBase()}/sessions/${name}/${endpoint}`, {
-          method: 'POST',
-        })
-        if (!res.ok) {
-          const data = await res.json()
-          throw new Error(data.detail || `Failed to ${endpoint} session`)
-        }
+        const result = await handlePauseResume(name, updates.paused)
+        if (result === 'cancelled') return
       }
 
       // Send remaining (non-paused) updates via PATCH if any exist

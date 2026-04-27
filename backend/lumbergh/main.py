@@ -19,6 +19,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from lumbergh.auth import AuthMiddleware
 from lumbergh.auth import router as auth_router
+from lumbergh.constants import TMUX_CMD
 from lumbergh.file_utils import get_file_language, list_project_files, validate_path_within_root
 from lumbergh.git_utils import (
     get_commit_diff,
@@ -366,7 +367,7 @@ async def _run_tmux(*args: str, input_data: str | None = None, timeout: float = 
     Raises HTTPException on failure or timeout (e.g. tmux stuck in copy-mode).
     """
     proc = await asyncio.create_subprocess_exec(
-        "tmux",
+        TMUX_CMD,
         *args,
         stdin=asyncio.subprocess.PIPE if input_data else None,
         stdout=asyncio.subprocess.PIPE,
