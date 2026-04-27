@@ -188,7 +188,8 @@ def create_tmux_session(
     result = subprocess.run(
         [TMUX_CMD, "new-session", "-d", "-s", name, "-c", str(workdir)],
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     if result.returncode != 0:
         raise RuntimeError(f"Failed to create session: {result.stderr}")
@@ -199,14 +200,16 @@ def create_tmux_session(
         subprocess.run(
             [TMUX_CMD, "send-keys", "-t", name, f"source {venv_activate}", "Enter"],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
 
     # Start the agent
     subprocess.run(
         [TMUX_CMD, "send-keys", "-t", name, launch_command, "Enter"],
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="replace",
     )
 
 
@@ -246,7 +249,8 @@ def _get_live_sessions_psmux_fallback() -> dict[str, dict]:
         result = subprocess.run(
             [TMUX_CMD, "list-sessions"],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="replace",
             check=False,
         )
         if result.returncode != 0:
@@ -337,7 +341,8 @@ def _remove_scratch_session(name: str, meta: dict, live: dict) -> None:
         subprocess.run(
             [TMUX_CMD, "kill-session", "-t", name],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
     workdir = meta.get("workdir")
     if workdir:
@@ -795,14 +800,16 @@ async def reset_session(name: str):
     subprocess.run(
         [TMUX_CMD, "kill-window", "-t", f"{name}:", "-a"],
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     # -a kills all windows except current, so also kill the remaining one
     # by respawning it instead
     subprocess.run(
         [TMUX_CMD, "respawn-window", "-t", f"{name}:", "-k", "-c", str(workdir)],
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="replace",
     )
 
     launch_cmd = _resolve_launch_command(session_meta.get("agent_provider"))
@@ -813,14 +820,16 @@ async def reset_session(name: str):
         subprocess.run(
             [TMUX_CMD, "send-keys", "-t", name, f"source {venv_activate}", "Enter"],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
 
     # Start the agent
     subprocess.run(
         [TMUX_CMD, "send-keys", "-t", name, launch_cmd, "Enter"],
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="replace",
     )
 
     return {
@@ -835,7 +844,8 @@ def _get_pane_pid(name: str) -> str:
     result = subprocess.run(
         [TMUX_CMD, "display-message", "-t", name, "-p", "#{pane_pid}"],
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     return result.stdout.strip()
 
@@ -847,7 +857,8 @@ def _list_pane_children(pane_pid: str) -> list[dict]:
     result = subprocess.run(
         ["ps", "-o", "pid=,comm=", "--ppid", pane_pid],
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     children: list[dict] = []
     for line in result.stdout.strip().splitlines():
@@ -863,7 +874,8 @@ def _kill_pane_children(pane_pid: str) -> None:
     subprocess.run(
         ["pkill", "-TERM", "-P", pane_pid],
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="replace",
     )
 
 
@@ -951,14 +963,16 @@ async def resume_session(name: str, force: bool = False):
             subprocess.run(
                 [TMUX_CMD, "send-keys", "-t", name, f"source {venv_activate}", "Enter"],
                 capture_output=True,
-                text=True,
+                encoding="utf-8",
+                errors="replace",
             )
 
         # Start the agent
         subprocess.run(
             [TMUX_CMD, "send-keys", "-t", name, launch_cmd, "Enter"],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
     else:
         # Tmux session is dead — recreate it
@@ -996,7 +1010,8 @@ async def delete_session(name: str, cleanup_worktree: bool = False):
         result = subprocess.run(
             [TMUX_CMD, "kill-session", "-t", name],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         if result.returncode != 0:
             raise HTTPException(status_code=500, detail=f"Failed to kill session: {result.stderr}")
@@ -1041,7 +1056,8 @@ def get_session_workdir(name: str) -> Path:
         result = subprocess.run(
             [TMUX_CMD, "display-message", "-t", name, "-p", "#{pane_current_path}"],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         if result.returncode == 0 and result.stdout.strip():
             path = Path(result.stdout.strip())
