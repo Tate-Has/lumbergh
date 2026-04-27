@@ -7,6 +7,7 @@ independent of whether any WebSocket clients are connected.
 
 import asyncio
 import logging
+import re
 import time
 from datetime import UTC, datetime
 
@@ -15,8 +16,6 @@ import libtmux
 from lumbergh.constants import TMUX_CMD
 from lumbergh.db_utils import (
     get_session_data_db,
-    recover_session_data_db,
-    session_data_lock,
 )
 from lumbergh.idle_detector import IdleDetectionResult, IdleDetector, SessionState
 from lumbergh.tmux_pty import IS_WINDOWS, capture_pane_content
