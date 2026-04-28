@@ -122,6 +122,15 @@ export default memo(function Terminal({
     termRef.current?.write(data)
   }, [])
 
+  // Initial snapshot sent on (re)connect — clear the scrollback buffer first to
+  // prevent the content from accumulating across multiple WebSocket reconnections.
+  const handleInit = useCallback((data: string) => {
+    if (termRef.current) {
+      termRef.current.reset()
+      termRef.current.write(data)
+    }
+  }, [])
+
   const handleCopyMode = useCallback((active: boolean) => {
     setScrollMode(active)
   }, [])
@@ -168,6 +177,7 @@ export default memo(function Terminal({
   const { send, sendResize, isConnected, error, sessionDead } = useTerminalSocket({
     sessionName,
     onData: handleData,
+    onInit: handleInit,
     onResizeSync: handleResizeSync,
     onCopyMode: handleCopyMode,
     onConnect: handleConnect,
