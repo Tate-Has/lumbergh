@@ -396,10 +396,13 @@ async def list_sessions():
         seen_names.add(name)
         live_info = live.get(name, {})
         status_info = get_session_status(name)
+        stored_workdir = meta.get("workdir", "")
+        workdir_exists = bool(stored_workdir) and Path(stored_workdir).is_dir()
         sessions.append(
             {
                 "name": name,
-                "workdir": meta.get("workdir", ""),
+                "workdir": stored_workdir,
+                "workdirExists": workdir_exists,
                 "description": meta.get("description", ""),
                 "displayName": meta.get("displayName", ""),
                 "alive": live_info.get("alive", False),
@@ -430,6 +433,7 @@ async def list_sessions():
                 {
                     "name": name,
                     "workdir": None,
+                    "workdirExists": True,
                     "description": None,
                     "displayName": "",
                     "alive": True,
@@ -468,6 +472,21 @@ async def touch_session(name: str):
         if name not in live:
             raise HTTPException(status_code=404, detail=f"Session '{name}' not found")
         record = {"name": name}
+    else:
+        # If session was created with a workdir but the dir is gone (e.g. user
+        # deleted a worktree externally), surface that explicitly so the UI can
+        # render a clear cleanup state instead of a black terminal.
+        stored_workdir = record.get("workdir")
+        if stored_workdir and not Path(stored_workdir).is_dir():
+            raise HTTPException(
+                status_code=410,
+                detail={
+                    "code": "workdir_missing",
+                    "message": f"Working directory no longer exists: {stored_workdir}",
+                    "workdir": stored_workdir,
+                    "type": record.get("type", "direct"),
+                },
+            )
 
     record["lastUsedAt"] = datetime.now(UTC).isoformat()
     sessions_table.upsert(record, session_q.name == name)

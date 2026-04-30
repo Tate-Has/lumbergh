@@ -9,6 +9,7 @@ import type { SessionBase } from '../utils/sessionStatus'
 
 interface Session extends SessionBase {
   workdir: string | null
+  workdirExists?: boolean
   description: string | null
   attached: boolean
   windows: number

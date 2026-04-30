@@ -61,13 +61,156 @@ function diffDataEquals(a: DiffData | null, b: DiffData | null): boolean {
   return true
 }
 
+type ExistenceState =
+  | { status: 'ok' }
+  | { status: 'notfound' }
+  | { status: 'workdir-missing'; workdir: string }
+
+function useSessionExistence(name: string | undefined): ExistenceState {
+  const [state, setState] = useState<ExistenceState>({ status: 'ok' })
+  useEffect(() => {
+    if (!name) return
+    let cancelled = false
+    fetch(`${getApiBase()}/sessions/${name}/touch`, { method: 'POST' })
+      .then(async (res) => {
+        if (cancelled) return
+        if (res.status === 404) {
+          setState({ status: 'notfound' })
+          return
+        }
+        if (res.status === 410) {
+          try {
+            const data = await res.json()
+            const detail = data?.detail
+            if (detail?.code === 'workdir_missing') {
+              setState({ status: 'workdir-missing', workdir: detail.workdir || '' })
+              return
+            }
+          } catch {
+            // fall through
+          }
+          setState({ status: 'workdir-missing', workdir: '' })
+        }
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [name])
+  return state
+}
+
+function renderExistenceGuard(
+  existence: ExistenceState,
+  sessionName: string | undefined,
+  onBack: () => void
+) {
+  const safeName = sessionName ?? ''
+  if (existence.status === 'workdir-missing') {
+    return (
+      <WorkdirMissingScreen sessionName={safeName} workdir={existence.workdir} onBack={onBack} />
+    )
+  }
+  if (existence.status === 'notfound') {
+    return <NotFoundScreen sessionName={safeName} onBack={onBack} />
+  }
+  return null
+}
+
+function NotFoundScreen({ sessionName, onBack }: { sessionName: string; onBack: () => void }) {
+  const [countdown, setCountdown] = useState(5)
+  useEffect(() => {
+    if (countdown <= 0) {
+      onBack()
+      return
+    }
+    const timer = setTimeout(() => setCountdown((c) => c - 1), 1000)
+    return () => clearTimeout(timer)
+  }, [countdown, onBack])
+  return (
+    <div className="h-full flex flex-col items-center justify-center bg-bg-sunken text-text-primary gap-4">
+      <div className="text-red-400 text-xl font-semibold">Session Not Found</div>
+      <p className="text-text-tertiary text-sm text-center px-4">
+        The session <span className="text-text-secondary font-mono">"{sessionName}"</span> does not
+        exist or has been deleted.
+      </p>
+      <button
+        onClick={onBack}
+        className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm transition-colors"
+      >
+        Go to Dashboard
+      </button>
+      <p className="text-text-tertiary text-xs">Redirecting in {countdown}s...</p>
+    </div>
+  )
+}
+
+function WorkdirMissingScreen({
+  sessionName,
+  workdir,
+  onBack,
+}: {
+  sessionName: string
+  workdir: string
+  onBack: () => void
+}) {
+  const [deleting, setDeleting] = useState(false)
+  const onCleanup = async () => {
+    if (!sessionName || deleting) return
+    setDeleting(true)
+    try {
+      const res = await fetch(`${getApiBase()}/sessions/${sessionName}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.detail || 'Failed to delete session')
+      }
+      onBack()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to delete session')
+      setDeleting(false)
+    }
+  }
+  return (
+    <div className="h-full flex flex-col items-center justify-center bg-bg-sunken text-text-primary gap-4 px-4">
+      <div className="text-yellow-400 text-xl font-semibold">Working Directory Missing</div>
+      <p className="text-text-tertiary text-sm text-center max-w-md">
+        The session <span className="text-text-secondary font-mono">"{sessionName}"</span> points to
+        a directory that no longer exists:
+      </p>
+      {workdir && (
+        <p className="text-text-secondary text-xs font-mono bg-bg-surface rounded px-3 py-2 max-w-lg break-all">
+          {workdir}
+        </p>
+      )}
+      <p className="text-text-tertiary text-xs text-center max-w-md">
+        This usually happens when a git worktree is removed outside Lumbergh. The session can no
+        longer be opened — you can clean it up below.
+      </p>
+      <div className="flex gap-3">
+        <button
+          onClick={onBack}
+          className="px-4 py-2 bg-control-bg hover:bg-control-bg-hover rounded text-sm transition-colors"
+        >
+          Back to Dashboard
+        </button>
+        <button
+          onClick={onCleanup}
+          disabled={deleting}
+          className="px-4 py-2 bg-red-600 hover:bg-red-500 disabled:bg-red-800 rounded text-sm transition-colors"
+        >
+          {deleting ? 'Deleting...' : 'Delete Session'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function SessionDetail() {
   const { name } = useParams<{ name: string }>()
   const navigate = useNavigate()
   const isDesktop = useIsDesktop()
 
-  const [notFound, setNotFound] = useState(false)
-  const [countdown, setCountdown] = useState(5)
+  const existence = useSessionExistence(name)
 
   const [rightPanel, setRightPanel] = useState<RightPanel>(() => {
     const saved = localStorage.getItem('lumbergh:rightPanel')
@@ -98,17 +241,6 @@ export default function SessionDetail() {
   const [isScratch, setIsScratch] = useState(false)
   const tabSettingsRef = useRef<HTMLDivElement>(null)
   const focusFnRef = useRef<(() => void) | null>(null)
-
-  // Touch session to track last used time + check existence
-  useEffect(() => {
-    if (name) {
-      fetch(`${getApiBase()}/sessions/${name}/touch`, { method: 'POST' })
-        .then((res) => {
-          if (res.status === 404) setNotFound(true)
-        })
-        .catch(() => {})
-    }
-  }, [name])
 
   // Fetch settings (telemetry consent + tab visibility)
   useEffect(() => {
@@ -145,17 +277,6 @@ export default function SessionDetail() {
       })
       .catch(() => {})
   }, [name])
-
-  // Auto-redirect countdown when session not found
-  useEffect(() => {
-    if (!notFound) return
-    if (countdown <= 0) {
-      navigate('/')
-      return
-    }
-    const timer = setTimeout(() => setCountdown((c) => c - 1), 1000)
-    return () => clearTimeout(timer)
-  }, [notFound, countdown, navigate])
 
   // Persist right panel selection
   useEffect(() => {
@@ -638,24 +759,8 @@ export default function SessionDetail() {
     </div>
   )
 
-  if (notFound) {
-    return (
-      <div className="h-full flex flex-col items-center justify-center bg-bg-sunken text-text-primary gap-4">
-        <div className="text-red-400 text-xl font-semibold">Session Not Found</div>
-        <p className="text-text-tertiary text-sm text-center px-4">
-          The session <span className="text-text-secondary font-mono">"{name}"</span> does not exist
-          or has been deleted.
-        </p>
-        <button
-          onClick={() => navigate('/')}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm transition-colors"
-        >
-          Go to Dashboard
-        </button>
-        <p className="text-text-tertiary text-xs">Redirecting in {countdown}s...</p>
-      </div>
-    )
-  }
+  const guard = renderExistenceGuard(existence, name, () => navigate('/'))
+  if (guard) return guard
 
   return (
     <div className="h-full flex flex-col bg-bg-sunken text-text-primary">
