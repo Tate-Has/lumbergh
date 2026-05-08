@@ -238,6 +238,7 @@ export default memo(function Terminal({
   }, [onFocusReady])
 
   // Initialize terminal
+  // eslint-disable-next-line complexity
   useEffect(() => {
     if (!containerRef.current) return
 
