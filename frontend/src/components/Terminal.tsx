@@ -342,6 +342,12 @@ export default memo(function Terminal({
     // tools like Wispr Flow work. xterm.js would otherwise send literal ^V
     // to the PTY, since browsers reserve Ctrl+Shift+V for terminal paste.
     // Use Ctrl+Alt+V as the escape hatch to send a literal ^V byte.
+    const isCycleSessionShortcut = (event: KeyboardEvent) => {
+      if (!event.ctrlKey || !event.shiftKey || event.altKey || event.metaKey) return false
+      const k = event.key.toLowerCase()
+      return k === 'j' || k === 'k'
+    }
+
     const isPasteShortcut = (event: KeyboardEvent) =>
       event.type === 'keydown' &&
       (event.ctrlKey || event.metaKey) &&
@@ -367,8 +373,8 @@ export default memo(function Terminal({
     }
 
     term.attachCustomKeyEventHandler((event) => {
-      // Ctrl+[ / Ctrl+] cycles sessions — let the window handler deal with it
-      if (event.ctrlKey && (event.key === '[' || event.key === ']')) {
+      // Ctrl+Shift+J / Ctrl+Shift+K cycles sessions — let the window handler deal with it
+      if (isCycleSessionShortcut(event)) {
         return false
       }
       if (isPasteShortcut(event)) {

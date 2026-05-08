@@ -446,12 +446,15 @@ export default function SessionDetail() {
     [name, navigate]
   )
 
-  // Ctrl+[ / Ctrl+] to cycle sessions
+  // Ctrl+Shift+J / Ctrl+Shift+K to cycle sessions
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey && (e.key === '[' || e.key === ']')) {
-        e.preventDefault()
-        handleCycleSession(e.key === ']' ? 'next' : 'prev')
+      if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey) {
+        const k = e.key.toLowerCase()
+        if (k === 'j' || k === 'k') {
+          e.preventDefault()
+          handleCycleSession(k === 'j' ? 'next' : 'prev')
+        }
       }
     }
     window.addEventListener('keydown', onKeyDown)

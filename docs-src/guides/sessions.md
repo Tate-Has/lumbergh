@@ -110,11 +110,11 @@ highest-priority conversation. The starred session:
 
 - Sorts to the top of the dashboard
 - Pins to the left in the session navigator dots, with a separator
-- Gets priority when cycling forward through sessions (`Ctrl+]`): if it's idle
+- Gets priority when cycling forward through sessions (`Ctrl+Shift+J`): if it's idle
   and waiting for input, you land there first
 
 Multiple sessions can be starred. Star is a per-session toggle and persists
-across restarts. `Ctrl+[` (cycle backward) ignores the priority and walks
+across restarts. `Ctrl+Shift+K` (cycle backward) ignores the priority and walks
 the normal alphabetical order — use it as an escape hatch.
 
 ## Session Summaries

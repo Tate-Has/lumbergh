@@ -63,5 +63,5 @@ The top-right corner has controls for:
 
 | Shortcut | Action |
 |----------|--------|
-| `Ctrl+]` | Cycle to next session (starred sessions first if any are idle) |
-| `Ctrl+[` | Cycle to previous session (ignores star priority — escape hatch) |
+| `Ctrl+Shift+J` | Cycle to next session (starred sessions first if any are idle) |
+| `Ctrl+Shift+K` | Cycle to previous session (ignores star priority — escape hatch) |
