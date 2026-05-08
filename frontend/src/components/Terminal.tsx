@@ -252,6 +252,8 @@ export default memo(function Terminal({
     // the backend's first capture-pane snapshot lands in a correctly-sized
     // buffer. Without this, xterm starts at 80x24 default, the snapshot
     // wraps/clips, and the visible state stays mangled until manual refit.
+    // xterm.js rejects undefined for cols/rows (must be numeric). Only spread
+    // the keys when we have cached values from a prior fit.
     const cachedSize = getInitialSize()
     const term = new XTerm({
       cursorBlink: true,
@@ -259,8 +261,7 @@ export default memo(function Terminal({
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
       scrollback: 0, // No xterm scrollback — tmux owns history (copy-mode); avoids buffer-overflow scroll quirks on session switch
       macOptionClickForcesSelection: true,
-      cols: cachedSize?.cols,
-      rows: cachedSize?.rows,
+      ...(cachedSize ? { cols: cachedSize.cols, rows: cachedSize.rows } : {}),
       theme: {
         background: termBg,
         foreground: termFg,
