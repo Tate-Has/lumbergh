@@ -6,6 +6,7 @@ import LoginPage from './pages/LoginPage'
 import SessionDetail from './pages/SessionDetail'
 import TabBar from './components/TabBar'
 import AppHeader from './components/AppHeader'
+import TerminalWindow from './pages/TerminalWindow'
 
 function App() {
   const { loading, authenticated } = useAuth()
@@ -25,6 +26,7 @@ function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/focus" element={<FocusWorkspace />} />
           <Route path="/session/:name" element={<SessionDetail />} />
+          <Route path="/session/:name/term" element={<TerminalWindow />} />
         </Routes>
       </div>
     </div>

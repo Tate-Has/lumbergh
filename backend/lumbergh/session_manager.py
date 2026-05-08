@@ -59,20 +59,38 @@ class SessionManager:
             self._lock: asyncio.Lock = asyncio.Lock()
             self._initialized = True
 
-    async def register_client(self, session_name: str, websocket: TerminalClient) -> ManagedSession:
+    async def register_client(
+        self,
+        session_name: str,
+        websocket: TerminalClient,
+        initial_cols: int | None = None,
+        initial_rows: int | None = None,
+    ) -> ManagedSession:
         """
         Register a WebSocket client for a tmux session.
         Creates the PTY if this is the first client.
         Auto-recreates the tmux session if it exists in TinyDB but not in tmux.
         Sends current pane content to new client for immediate display.
+
+        ``initial_cols`` / ``initial_rows`` let the client tell us its viewport
+        size up front so the PTY (and therefore tmux's window-size-latest reflow)
+        starts at the right dimensions. Without this, every fresh attach lands
+        at the hardcoded 80x24, tmux reflows the window for the agent, we
+        capture-pane at that size, and the client renders a mangled snapshot
+        until it sends a delayed resize message.
         """
         from lumbergh.routers.sessions import create_tmux_session, get_stored_sessions
 
+        is_new_pty = False
         async with self._lock:
             if session_name not in self._sessions:
                 # Create new PTY for this session
                 logger.info(f"Creating new PTY for session: {session_name}")
                 pty = TmuxPtySession(session_name)
+                if initial_cols and initial_rows:
+                    pty.cols = initial_cols
+                    pty.rows = initial_rows
+                is_new_pty = True
                 try:
                     pty.spawn()
                 except ValueError:
@@ -112,17 +130,21 @@ class SessionManager:
             managed.clients.add(websocket)
             logger.info(f"Session {session_name}: {len(managed.clients)} client(s) connected")
 
-        # Send current pane content to the new client (outside lock to avoid blocking).
-        # Uses "init" type so the frontend clears the terminal buffer before writing,
-        # preventing duplicate content when the WebSocket reconnects.
-        try:
-            loop = asyncio.get_event_loop()
-            content = await loop.run_in_executor(None, capture_pane_content, session_name)
-            if content:
-                await websocket.send_json({"type": "init", "data": content})
-                logger.info(f"Sent initial pane capture to client ({len(content)} chars)")
-        except Exception as e:
-            logger.warning(f"Failed to send initial pane capture: {e}")
+        # For a fresh PTY, ``tmux attach-session`` will stream a full redraw
+        # to the new client — sending capture-pane on top of that has caused
+        # offset/garbled rendering. Only send the snapshot when joining an
+        # existing PTY where there's no fresh attach to rely on. The "init"
+        # message type tells the frontend to reset xterm's buffer before
+        # writing, preventing scrollback duplication on reconnect.
+        if not is_new_pty:
+            try:
+                loop = asyncio.get_event_loop()
+                content = await loop.run_in_executor(None, capture_pane_content, session_name)
+                if content:
+                    await websocket.send_json({"type": "init", "data": content})
+                    logger.info(f"Sent initial pane capture to client ({len(content)} chars)")
+            except Exception as e:
+                logger.warning(f"Failed to send initial pane capture: {e}")
 
         return managed
 
@@ -173,6 +195,7 @@ class SessionManager:
         if not is_alive:
             logger.warning(f"Session {session_name} died, notifying clients")
             await self._notify_session_dead(session_name)
+            await self.evict(session_name)
             return consecutive_eof, True
         return consecutive_eof, False
 
@@ -417,6 +440,28 @@ class SessionManager:
     def get_session(self, session_name: str) -> ManagedSession | None:
         """Get a managed session by name."""
         return self._sessions.get(session_name)
+
+    async def evict(self, session_name: str) -> None:
+        """Drop a cached PTY without disturbing connected clients.
+
+        Used when the underlying tmux session is gone (died, killed, or about
+        to be recreated by /resume). Clients keep their websockets — they'll
+        receive ``session_dead`` separately and reload — but subsequent
+        register_client() calls will create a fresh PTY for the new tmux
+        session instead of reusing the dead one.
+        """
+        async with self._lock:
+            managed = self._sessions.pop(session_name, None)
+            if managed is None:
+                return
+            if managed.read_task:
+                managed.read_task.cancel()
+            if managed.copy_mode_task:
+                managed.copy_mode_task.cancel()
+            try:
+                managed.pty.close()
+            except Exception as e:
+                logger.warning(f"Error closing PTY for {session_name}: {e}")
 
 
 # Global singleton instance

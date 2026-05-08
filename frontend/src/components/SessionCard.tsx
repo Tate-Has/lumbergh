@@ -161,6 +161,9 @@ export default function SessionCard({ session, onDelete, onUpdate, onReset, clou
 
   const handleClick = () => {
     if (!isEditing) {
+      if (session.paused) {
+        onUpdate(session.name, { paused: false })
+      }
       navigate(`/session/${session.name}`)
     }
   }
@@ -183,7 +186,9 @@ export default function SessionCard({ session, onDelete, onUpdate, onReset, clou
 
   const handleTogglePaused = (e: React.MouseEvent) => {
     e.stopPropagation()
-    onUpdate(session.name, { paused: !session.paused })
+    // Dead sessions can only be restarted (resume recreates the tmux session).
+    const newPaused = session.alive && !session.paused
+    onUpdate(session.name, { paused: newPaused })
   }
 
   const handleToggleCloud = (e: React.MouseEvent) => {

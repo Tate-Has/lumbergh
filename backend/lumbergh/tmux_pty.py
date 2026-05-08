@@ -71,7 +71,8 @@ def get_session_pane_id(session_name: str) -> str:
             result = subprocess.run(
                 [TMUX_CMD, "display-message", "-t", session_name, "-p", "#{pane_id}"],
                 capture_output=True,
-                text=True,
+                encoding="utf-8",
+                errors="replace",
                 check=False,
             )
             if result.returncode == 0 and result.stdout.strip():
@@ -90,6 +91,14 @@ def capture_pane_content(session_name: str) -> str:
     libtmux (which spawns 4+ subprocesses per call for session/window/pane
     resolution and can cause GIL contention when called concurrently).
     """
+    # Capture only the visible pane (no scrollback). Then re-emit each line
+    # with explicit absolute cursor positioning into a freshly cleared
+    # screen. The naive ``\n``-joined dump that capture-pane returns has no
+    # row anchoring — when xterm.js writes it sequentially, any extra
+    # newlines (or a buffer that's already mid-scroll from a prior session)
+    # offsets every row by one and the visible state never recovers until a
+    # manual refit. Positioning each line absolutely makes the snapshot
+    # idempotent regardless of the receiving xterm's cursor state.
     try:
         result = subprocess.run(
             [
@@ -99,16 +108,20 @@ def capture_pane_content(session_name: str) -> str:
                 session_name,
                 "-p",  # print to stdout
                 "-e",  # include escape sequences (ANSI colors)
-                "-S",
-                "-",  # start of scrollback
             ],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=5,
         )
         if result.returncode != 0:
             return ""
-        return result.stdout
+        lines = result.stdout.splitlines()
+        # Reset attributes, clear screen, home cursor, then absolute-position each line
+        parts = ["\x1b[0m\x1b[H\x1b[2J"]
+        for i, line in enumerate(lines):
+            parts.append(f"\x1b[{i + 1};1H{line}\x1b[0m")
+        return "".join(parts)
     except Exception:
         return ""
 
@@ -130,7 +143,8 @@ def capture_scrollback(session_name: str, max_lines: int = 500) -> str:
                 str(-max_lines),  # N lines before visible area
             ],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=5,
         )
         if result.returncode != 0:
@@ -158,7 +172,8 @@ def _session_exists(session_name: str) -> bool:
             result = subprocess.run(
                 [TMUX_CMD, "has-session", "-t", session_name],
                 capture_output=True,
-                text=True,
+                encoding="utf-8",
+                errors="replace",
                 check=False,
             )
             if result.returncode == 0:
@@ -169,7 +184,8 @@ def _session_exists(session_name: str) -> bool:
             result = subprocess.run(
                 [TMUX_CMD, "list-sessions"],
                 capture_output=True,
-                text=True,
+                encoding="utf-8",
+                errors="replace",
                 check=False,
             )
             if result.returncode == 0:
