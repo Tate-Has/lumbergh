@@ -259,7 +259,12 @@ export default memo(function Terminal({
       cursorBlink: true,
       fontSize: initialFontSizeRef.current,
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-      scrollback: 0, // No xterm scrollback — tmux owns history (copy-mode); avoids buffer-overflow scroll quirks on session switch
+      // Keep a modest scrollback so streaming output doesn't trim recently-rendered
+      // lines out from under an active text selection (xterm clears selection when
+      // its lines fall off the buffer). User-facing scrolling still routes to tmux
+      // copy-mode via the wheel handler; this buffer is internal stability only.
+      // Reconnect accumulation is handled separately by term.reset() in handleInit.
+      scrollback: 1000,
       macOptionClickForcesSelection: true,
       ...(cachedSize ? { cols: cachedSize.cols, rows: cachedSize.rows } : {}),
       theme: {
@@ -355,6 +360,15 @@ export default memo(function Terminal({
       !event.altKey &&
       (event.key === 'v' || event.key === 'V')
 
+    // Ctrl/Cmd+C copies the active selection. Without a selection it falls
+    // through so the keystroke still reaches the PTY as ^C (SIGINT).
+    const isCopySelectionShortcut = (event: KeyboardEvent) =>
+      event.type === 'keydown' &&
+      (event.ctrlKey || event.metaKey) &&
+      !event.shiftKey &&
+      !event.altKey &&
+      (event.key === 'c' || event.key === 'C')
+
     const handlePasteShortcut = () => {
       navigator.clipboard
         .readText()
@@ -376,6 +390,17 @@ export default memo(function Terminal({
       // Ctrl+Shift+J / Ctrl+Shift+K cycles sessions — let the window handler deal with it
       if (isCycleSessionShortcut(event)) {
         return false
+      }
+      if (isCopySelectionShortcut(event) && term.hasSelection()) {
+        const text = term.getSelection()
+        if (text) {
+          navigator.clipboard.writeText(text).catch(() => {
+            // Clipboard write denied (insecure context or permission) — silently ignore
+          })
+          term.clearSelection()
+          event.preventDefault()
+          return false
+        }
       }
       if (isPasteShortcut(event)) {
         event.preventDefault()
@@ -450,6 +475,14 @@ export default memo(function Terminal({
 
     const onMouseEvent = (e: MouseEvent | PointerEvent) => {
       if (isTouch || bypass) return
+      // PointerEvent hover (no button pressed) reports button === -1. If we
+      // don't mask those, xterm forwards them to the PTY as mouse-motion
+      // reports when the app has DECSET 1003 enabled, which fires xterm's
+      // onUserInput and instantly clears any active text selection.
+      if (e.button === -1) {
+        fakeShift(e)
+        return
+      }
       if (e.button === 0) {
         if (isDown(e.type)) {
           clickStartX = e.clientX
