@@ -31,14 +31,19 @@ class IdleMonitor:
     always show accurate idle states.
     """
 
-    POLL_INTERVAL_SECONDS = 2.0  # How often to check sessions
-    STALL_THRESHOLD_SECONDS = 600
-    SUBAGENT_STALL_THRESHOLD_SECONDS = 1800  # 30 min for subagent work
+    POLL_INTERVAL_SECONDS = 1.0  # How often to check sessions
+    # 30-minute stall threshold for any working stretch. The previous
+    # 10-minute non-subagent threshold caused false reds on legitimate
+    # long-running work where the ◼ subagent marker scrolled off-screen
+    # between subagent invocations.
+    STALL_THRESHOLD_SECONDS = 1800
+    SUBAGENT_STALL_THRESHOLD_SECONDS = 3600  # 1h for confirmed subagent work
 
     def __init__(self):
         self._detectors: dict[str, IdleDetector] = {}
         self._states: dict[str, SessionState] = {}
         self._working_since: dict[str, float] = {}
+        self._subagent_seen: dict[str, bool] = {}
         self._task: asyncio.Task | None = None
         self._running = False
 
@@ -90,6 +95,7 @@ class IdleMonitor:
             del self._detectors[name]
             self._states.pop(name, None)
             self._working_since.pop(name, None)
+            self._subagent_seen.pop(name, None)
 
         # Check each live session
         for session_name in sessions:
@@ -149,26 +155,31 @@ class IdleMonitor:
 
         detector = self._detectors[session_name]
 
-        # Analyze content
-        # Use analyze_initial_content since we're getting full pane snapshots
-        result = detector.analyze_initial_content(content)
+        # Re-analyze from snapshot with hysteresis so transient one-frame
+        # flickers (e.g. between subagent tasks) don't change state.
+        result = detector.analyze_snapshot(content)
 
         if result.state == SessionState.WORKING:
             if session_name not in self._working_since:
                 self._working_since[session_name] = time.time()
-            else:
-                is_subagent = "◼" in result.reason
-                threshold = (
-                    self.SUBAGENT_STALL_THRESHOLD_SECONDS
-                    if is_subagent
-                    else self.STALL_THRESHOLD_SECONDS
+                self._subagent_seen[session_name] = False
+            # Remember if a subagent marker was ever seen during this
+            # working stretch — its visibility flickers between tasks,
+            # but once we've seen one we should keep the longer threshold.
+            if "◼" in result.reason or "Running" in result.reason:
+                self._subagent_seen[session_name] = True
+            threshold = (
+                self.SUBAGENT_STALL_THRESHOLD_SECONDS
+                if self._subagent_seen.get(session_name)
+                else self.STALL_THRESHOLD_SECONDS
+            )
+            if time.time() - self._working_since[session_name] > threshold:
+                result = IdleDetectionResult(
+                    SessionState.STALLED, result.confidence, "Working too long"
                 )
-                if time.time() - self._working_since[session_name] > threshold:
-                    result = IdleDetectionResult(
-                        SessionState.STALLED, result.confidence, "Working too long"
-                    )
         else:
             self._working_since.pop(session_name, None)
+            self._subagent_seen.pop(session_name, None)
 
         # Check for state change
         old_state = self._states.get(session_name, SessionState.UNKNOWN)

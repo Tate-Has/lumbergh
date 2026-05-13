@@ -63,8 +63,8 @@ export function useSessionStatus(sessionNames: string[]): Record<string, Session
     // Fetch immediately
     fetchStatuses()
 
-    // Then poll every 5s
-    intervalRef.current = setInterval(fetchStatuses, 5000)
+    // Then poll every 1.5s for snappy dot color updates
+    intervalRef.current = setInterval(fetchStatuses, 1500)
 
     return () => {
       if (intervalRef.current) {

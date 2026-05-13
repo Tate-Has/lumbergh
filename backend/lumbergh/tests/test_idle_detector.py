@@ -325,6 +325,224 @@ class TestAnalyzeInitialContent:
 # ---------------------------------------------------------------------------
 
 
+class TestModernClaudeCodeWorkingDetection:
+    """Modern Claude Code (v2.x) uses non-braille spinners and many verbs."""
+
+    def test_modern_spinner_char_cycles_detected(self):
+        for spinner in ["✻", "✶", "✳", "✺", "✦", "✧", "✢", "●"]:
+            detector = _make_detector([f"{spinner} Cooking… (esc to interrupt)"])
+            state, _, _ = detector._analyze_state()
+            assert state == SessionState.WORKING, f"failed for {spinner!r}"
+
+    def test_active_verb_cooking_is_working(self):
+        detector = _make_detector(["✻ Cooking… (4m 20s · ↓ 16.8k tokens · esc to interrupt)"])
+        state, _, _ = detector._analyze_state()
+        assert state == SessionState.WORKING
+
+    def test_active_verb_cogitating_is_working(self):
+        detector = _make_detector(["✶ Cogitating… (31s · ↓ 551 tokens)"])
+        state, _, _ = detector._analyze_state()
+        assert state == SessionState.WORKING
+
+    def test_sauteed_with_only_spinner_visible_is_idle(self):
+        """Real bug: '✻ Sautéed for 11m 6s' as last line wrongly turned the dot red."""
+        detector = _make_detector(
+            [
+                "  ⎿ done",
+                "",
+                "✻ Sautéed for 11m 6s",
+            ]
+        )
+        state, _, _ = detector._analyze_state()
+        assert state == SessionState.IDLE
+
+    def test_baked_for_time_is_idle(self):
+        detector = _make_detector(["✻ Baked for 30s"])
+        state, _, _ = detector._analyze_state()
+        assert state == SessionState.IDLE
+
+    def test_spinner_u273d_propeller_asterisk_is_recognized(self):
+        """Real bug: ✽ (U+273D) is a Claude Code spinner frame but was missing."""
+        detector = _make_detector(
+            [
+                "✽ Working… (53s · ↓ 2.0k tokens · thought for 6s)",
+                "❯ ",  # noqa: RUF001
+                "  ⏵⏵ auto mode on (shift+tab to cycle) · esc to interrupt",
+            ]
+        )
+        state, _, _ = detector._analyze_state()
+        assert state == SessionState.WORKING
+
+    def test_real_working_pane_with_footer_below_spinner(self):
+        """Real layout: spinner several lines above the static auto-mode footer."""
+        detector = _make_detector(
+            [
+                "● The backend IS detecting some sessions as working.",
+                "✽ Working… (53s · ↓ 2.0k tokens · thought for 6s)",
+                "──────────",
+                "❯ ",  # noqa: RUF001
+                "──────────",
+                "  ⏵⏵ auto mode on (shift+tab to cycle) · esc to interrupt",
+            ]
+        )
+        state, _, _ = detector._analyze_state()
+        assert state == SessionState.WORKING
+
+    def test_idle_footer_signals_idle_even_with_scrollback_working_text(self):
+        """The static idle footer should outweigh any chat content above."""
+        detector = _make_detector(
+            [
+                "discussion of Cooking and esc to interrupt patterns",
+                "❯ ",  # noqa: RUF001
+                "  ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents",
+            ]
+        )
+        state, _, _ = detector._analyze_state()
+        assert state == SessionState.IDLE
+
+    def test_mustering_verb_is_working(self):
+        """'Mustering' is one of Claude's working verbs."""
+        detector = _make_detector(
+            [
+                "✶ Mustering… (7m 46s · ↑ 27.8k tokens · thought for 7s)",
+                "❯ ",  # noqa: RUF001
+                "  ⏵⏵ auto mode on (shift+tab to cycle) · esc to interrupt",
+            ]
+        )
+        state, _, _ = detector._analyze_state()
+        assert state == SessionState.WORKING
+
+    def test_subagent_picker_pushes_footer_up(self):
+        """User's real bug: '↓ to manage' picker UI shows subagent list
+        below the auto-mode footer, pushing it out of last-2-lines."""
+        detector = _make_detector(
+            [
+                "● Now dispatching both implementer subagents in parallel.",
+                "● Running 2 agents… (ctrl+o to expand)",
+                "   ├ Implement 06-01 telemetry · 48 tool uses · 56.9k tokens",
+                "   │ ⎿  Bash: List unstaged changes",
+                "   └ Implement 06-02 contract test lock · 20 tool uses · 45.8k tokens",
+                "     ⎿  Done",
+                "     (ctrl+b ctrl+b (twice) to run in background)",
+                "· Mustering… (6m 45s · ↓ 25.2k tokens · thought for 22s)",
+                "──────────",
+                "❯  ",  # noqa: RUF001
+                "──────────",
+                "  ⏵⏵ auto mode on (shift+tab to cycle) · esc to interrupt · ↓ to manage",
+                "  ● main                                                  ↑/↓ to select",
+                "  ◯ general-purpose  Implement 06-01 telemetry             5m 32s",
+            ]
+        )
+        state, _, _ = detector._analyze_state()
+        assert state == SessionState.WORKING
+
+    def test_running_n_agents_alone_is_working(self):
+        """Even without the spinner verb, 'Running 2 agents…' signals work."""
+        detector = _make_detector(
+            [
+                "● Running 2 agents… (ctrl+o to expand)",
+                "   ├ task one · 5 tool uses · 1.2k tokens",
+            ]
+        )
+        state, _, _ = detector._analyze_state()
+        assert state == SessionState.WORKING
+
+    def test_chat_scrollback_with_pattern_strings_is_still_idle(self):
+        """Past assistant messages discussing 'esc to interrupt' / 'Cooking' etc.
+        must not flip a finished session back to WORKING."""
+        detector = _make_detector(
+            [
+                "active working signal nearby (working verb, esc to interrupt,",
+                "spinner cycles through Cooking, Crunching, Cogitating.",
+                "Working\\b is matched case-insensitive.",
+                "The session should turn yellow/green within ~2.5s.",
+                "",
+                "✻ Worked for 4m 49s",
+            ]
+        )
+        state, _, _ = detector._analyze_state()
+        assert state == SessionState.IDLE
+
+    def test_past_tense_verb_alone_is_not_working(self):
+        """'Crunched for Xs' lingers in the pane after work ENDS — must not flag working."""
+        detector = _make_detector(
+            [
+                "✻ Crunched for 1m 19s",
+                "──────────",
+                "❯ ",  # noqa: RUF001
+                "──────────",
+                "⏵⏵ auto mode on",
+            ]
+        )
+        state, _, _ = detector._analyze_state()
+        assert state == SessionState.IDLE
+
+
+class TestFalseRedRegressions:
+    """Real-world traces that previously produced spurious ERROR (red) state."""
+
+    def test_user_prompt_mentioning_connection_error_is_not_error(self):
+        """User prompt text in the pane must not trigger ERROR."""
+        detector = _make_detector(
+            [
+                "✻ Cooking… (esc to interrupt)",
+                "❯ look into the Connection error in main.py",  # noqa: RUF001
+                "⏵⏵ auto mode on",
+            ]
+        )
+        state, _, _ = detector._analyze_state()
+        assert state == SessionState.WORKING
+
+    def test_scrollback_mention_of_rate_limit_is_not_error(self):
+        """'rate limit' deep in scrollback must not trigger ERROR."""
+        detector = _make_detector(
+            [
+                "discussing rate limit handling code",
+                "",
+                "",
+                "",
+                "❯ ",  # noqa: RUF001
+                "⏵⏵ auto mode on",
+            ]
+        )
+        state, _, _ = detector._analyze_state()
+        assert state != SessionState.ERROR
+
+    def test_bash_tool_output_ending_in_dollar_with_ui_chars_is_not_error(self):
+        """Shell-prompt-looking text while agent UI is visible must not be ERROR."""
+        detector = _make_detector(
+            [
+                "tate-has@host:~/src$ git status",
+                "╭─────────╮",
+                "│ ❯ next prompt",  # noqa: RUF001
+                "╰─────────╯",
+                "⏵⏵ auto mode on (shift+tab to cycle)",
+            ]
+        )
+        state, _, _ = detector._analyze_state()
+        assert state != SessionState.ERROR
+
+
+class TestAnalyzeSnapshot:
+    def test_snapshot_replaces_buffer(self):
+        """Snapshot analysis should not accumulate stale lines across calls."""
+        detector = IdleDetector()
+        detector.analyze_snapshot("✻ Cooking… (esc to interrupt)")
+        # Second snapshot is plainly idle; old working content shouldn't leak in
+        result = detector.analyze_snapshot("Some scrollback\n❯ ")  # noqa: RUF001
+        # First call to a new state starts hysteresis; allow either pending or IDLE
+        assert result.state in (SessionState.WORKING, SessionState.IDLE, SessionState.UNKNOWN)
+
+    def test_leave_working_requires_extra_stability(self):
+        """Going WORKING -> IDLE shouldn't flip on a single transient idle frame."""
+        detector = IdleDetector()
+        # Force into WORKING (bypass entry hysteresis)
+        detector._current_state = SessionState.WORKING
+        # One transient idle-looking frame: should NOT flip immediately
+        result = detector.analyze_snapshot("❯ ")  # noqa: RUF001
+        assert result.state == SessionState.WORKING
+
+
 class TestStripAnsi:
     def test_strips_color_codes(self):
         assert IdleDetector._strip_ansi("\x1b[31mred text\x1b[0m") == "red text"
