@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Settings } from 'lucide-react'
+import { ArrowLeft, Settings, PanelRightClose, PanelRightOpen } from 'lucide-react'
 import { getApiBase } from '../config'
 import Terminal from '../components/Terminal'
 import FileBrowser from '../components/FileBrowser'
@@ -324,12 +324,16 @@ export default function SessionDetail() {
     [name, navigate]
   )
 
-  // Ctrl+[ / Ctrl+] to cycle sessions
+  // Ctrl+Shift+J (next) / Ctrl+Shift+K (prev) to cycle sessions.
+  // Replaces Ctrl+[ / Ctrl+] which collided with terminal control codes.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey && (e.key === '[' || e.key === ']')) {
-        e.preventDefault()
-        handleCycleSession(e.key === ']' ? 'next' : 'prev')
+      if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey) {
+        const k = e.key.toLowerCase()
+        if (k === 'j' || k === 'k') {
+          e.preventDefault()
+          handleCycleSession(k === 'j' ? 'next' : 'prev')
+        }
       }
     }
     window.addEventListener('keydown', onKeyDown)
@@ -507,6 +511,18 @@ export default function SessionDetail() {
     <div className="h-full flex flex-col">
       {/* Panel switcher */}
       <div className="flex gap-1 p-2 bg-bg-surface border-b border-border-default">
+        <button
+          data-testid="tab-collapse"
+          onClick={() => {
+            const currentVis = sessionTabVisibility || globalTabVisibility
+            const allOff = Object.fromEntries(Object.keys(currentVis).map((k) => [k, false]))
+            saveSessionTabVisibility(allOff)
+          }}
+          className="px-2 py-1 rounded text-text-tertiary hover:text-text-secondary hover:bg-control-bg-hover transition-colors"
+          title="Collapse side panel"
+        >
+          <PanelRightClose size={14} />
+        </button>
         {visibleTabs.map((tab) => (
           <button
             key={tab.id}
@@ -676,11 +692,12 @@ export default function SessionDetail() {
             <div className="h-full relative">
               {renderTerminal()}
               <button
+                data-testid="tab-expand"
                 onClick={() => saveSessionTabVisibility({ ...globalTabVisibility })}
-                className="absolute top-2 right-2 px-2 py-1 rounded bg-bg-surface/80 border border-border-default text-text-tertiary hover:text-text-primary text-xs transition-colors backdrop-blur-sm"
+                className="absolute top-2 right-2 p-1.5 rounded bg-bg-surface/80 border border-border-default text-text-tertiary hover:text-text-primary transition-colors backdrop-blur-sm"
                 title="Show side panels"
               >
-                Tabs
+                <PanelRightOpen size={14} />
               </button>
             </div>
           ) : (
