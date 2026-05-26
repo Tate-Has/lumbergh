@@ -4,6 +4,7 @@ import { getWsBase } from '../config'
 interface UseTerminalSocketOptions {
   sessionName: string
   onData: (data: string) => void
+  onInit?: (data: string) => void
   onResizeSync?: (cols: number, rows: number) => void
   onCopyMode?: (active: boolean) => void
   onConnect?: () => void
@@ -24,6 +25,7 @@ interface UseTerminalSocketResult {
 export function useTerminalSocket({
   sessionName,
   onData,
+  onInit,
   onResizeSync,
   onCopyMode,
   onConnect,
@@ -44,6 +46,7 @@ export function useTerminalSocket({
 
   // Store callbacks in refs to avoid recreating connect() on every render
   const onDataRef = useRef(onData)
+  const onInitRef = useRef(onInit)
   const onResizeSyncRef = useRef(onResizeSync)
   const onCopyModeRef = useRef(onCopyMode)
   const onConnectRef = useRef(onConnect)
@@ -51,11 +54,12 @@ export function useTerminalSocket({
 
   useEffect(() => {
     onDataRef.current = onData
+    onInitRef.current = onInit
     onResizeSyncRef.current = onResizeSync
     onCopyModeRef.current = onCopyMode
     onConnectRef.current = onConnect
     onDisconnectRef.current = onDisconnect
-  }, [onData, onResizeSync, onCopyMode, onConnect, onDisconnect])
+  }, [onData, onInit, onResizeSync, onCopyMode, onConnect, onDisconnect])
 
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -84,7 +88,9 @@ export function useTerminalSocket({
       if (wsRef.current !== ws) return
       try {
         const message = JSON.parse(event.data)
-        if (message.type === 'output') {
+        if (message.type === 'init') {
+          onInitRef.current?.(message.data)
+        } else if (message.type === 'output') {
           onDataRef.current(message.data)
         } else if (message.type === 'resize_sync') {
           onResizeSyncRef.current?.(message.cols, message.rows)

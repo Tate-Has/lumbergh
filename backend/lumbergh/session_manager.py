@@ -141,7 +141,10 @@ class SessionManager:
                 loop = asyncio.get_event_loop()
                 content = await loop.run_in_executor(None, capture_pane_content, session_name)
                 if content:
-                    await websocket.send_json({"type": "output", "data": content})
+                    # Use "init" so the frontend resets its buffer before writing —
+                    # capture-pane dumps full scrollback, which would otherwise
+                    # accumulate in xterm.js on every WebSocket reconnect.
+                    await websocket.send_json({"type": "init", "data": content})
                     logger.info(f"Sent initial pane capture to client ({len(content)} chars)")
             except Exception as e:
                 logger.warning(f"Failed to send initial pane capture: {e}")
