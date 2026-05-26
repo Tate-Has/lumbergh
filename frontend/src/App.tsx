@@ -1,4 +1,5 @@
-import { Routes, Route } from 'react-router-dom'
+import { useEffect } from 'react'
+import { Routes, Route, useLocation } from 'react-router-dom'
 import { useAuth } from './hooks/useAuth'
 import Dashboard from './pages/Dashboard'
 import FocusWorkspace from './pages/FocusWorkspace'
@@ -9,6 +10,15 @@ import PWAUpdatePrompt from './components/PWAUpdatePrompt'
 
 function App() {
   const { loading, authenticated } = useAuth()
+  const location = useLocation()
+
+  // Track the last non-session view so the back button in sessions
+  // always returns to either / or /focus, never another session.
+  useEffect(() => {
+    if (location.pathname === '/' || location.pathname === '/focus') {
+      sessionStorage.setItem('lumbergh:lastView', location.pathname)
+    }
+  }, [location.pathname])
 
   if (loading) return null
   if (!authenticated) return <LoginPage />
