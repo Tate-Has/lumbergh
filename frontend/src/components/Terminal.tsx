@@ -43,6 +43,7 @@ export default memo(function Terminal({
   const fitAddonRef = useRef<FitAddon | null>(null)
   const sendRef = useRef<(data: string) => void>(() => {})
   const sendResizeRef = useRef<(cols: number, rows: number) => void>(() => {})
+  const sendViaApiRef = useRef<(text: string, sendEnter?: boolean) => Promise<void>>(async () => {})
   // Track last known dimensions for stability check
   const lastDimensionsRef = useRef<{ width: number; height: number } | null>(null)
   // Track whether a remote client resized the PTY (cleared on local re-fit)
@@ -126,6 +127,15 @@ export default memo(function Terminal({
     termRef.current?.write(data)
   }, [])
 
+  // Initial snapshot sent on (re)connect — clear the scrollback buffer first to
+  // prevent the content from accumulating across multiple WebSocket reconnections.
+  const handleInit = useCallback((data: string) => {
+    if (termRef.current) {
+      termRef.current.reset()
+      termRef.current.write(data)
+    }
+  }, [])
+
   const handleCopyMode = useCallback((active: boolean) => {
     setScrollMode(active)
   }, [])
@@ -195,6 +205,7 @@ export default memo(function Terminal({
   const { send, sendResize, isConnected, error, sessionDead } = useTerminalSocket({
     sessionName,
     onData: handleData,
+    onInit: handleInit,
     onResizeSync: handleResizeSync,
     onCopyMode: handleCopyMode,
     onConnect: handleConnect,
@@ -212,6 +223,10 @@ export default memo(function Terminal({
     sendResizeRef.current = sendResize
   }, [send, sendResize])
 
+  useEffect(() => {
+    sendViaApiRef.current = sendViaApi
+  }, [sendViaApi])
+
   // Expose send function to parent
   useEffect(() => {
     onSendReady?.(isConnected ? send : null)
@@ -225,6 +240,7 @@ export default memo(function Terminal({
   }, [onFocusReady])
 
   // Initialize terminal
+  // eslint-disable-next-line complexity
   useEffect(() => {
     if (!containerRef.current) return
 
@@ -243,10 +259,16 @@ export default memo(function Terminal({
       cursorBlink: true,
       fontSize: initialFontSizeRef.current,
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-      scrollback: 0, // No xterm scrollback — tmux owns history (copy-mode); avoids buffer-overflow scroll quirks on session switch
+      // Keep a modest scrollback so streaming output doesn't trim recently-rendered
+      // lines out from under an active text selection (xterm clears selection when
+      // its lines fall off the buffer). User-facing scrolling still routes to tmux
+      // copy-mode via the wheel handler; this buffer is internal stability only.
+      // Reconnect accumulation is handled separately by term.reset() in handleInit.
+      scrollback: 1000,
       macOptionClickForcesSelection: true,
-      cols: cachedSize?.cols,
-      rows: cachedSize?.rows,
+      // Only pass cols/rows when we have a cached size — xterm.js rejects
+      // `undefined` ('must be numeric') and spams the console on first load.
+      ...(cachedSize ? { cols: cachedSize.cols, rows: cachedSize.rows } : {}),
       theme: {
         background: termBg,
         foreground: termFg,
@@ -323,9 +345,69 @@ export default memo(function Terminal({
     // xterm.js's _keyPress handler from also sending \r (carriage return/submit).
     // When the custom handler blocks only keydown, xterm.js doesn't call preventDefault(),
     // so the browser fires keypress which leaks through and sends \r to the terminal.
+    // Ctrl+Shift+J / Ctrl+Shift+K cycles sessions — let the window handler deal with it.
+    // Replaces Ctrl+[ / Ctrl+] which collided with terminal control codes.
+    const isCycleSessionShortcut = (event: KeyboardEvent) => {
+      if (!event.ctrlKey || !event.shiftKey || event.altKey || event.metaKey) return false
+      const k = event.key.toLowerCase()
+      return k === 'j' || k === 'k'
+    }
+
+    // Ctrl+V / Cmd+V (without Shift): treat as paste so clipboard-injection
+    // tools like Wispr Flow work. xterm.js would otherwise send literal ^V
+    // to the PTY, since browsers reserve Ctrl+Shift+V for terminal paste.
+    // Use Ctrl+Alt+V as the escape hatch to send a literal ^V byte.
+    const isPasteShortcut = (event: KeyboardEvent) =>
+      event.type === 'keydown' &&
+      (event.ctrlKey || event.metaKey) &&
+      !event.shiftKey &&
+      !event.altKey &&
+      (event.key === 'v' || event.key === 'V')
+
+    // Ctrl/Cmd+C copies the active selection (gnome-terminal / VS Code style).
+    // Without a selection it falls through so the keystroke still reaches the PTY as ^C.
+    const isCopySelectionShortcut = (event: KeyboardEvent) =>
+      event.type === 'keydown' &&
+      (event.ctrlKey || event.metaKey) &&
+      !event.shiftKey &&
+      !event.altKey &&
+      (event.key === 'c' || event.key === 'C')
+
+    const handlePasteShortcut = () => {
+      navigator.clipboard
+        .readText()
+        .then((text) => {
+          if (!text) return
+          const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+          if (normalized.includes('\n')) {
+            sendViaApiRef.current(normalized, false)
+          } else {
+            sendRef.current(normalized)
+          }
+        })
+        .catch(() => {
+          // Clipboard read denied (insecure context or permission) — silently ignore
+        })
+    }
+
     term.attachCustomKeyEventHandler((event) => {
-      // Ctrl+[ / Ctrl+] cycles sessions — let the window handler deal with it
-      if (event.ctrlKey && (event.key === '[' || event.key === ']')) {
+      if (isCycleSessionShortcut(event)) {
+        return false
+      }
+      if (isCopySelectionShortcut(event) && term.hasSelection()) {
+        const text = term.getSelection()
+        if (text) {
+          navigator.clipboard.writeText(text).catch(() => {
+            // Clipboard write denied (insecure context or permission) — silently ignore
+          })
+          term.clearSelection()
+          event.preventDefault()
+          return false
+        }
+      }
+      if (isPasteShortcut(event)) {
+        event.preventDefault()
+        handlePasteShortcut()
         return false
       }
       if (event.key === 'Enter' && event.shiftKey) {
@@ -396,6 +478,14 @@ export default memo(function Terminal({
 
     const onMouseEvent = (e: MouseEvent | PointerEvent) => {
       if (isTouch || bypass) return
+      // PointerEvent hover (no button pressed) reports button === -1. If we
+      // don't mask those, xterm forwards them to the PTY as mouse-motion
+      // reports when the app has DECSET 1003 enabled, which fires xterm's
+      // onUserInput and instantly clears any active text selection.
+      if (e.button === -1) {
+        fakeShift(e)
+        return
+      }
       if (e.button === 0) {
         if (isDown(e.type)) {
           clickStartX = e.clientX
@@ -468,6 +558,31 @@ export default memo(function Terminal({
     // Wheel listener for all devices (copy-mode detection)
     el?.addEventListener('wheel', onWheel, true)
 
+    // Intercept multiline paste (e.g. from SSMS) and route through tmux paste-buffer.
+    // xterm.js's default path wraps content in bracketed-paste markers and ships it
+    // over the WebSocket as one onData chunk, but the backend's sync PTY write can
+    // do a partial write on large buffers, dropping the trailing ESC[201~ — Claude
+    // Code then sees the embedded \r\n as Enter and submits just the first line.
+    // Routing through /send uses `tmux load-buffer | paste-buffer -p`, which wraps
+    // bracketed-paste markers atomically server-side.
+    const textarea = term.textarea ?? term.element?.querySelector('textarea')
+    const onPaste = (e: ClipboardEvent) => {
+      const cd = e.clipboardData
+      if (!cd) return
+      // Let the global image-paste handler (SessionDetail) deal with image payloads.
+      for (const item of cd.items) {
+        if (item.type.startsWith('image/')) return
+      }
+      const text = cd.getData('text/plain')
+      if (!text || !/[\r\n]/.test(text)) return // Single-line: let xterm handle it
+      e.preventDefault()
+      e.stopPropagation()
+      // Normalize CRLF → LF so tmux paste-buffer treats it as one multiline block
+      const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+      sendViaApiRef.current(normalized, false)
+    }
+    textarea?.addEventListener('paste', onPaste, true)
+
     return () => {
       initialFitObserver.disconnect()
       term.element?.removeEventListener('focusin', handleFocus)
@@ -476,6 +591,7 @@ export default memo(function Terminal({
         for (const evt of interceptEvents) el.removeEventListener(evt, onMouseEvent, true)
       }
       el?.removeEventListener('wheel', onWheel, true)
+      textarea?.removeEventListener('paste', onPaste, true)
       term.dispose()
       termRef.current = null
       fitAddonRef.current = null
