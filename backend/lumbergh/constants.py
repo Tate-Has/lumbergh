@@ -16,6 +16,7 @@ PROJECTS_DIR = CONFIG_DIR / "projects"
 SESSIONS_DATA_DIR = CONFIG_DIR / "session_data"
 SHARED_DIR = CONFIG_DIR / "shared"
 SCRATCH_DIR = CONFIG_DIR / "scratch"
+FOCUS_DIR = CONFIG_DIR / "focus"
 
 # Ensure directories exist
 CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -23,6 +24,7 @@ PROJECTS_DIR.mkdir(parents=True, exist_ok=True)
 SESSIONS_DATA_DIR.mkdir(parents=True, exist_ok=True)
 SHARED_DIR.mkdir(parents=True, exist_ok=True)
 SCRATCH_DIR.mkdir(parents=True, exist_ok=True)
+FOCUS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Git status code mapping
 GIT_STATUS_MAP = {

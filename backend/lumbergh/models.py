@@ -179,3 +179,69 @@ class StatusSummaryInput(BaseModel):
     """Input for generating a status summary."""
 
     text: str
+
+
+# ── Focus Workspace models ──
+
+
+class FocusSubtask(BaseModel):
+    """A subtask within a Focus task."""
+
+    text: str = ""
+    done: bool = False
+
+
+class FocusTask(BaseModel):
+    """A Focus Workspace task."""
+
+    id: str = ""
+    title: str = ""
+    project: str = ""
+    priority: Literal["high", "med", "low"] = "med"
+    status: Literal[
+        "inbox", "today", "running", "waiting", "backlog", "in-progress", "review", "done"
+    ] = "inbox"
+    completed: bool = False
+    completed_date: str = ""
+    blocker: str = ""
+    check_in_note: str = ""
+    session_name: str = ""
+    session_status: Literal["working", "idle", "error", "stalled", "paused", "unknown", ""] = ""
+    subtasks: list[FocusSubtask] = []
+
+
+class FocusTaskList(BaseModel):
+    """Wrapper for the Focus tasks array."""
+
+    tasks: list[FocusTask] = []
+
+
+class FocusArchiveTask(BaseModel):
+    """An archived Focus task."""
+
+    title: str = ""
+    project: str = ""
+    priority: Literal["high", "med", "low"] = "med"
+    blocker: str = ""
+    check_in_note: str = ""
+    archived_date: str = ""
+
+
+class FocusArchiveNote(BaseModel):
+    """A cleared note preserved in the archive."""
+
+    date: str = ""
+    content: str = ""
+
+
+class FocusArchiveData(BaseModel):
+    """Focus archive payload (tasks + notes)."""
+
+    tasks: list[FocusArchiveTask] = []
+    notes: list[FocusArchiveNote] = []
+
+
+class FocusNotesData(BaseModel):
+    """Focus notes payload."""
+
+    content: str = ""
