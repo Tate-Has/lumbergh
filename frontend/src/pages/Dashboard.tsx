@@ -643,7 +643,10 @@ export default function Dashboard() {
   return (
     <div className="h-full flex flex-col bg-bg-sunken text-text-primary overflow-hidden">
       {/* Header */}
-      <header className="glass flex items-center justify-between p-4 border-b border-border-default">
+      <header
+        className="glass flex items-center justify-between p-4 border-b border-border-default"
+        style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}
+      >
         <div className="flex items-center gap-3">
           <h1 className="text-xl font-semibold text-text-secondary">Lumbergh</h1>
           {planInfo && planInfo.limit > 0 && (

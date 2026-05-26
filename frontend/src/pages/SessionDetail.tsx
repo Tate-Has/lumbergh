@@ -788,7 +788,10 @@ export default function SessionDetail() {
   if (guard) return guard
 
   return (
-    <div className="h-full flex flex-col bg-bg-sunken text-text-primary">
+    <div
+      className="h-full flex flex-col bg-bg-sunken text-text-primary"
+      style={{ paddingTop: 'env(safe-area-inset-top)' }}
+    >
       <ScratchPromoteBanner
         sessionName={name!}
         isScratch={isScratch}

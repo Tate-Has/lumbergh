@@ -199,9 +199,8 @@ body,
 
 body {
   background-color: var(--bg-base);
-  /* Safe area insets for notched devices */
-  padding-top: env(safe-area-inset-top);
-  padding-right: env(safe-area-inset-right);
-  padding-bottom: env(safe-area-inset-bottom);
-  padding-left: env(safe-area-inset-left);
+  /* Safe-area insets are applied on top-level chrome (Dashboard header,
+     SessionDetail mobile tab bar) instead of body. With the app's
+     full-height/overflow-hidden layout, body padding pushes content offscreen
+     rather than insetting cleanly. */
 }
