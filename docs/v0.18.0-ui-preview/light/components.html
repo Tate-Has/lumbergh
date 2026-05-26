@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Components — Lumbergh v0.18.0 Preview (Light)</title>
+<link rel="stylesheet" href="theme.css" />
+<style>
+  body { padding: 32px; overflow-y: auto; height: auto; }
+  .container { max-width: 1000px; margin: 0 auto; }
+  h1 { font-size: 24px; font-weight: 600; margin: 0 0 8px; }
+  .subtitle { color: var(--text-secondary); margin: 0 0 32px; font-size: 14px; }
+  h2 { font-size: 16px; font-weight: 600; margin: 32px 0 12px; color: var(--text-secondary); }
+  .group {
+    padding: 16px;
+    border-radius: var(--radius-xl);
+    margin-bottom: 16px;
+    display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+  }
+  .swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+  .swatch {
+    border-radius: var(--radius-md);
+    padding: 14px;
+    border: 1px solid var(--border-default);
+    font-size: 12px;
+  }
+  .swatch .name { color: var(--text-secondary); }
+  .swatch .hex { font-family: ui-monospace, monospace; color: var(--text-tertiary); font-size: 10px; }
+  .swatch .chip { height: 40px; border-radius: var(--radius-sm); margin-bottom: 8px; border: 1px solid var(--border-subtle); }
+
+  .modal-backdrop {
+    background: var(--bg-overlay);
+    backdrop-filter: blur(6px);
+    border-radius: var(--radius-xl);
+    padding: 32px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .modal {
+    width: 100%; max-width: 420px;
+    padding: 20px;
+    border-radius: var(--radius-xl);
+  }
+  .modal h3 { margin: 0 0 6px; font-size: 16px; font-weight: 600; }
+  .modal p { margin: 0 0 16px; font-size: 13px; color: var(--text-secondary); }
+  .modal .actions { display: flex; justify-content: flex-end; gap: 8px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>v0.18.0 Component System</h1>
+  <p class="subtitle">
+    New Tailwind v4 theme tokens (semantic colors, radius scale, shadow scale), Inter font,
+    Apple-style dark + light themes, and a fresh <code>components/ui/</code> primitive set:
+    GlassPanel, Button, Badge, Banner, Modal, StatusDot, Tabs, Input.
+  </p>
+
+  <h2>Color Tokens</h2>
+  <div class="swatches">
+    <div class="swatch"><div class="chip" style="background: var(--bg-base);"></div><div class="name">bg-base</div><div class="hex">#f5f5f7</div></div>
+    <div class="swatch"><div class="chip" style="background: var(--bg-surface);"></div><div class="name">bg-surface</div><div class="hex">#ffffff</div></div>
+    <div class="swatch"><div class="chip" style="background: var(--bg-elevated);"></div><div class="name">bg-elevated</div><div class="hex">#e8e8ed</div></div>
+    <div class="swatch"><div class="chip" style="background: var(--bg-sunken);"></div><div class="name">bg-sunken</div><div class="hex">#e5e5ea</div></div>
+    <div class="swatch"><div class="chip" style="background: var(--color-action);"></div><div class="name">action</div><div class="hex">#007aff</div></div>
+    <div class="swatch"><div class="chip" style="background: var(--color-success);"></div><div class="name">success</div><div class="hex">#28cd41</div></div>
+    <div class="swatch"><div class="chip" style="background: var(--color-warning);"></div><div class="name">warning</div><div class="hex">#ff9500</div></div>
+    <div class="swatch"><div class="chip" style="background: var(--color-danger);"></div><div class="name">danger</div><div class="hex">#ff3b30</div></div>
+    <div class="swatch"><div class="chip" style="background: var(--color-purple);"></div><div class="name">purple</div><div class="hex">#af52de</div></div>
+    <div class="swatch"><div class="chip" style="background: var(--color-amber);"></div><div class="name">amber</div><div class="hex">#ffcc00</div></div>
+  </div>
+
+  <h2>Buttons</h2>
+  <div class="group glass">
+    <button class="btn btn-md btn-primary">Primary</button>
+    <button class="btn btn-md btn-secondary">Secondary</button>
+    <button class="btn btn-md btn-warning">Warning</button>
+    <button class="btn btn-md btn-danger">Danger</button>
+    <button class="btn btn-md btn-success">Success</button>
+    <button class="btn btn-md btn-ghost">Ghost</button>
+    <button class="btn btn-sm btn-primary">Small</button>
+    <button class="btn btn-md btn-primary" disabled style="opacity: 0.4; cursor: not-allowed;">Disabled</button>
+  </div>
+
+  <h2>Badges</h2>
+  <div class="group glass">
+    <span class="badge badge-neutral">repo</span>
+    <span class="badge badge-info">main</span>
+    <span class="badge badge-purple">worktree</span>
+    <span class="badge badge-warning">scratch</span>
+    <span class="badge badge-success">passing</span>
+  </div>
+
+  <h2>Status Dots</h2>
+  <div class="group glass">
+    <span class="row gap-2"><span class="dot dot-green dot-pulse"></span><span style="color: var(--text-secondary); font-size: 13px;">Working</span></span>
+    <span class="row gap-2"><span class="dot dot-green"></span><span style="color: var(--text-secondary); font-size: 13px;">Idle</span></span>
+    <span class="row gap-2"><span class="dot dot-yellow dot-pulse"></span><span style="color: var(--text-secondary); font-size: 13px;">Waiting</span></span>
+    <span class="row gap-2"><span class="dot dot-red"></span><span style="color: var(--text-secondary); font-size: 13px;">Stalled</span></span>
+    <span class="row gap-2"><span class="dot dot-gray"></span><span style="color: var(--text-secondary); font-size: 13px;">Dead</span></span>
+  </div>
+
+  <h2>Banners</h2>
+  <div class="banner banner-info" style="margin-bottom: 12px;">
+    <span class="banner-icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+    </span>
+    <div class="banner-content">Cross-session sharing is available — enable it in settings.</div>
+    <button class="btn btn-sm btn-primary">Enable</button>
+  </div>
+  <div class="banner banner-warning" style="margin-bottom: 12px;">
+    <span class="banner-icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="8 12 12 8 16 12"/><line x1="12" y1="16" x2="12" y2="8"/></svg>
+    </span>
+    <div class="banner-content">A new version of Lumbergh is available. <code>uv tool upgrade pylumbergh</code></div>
+    <button class="btn btn-sm btn-warning">Update</button>
+  </div>
+
+  <h2>Inputs</h2>
+  <div class="group glass" style="flex-direction: column; align-items: stretch;">
+    <input class="input" type="text" placeholder="Session name…" />
+    <input class="input" type="password" placeholder="Password" />
+    <textarea class="input" placeholder="Notes" rows="3"></textarea>
+  </div>
+
+  <h2>Glass Panels</h2>
+  <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
+    <div class="glass" style="padding: 16px; border-radius: var(--radius-xl);">
+      <div class="section-label">Default</div>
+      <div style="font-size: 13px; color: var(--text-secondary);">Background blur + subtle border</div>
+    </div>
+    <div class="glass-elevated" style="padding: 16px; border-radius: var(--radius-xl); box-shadow: var(--shadow-medium);">
+      <div class="section-label">Elevated</div>
+      <div style="font-size: 13px; color: var(--text-secondary);">Stronger blur, medium shadow</div>
+    </div>
+    <div class="inset-panel" style="padding: 16px; border-radius: var(--radius-xl);">
+      <div class="section-label">Inset</div>
+      <div style="font-size: 13px; color: var(--text-secondary);">Recessed surface for inputs/code</div>
+    </div>
+  </div>
+
+  <h2>Modal</h2>
+  <div class="modal-backdrop">
+    <div class="modal glass-elevated">
+      <h3>Delete session "payment-refactor"?</h3>
+      <p>This worktree has uncommitted changes that will be lost.</p>
+      <div class="actions">
+        <button class="btn btn-md btn-secondary">Cancel</button>
+        <button class="btn btn-md btn-danger">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <h2>PWA Update Prompt (new)</h2>
+  <div class="glass-elevated" style="padding: 14px 16px; border-radius: var(--radius-xl); display: flex; align-items: center; gap: 12px; max-width: 500px; box-shadow: var(--shadow-high);">
+    <span class="banner-icon" style="color: var(--color-action);">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+    </span>
+    <div style="flex: 1; font-size: 13px;">A new version of Lumbergh is ready. Reload to update.</div>
+    <button class="btn btn-sm btn-secondary">Later</button>
+    <button class="btn btn-sm btn-primary">Reload</button>
+  </div>
+</div>
+<div class="preview-nav">
+  <a href="index.html">Index</a>
+  <a href="login.html">Login</a>
+  <a href="dashboard.html">Dashboard</a>
+  <a href="session-detail.html">Session</a>
+  <a href="components.html" class="active">Components</a>
+  <a href="../components.html" title="Switch to dark theme">◐ Dark</a>
+</div>
+</body>
+</html>

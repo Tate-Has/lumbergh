@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Session (Mobile) — Lumbergh v0.18.0 Preview · Light</title>
+<link rel="stylesheet" href="theme.css" />
+<style>
+  /* Page = soft chrome behind the phone frame */
+  html, body { height: auto; min-height: 100%; }
+  body {
+    padding: 32px 16px 80px;
+    overflow-y: auto;
+    background:
+      radial-gradient(900px 600px at 20% 0%, rgba(0, 122, 255, 0.08), transparent 60%),
+      radial-gradient(700px 500px at 100% 100%, rgba(175, 82, 222, 0.06), transparent 60%),
+      #e9ecf2;
+    display: flex; flex-direction: column; align-items: center; gap: 24px;
+  }
+  .page-caption {
+    color: var(--text-tertiary);
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    text-align: center;
+  }
+  .page-caption strong { color: var(--text-secondary); font-weight: 600; letter-spacing: 0.04em; text-transform: none; font-size: 14px; display: block; margin-bottom: 4px; }
+
+  /* Phone frame (dark bezel even in light theme — matches real iPhone) */
+  .phone {
+    width: 390px; height: 844px;
+    background: #1a1a1f;
+    border-radius: 48px;
+    padding: 12px;
+    box-shadow:
+      0 0 0 2px #2a2a30,
+      0 30px 80px rgba(0, 0, 0, 0.25),
+      0 60px 120px rgba(0, 122, 255, 0.06);
+    position: relative;
+    flex-shrink: 0;
+  }
+  .phone-screen {
+    width: 100%; height: 100%;
+    border-radius: 38px;
+    overflow: hidden;
+    background: var(--bg-sunken);
+    display: flex; flex-direction: column;
+    position: relative;
+  }
+
+  /* iOS status bar */
+  .status-bar {
+    height: 44px;
+    padding: 0 28px;
+    display: flex; align-items: center; justify-content: space-between;
+    color: var(--text-primary);
+    font-size: 15px; font-weight: 600;
+    flex-shrink: 0;
+    background: transparent;
+    position: relative;
+    z-index: 10;
+  }
+  .status-bar .time { letter-spacing: -0.02em; }
+  .status-bar .right { display: flex; align-items: center; gap: 6px; }
+  .status-bar .signal-bars { display: inline-flex; align-items: flex-end; gap: 2px; height: 11px; }
+  .status-bar .signal-bars span { display: block; width: 3px; background: var(--text-primary); border-radius: 1px; }
+  .status-bar .signal-bars span:nth-child(1) { height: 4px; }
+  .status-bar .signal-bars span:nth-child(2) { height: 6px; }
+  .status-bar .signal-bars span:nth-child(3) { height: 8px; }
+  .status-bar .signal-bars span:nth-child(4) { height: 10px; }
+  .status-bar .battery {
+    width: 26px; height: 12px;
+    border: 1px solid var(--text-secondary); border-radius: 3px;
+    padding: 1px; position: relative;
+  }
+  .status-bar .battery::after {
+    content: ''; position: absolute; right: -3px; top: 3px;
+    width: 2px; height: 4px; background: var(--text-secondary); border-radius: 0 1px 1px 0;
+  }
+  .status-bar .battery .fill { width: 80%; height: 100%; background: var(--text-primary); border-radius: 1px; }
+  .notch {
+    position: absolute;
+    top: 11px; left: 50%; transform: translateX(-50%);
+    width: 120px; height: 32px;
+    background: #000;
+    border-radius: 20px;
+    z-index: 20;
+  }
+
+  .app {
+    flex: 1; min-height: 0;
+    display: flex; flex-direction: column;
+    background: var(--bg-sunken);
+  }
+
+  .tab-strip {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 8px;
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border-default);
+    overflow-x: auto;
+    scrollbar-width: none;
+    flex-shrink: 0;
+  }
+  .tab-strip::-webkit-scrollbar { display: none; }
+  .tab-strip .back-btn {
+    background: transparent; border: none;
+    padding: 6px 4px;
+    color: var(--text-tertiary);
+    cursor: pointer; flex-shrink: 0;
+    display: inline-flex; align-items: center;
+  }
+  .tab-strip .vsep {
+    width: 1px; height: 16px;
+    background: var(--border-default);
+    margin: 0 2px; flex-shrink: 0;
+  }
+  .tab-strip .nav-dots {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 0 4px; flex-shrink: 0;
+  }
+  .tab-strip .nav-dots .dot { width: 6px; height: 6px; }
+  .tab-strip .nav-dots .dot.current {
+    width: 8px; height: 8px;
+    box-shadow: 0 0 0 2px var(--bg-surface), 0 0 0 3px var(--color-action);
+  }
+  .tab-strip .tab {
+    flex-shrink: 0;
+    padding: 6px 14px;
+    border-radius: var(--radius-md);
+    font-size: 13px; font-weight: 500;
+    color: var(--text-tertiary);
+    background: var(--control-bg);
+    cursor: pointer; white-space: nowrap;
+    border: none;
+    transition: all 0.15s;
+  }
+  .tab-strip .tab:hover { color: var(--text-secondary); background: var(--control-bg-hover); }
+  .tab-strip .tab.active {
+    color: var(--text-primary);
+    background: var(--control-bg-hover);
+  }
+  .tab-strip .tab .add { color: var(--color-success); margin-left: 4px; font-size: 11px; }
+  .tab-strip .tab .del { color: var(--color-danger); margin-left: 4px; font-size: 11px; }
+
+  .term-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+  .term-header {
+    background: var(--bg-glass);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border-default);
+    padding: 6px 8px;
+    display: flex; align-items: center; gap: 6px;
+    flex-shrink: 0;
+  }
+  .term-header .name-wrap {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-weight: 600; font-size: 13px;
+    color: var(--text-secondary);
+    flex: 1; min-width: 0;
+  }
+  .term-header .name-wrap .arrow { opacity: 0.35; font-size: 11px; }
+  .term-header .name-wrap .name {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .term-header .qa-buttons { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; }
+
+  .qa-btn-sm {
+    height: 30px; padding: 0 10px;
+    border-radius: var(--radius-md);
+    font-size: 12px; font-weight: 500;
+    border: 1px solid transparent;
+    cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+    gap: 4px;
+  }
+  .qa-btn-sm.secondary {
+    background: var(--control-bg); color: var(--text-secondary);
+  }
+  .qa-btn-sm.secondary:hover { background: var(--control-bg-hover); color: var(--text-primary); }
+  .qa-btn-sm.danger {
+    background: rgba(255, 59, 48, 0.12); color: var(--color-danger);
+    border-color: rgba(255, 59, 48, 0.3);
+  }
+  .qa-btn-icon {
+    width: 30px; height: 30px;
+    border-radius: var(--radius-md);
+    background: var(--control-bg); color: var(--text-tertiary);
+    border: none; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .qa-btn-icon:hover { background: var(--control-bg-hover); color: var(--text-primary); }
+  .qa-btn-icon svg { display: block; }
+
+  .terminal {
+    flex: 1;
+    background: var(--terminal-bg);
+    color: var(--terminal-fg);
+    font-family: ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, monospace;
+    font-size: 11px;
+    line-height: 1.5;
+    padding: 10px 12px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .terminal .prompt { color: var(--color-success); }
+  .terminal .user   { color: var(--color-action); }
+  .terminal .ai     { color: var(--text-primary); }
+  .terminal .muted  { color: var(--text-tertiary); }
+  .terminal .ok     { color: var(--color-success); }
+  .terminal .warn   { color: var(--color-warning); }
+  .caret {
+    display: inline-block; width: 7px; height: 12px;
+    background: var(--color-action);
+    vertical-align: text-bottom;
+    animation: caret 1s steps(1) infinite;
+  }
+  @keyframes caret { 50% { opacity: 0; } }
+
+  .quick-input {
+    border-top: 1px solid var(--border-default);
+    background: var(--bg-surface);
+    padding: 8px 10px 10px;
+    display: flex; gap: 8px; align-items: center;
+    flex-shrink: 0;
+  }
+  .quick-input input {
+    flex: 1;
+    background: var(--input-bg);
+    color: var(--text-primary);
+    border: 1px solid var(--input-border);
+    border-radius: var(--radius-lg);
+    padding: 9px 12px;
+    font-family: inherit; font-size: 14px;
+    outline: none;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
+  }
+  .quick-input input:focus {
+    border-color: rgba(0, 122, 255, 0.5);
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.05), 0 0 0 3px rgba(0, 122, 255, 0.15);
+  }
+  .quick-input input::placeholder { color: var(--text-muted); }
+
+  .send-btn {
+    background: var(--color-action); color: #fff;
+    border: none; border-radius: var(--radius-lg);
+    padding: 0 14px; height: 36px;
+    font-size: 13px; font-weight: 600;
+    cursor: pointer;
+  }
+  .send-btn:hover { filter: brightness(1.05); }
+
+  .home-indicator {
+    height: 18px; flex-shrink: 0;
+    display: flex; align-items: flex-end; justify-content: center;
+    padding-bottom: 6px;
+    background: var(--bg-sunken);
+  }
+  .home-indicator::before {
+    content: ''; display: block;
+    width: 134px; height: 5px; border-radius: 3px;
+    background: var(--text-primary);
+    opacity: 0.5;
+  }
+
+  .dot { display: inline-block; border-radius: 50%; flex-shrink: 0; }
+  .dot-green  { background: var(--color-success); box-shadow: 0 0 5px rgba(40, 167, 69, 0.5); }
+  .dot-yellow { background: var(--color-warning); box-shadow: 0 0 5px rgba(255, 159, 10, 0.5); }
+  .dot-red    { background: var(--color-danger);  box-shadow: 0 0 5px rgba(255, 59, 48, 0.5); }
+</style>
+</head>
+<body>
+
+<div class="page-caption">
+  <strong>Session Detail — Mobile (390 × 844) · Light</strong>
+  Phone preview of the v0.18.0 layout from <code style="color:var(--text-secondary);background:rgba(0,0,0,0.05);padding:1px 5px;border-radius:4px;font-family:ui-monospace,monospace;">SessionDetail.tsx</code> when <code style="color:var(--text-secondary);background:rgba(0,0,0,0.05);padding:1px 5px;border-radius:4px;font-family:ui-monospace,monospace;">useIsDesktop()</code> is false.
+</div>
+
+<div class="phone">
+  <div class="phone-screen">
+    <div class="notch"></div>
+
+    <div class="status-bar">
+      <span class="time">9:41</span>
+      <div class="right">
+        <span class="signal-bars"><span></span><span></span><span></span><span></span></span>
+        <span style="font-size:11px;font-weight:600;">5G</span>
+        <span class="battery"><span class="fill"></span></span>
+      </div>
+    </div>
+
+    <div class="app">
+      <div class="tab-strip">
+        <button class="back-btn" title="Back to Dashboard">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        </button>
+        <div class="vsep"></div>
+        <div class="nav-dots">
+          <span class="dot dot-green" style="width:6px;height:6px;" title="api-docs"></span>
+          <span class="dot dot-green current" title="payment-refactor"></span>
+          <span class="dot dot-yellow" style="width:6px;height:6px;" title="frontend-tweaks"></span>
+          <span class="dot dot-green" style="width:6px;height:6px;" title="db-migration"></span>
+          <span class="dot dot-red" style="width:6px;height:6px;" title="infra-terraform"></span>
+        </div>
+        <div class="vsep"></div>
+        <button class="tab active">Terminal</button>
+        <button class="tab">Git<span style="color:var(--text-muted);margin-left:4px;font-size:11px;">(2)</span><span class="add">+62</span><span class="del">-19</span></button>
+        <button class="tab">Files</button>
+        <button class="tab">Todo</button>
+        <button class="tab">Prompts</button>
+        <button class="tab">Shared</button>
+      </div>
+
+      <div class="term-pane">
+        <div class="term-header">
+          <span class="name-wrap" title="Tap: next session · long-press: prev">
+            <span class="arrow">‹</span>
+            <span class="name">payment-refactor</span>
+            <span class="arrow">›</span>
+          </span>
+          <div class="qa-buttons">
+            <button class="qa-btn-icon" title="What happened? (AI summary)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-purple)" stroke-width="2"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2z"/></svg>
+            </button>
+            <button class="qa-btn-sm secondary" title="Enter scroll mode">Scroll</button>
+            <button class="qa-btn-sm danger" title="Send Escape">Esc</button>
+            <button class="qa-btn-icon" title="More options">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="terminal"><span class="prompt">●</span> <span class="muted">claude (sonnet-4)</span>
+<span class="user">› refactor the payment retry logic to use
+  the new circuit breaker pattern</span>
+
+<span class="ai">I'll refactor the payment retry logic in
+<span class="muted">`src/payments/retry.ts`</span> to use the new
+CircuitBreaker class. Let me first read the
+current implementation.</span>
+
+<span class="muted">⏺ Read(src/payments/retry.ts)</span>
+<span class="muted">  ⎿  Read 142 lines</span>
+
+<span class="muted">⏺ Read(src/lib/circuit-breaker.ts)</span>
+<span class="muted">  ⎿  Read 89 lines</span>
+
+<span class="ai">The existing retry loop uses exponential
+backoff but doesn't track failure rates across
+calls. I'll wrap each upstream invocation in a
+CircuitBreaker scoped per merchant.</span>
+
+<span class="muted">⏺ Edit(src/payments/retry.ts)</span>
+<span class="muted">  ⎿  +28 -17 lines</span>
+
+<span class="muted">⏺ Bash(npm test -- payments/retry)</span>
+<span class="muted">  ⎿  </span><span class="ok">✓ 14 tests passing</span><span class="muted"> (1.2s)</span>
+
+<span class="ai">All tests pass. The circuit breaker opens
+after 5 consecutive failures within a 30s window
+and half-opens after a 60s cooldown. Want me to
+add metrics emission too?</span>
+
+<span class="user">›</span> <span class="caret"></span></div>
+
+        <div class="quick-input">
+          <input type="text" placeholder="Send to terminal…" value="yes, add metrics via statsd" />
+          <button class="send-btn">Send</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="home-indicator"></div>
+  </div>
+</div>
+
+<div class="page-caption" style="max-width:480px;">
+  Mobile layout pattern: single column. The Terminal mounts permanently to preserve the
+  WebSocket; the Git / Files / Todo / Prompts / Shared tabs swap in over the same area.
+  The dashboard back-button moves to the tab strip; the terminal header on mobile shows
+  the brain summary, Scroll mode, Esc, and a More menu.
+</div>
+
+<div class="preview-nav">
+  <a href="index.html">Index</a>
+  <a href="login.html">Login</a>
+  <a href="dashboard.html">Dashboard</a>
+  <a href="session-detail.html">Session</a>
+  <a href="session-detail-mobile.html" class="active">Session · Mobile</a>
+  <a href="components.html">Components</a>
+  <a href="../session-detail-mobile.html" title="Switch to dark theme">◐ Dark</a>
+</div>
+</body>
+</html>

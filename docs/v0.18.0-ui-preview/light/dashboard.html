@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Dashboard — Lumbergh v0.18.0 Preview (Light)</title>
+<link rel="stylesheet" href="theme.css" />
+<style>
+  .app { height: 100vh; display: flex; flex-direction: column; background: var(--bg-sunken); overflow: hidden; }
+  .header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px; border-bottom: 1px solid var(--border-default);
+  }
+  .brand { font-size: 18px; font-weight: 600; color: var(--text-secondary); }
+  .cloud-meter { font-size: 11px; color: var(--text-muted); font-weight: 500; margin-left: 12px; }
+  .divider { width: 1px; height: 20px; background: var(--border-default); margin: 0 4px; }
+  main { flex: 1; overflow-y: auto; padding: 16px; }
+  .container { max-width: 1100px; margin: 0 auto; }
+  .banners { padding: 16px 16px 0 16px; display: flex; flex-direction: column; gap: 10px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 32px; }
+  @media (max-width: 1000px) { .grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+
+  .session-card {
+    border-radius: var(--radius-xl);
+    padding: 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: var(--shadow-low);
+  }
+  .session-card:hover { background: var(--bg-glass-hover); border-color: var(--border-hover); box-shadow: var(--shadow-medium); }
+  .session-card.starred { border-color: var(--color-action); }
+  .session-card.scratch { border-style: dashed; border-color: rgba(255, 214, 10, 0.3); }
+  .session-card.paused { opacity: 0.5; }
+
+  .sc-head { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 8px; gap: 8px; }
+  .sc-title-row { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
+  .sc-title { font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sc-subtitle { font-size: 11px; color: var(--text-muted); }
+  .sc-actions { display: flex; gap: 4px; color: var(--text-tertiary); }
+  .sc-actions button {
+    background: transparent; border: none; padding: 4px;
+    color: var(--text-tertiary); cursor: pointer; border-radius: var(--radius-sm);
+  }
+  .sc-actions button:hover { background: var(--control-bg); color: var(--text-primary); }
+  .sc-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .sc-workdir { font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; color: var(--text-tertiary); margin-bottom: 8px; word-break: break-all; }
+  .sc-status { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-bottom: 8px; }
+  .sc-status.working { color: var(--color-success); }
+  .sc-status.idle { color: var(--text-secondary); }
+  .sc-status.waiting { color: var(--color-warning); }
+  .sc-footer { display: flex; align-items: center; gap: 12px; font-size: 11px; color: var(--text-muted); }
+  .sc-footer .spacer { flex: 1; }
+  .sc-footer button { background: transparent; border: none; padding: 2px; cursor: pointer; border-radius: 4px; }
+  .sc-footer .starred-icon { color: var(--color-amber); }
+  .sc-footer .cloud-icon { color: var(--color-action); }
+  footer {
+    padding: 16px;
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-muted);
+    display: flex; justify-content: center; gap: 8px;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="header glass">
+    <div class="row gap-3">
+      <div class="brand">Lumbergh</div>
+      <span class="cloud-meter">Cloud: 2/5</span>
+    </div>
+    <div class="row gap-2">
+      <button class="icon-btn" title="Documentation">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+      </button>
+      <button class="icon-btn" title="Theme">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+      </button>
+      <button class="icon-btn" title="Settings">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+      <div class="divider"></div>
+      <button class="btn btn-sm btn-warning" title="Quick scratch session">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+      </button>
+      <button class="btn btn-sm btn-primary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New Session
+      </button>
+    </div>
+  </header>
+
+  <div class="banners">
+    <div class="banner banner-warning">
+      <span class="banner-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="22"/><polyline points="8 12 12 8 16 12"/></svg>
+      </span>
+      <div class="banner-content">
+        Yeah, if you could go ahead and update to v0.18.0, that'd be great.
+        <code>Run: uv tool upgrade pylumbergh</code>
+      </div>
+      <button class="btn btn-sm btn-warning">View Release</button>
+      <button class="icon-btn" style="width:24px;height:24px;background:transparent;">✕</button>
+    </div>
+    <div class="banner banner-info">
+      <span class="banner-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      </span>
+      <div class="banner-content">
+        Enable cross-session sharing by adding LB Shared commands to your CLAUDE.md
+      </div>
+      <button class="btn btn-sm btn-primary">Enable</button>
+    </div>
+  </div>
+
+  <main>
+    <div class="container">
+      <section style="margin-bottom: 32px;">
+        <h2 class="section-label" style="color: var(--text-tertiary);">Active Sessions</h2>
+        <div class="grid">
+          <!-- Starred / The One -->
+          <div class="session-card glass starred">
+            <div class="sc-head">
+              <div class="sc-title-row">
+                <span class="dot dot-green dot-pulse" title="Working"></span>
+                <div style="min-width: 0; flex: 1;">
+                  <div class="sc-title">payment-refactor</div>
+                  <div class="sc-subtitle">claude-payments-001</div>
+                </div>
+              </div>
+              <div class="sc-actions">
+                <button title="Pause"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg></button>
+                <button title="Edit"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+                <button title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/></svg></button>
+              </div>
+            </div>
+            <div class="sc-badges">
+              <span class="badge badge-purple">worktree</span>
+              <span class="badge badge-info">feat/refactor-payments</span>
+              <span class="badge badge-neutral">claude</span>
+            </div>
+            <div class="sc-workdir">~/src/work/billing/payment-refactor</div>
+            <div class="sc-status working">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              <span>Working</span>
+            </div>
+            <div class="sc-footer">
+              <span>3 windows</span>
+              <span style="color: var(--color-action);">attached</span>
+              <div class="spacer"></div>
+              <button title="Starred"><svg class="starred-icon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></button>
+              <button title="Cloud"><svg class="cloud-icon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg></button>
+            </div>
+          </div>
+
+          <!-- Idle -->
+          <div class="session-card glass">
+            <div class="sc-head">
+              <div class="sc-title-row">
+                <span class="dot dot-green"></span>
+                <div style="min-width: 0; flex: 1;">
+                  <div class="sc-title">api-docs</div>
+                </div>
+              </div>
+              <div class="sc-actions">
+                <button><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg></button>
+                <button><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+                <button><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/></svg></button>
+              </div>
+            </div>
+            <div class="sc-badges">
+              <span class="badge badge-neutral">repo</span>
+              <span class="badge badge-neutral">codex</span>
+            </div>
+            <div class="sc-workdir">~/src/work/api-docs</div>
+            <div class="sc-status idle">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>
+              <span>Idle</span>
+            </div>
+            <div class="sc-footer">
+              <span>1 window</span>
+              <div class="spacer"></div>
+              <button><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></button>
+              <button><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg></button>
+            </div>
+          </div>
+
+          <!-- Waiting for input -->
+          <div class="session-card glass">
+            <div class="sc-head">
+              <div class="sc-title-row">
+                <span class="dot dot-yellow dot-pulse"></span>
+                <div style="min-width: 0; flex: 1;">
+                  <div class="sc-title">frontend-tweaks</div>
+                </div>
+              </div>
+              <div class="sc-actions">
+                <button><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg></button>
+                <button><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/></svg></button>
+                <button><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/></svg></button>
+              </div>
+            </div>
+            <div class="sc-badges">
+              <span class="badge badge-purple">worktree</span>
+              <span class="badge badge-info">ui/cleanup</span>
+            </div>
+            <div class="sc-workdir">~/src/work/lum/wt-ui-cleanup</div>
+            <div class="sc-status waiting">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              <span>Waiting on user input</span>
+            </div>
+            <div class="sc-footer">
+              <span>2 windows</span>
+              <div class="spacer"></div>
+              <button><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></button>
+              <button><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg></button>
+            </div>
+          </div>
+
+          <!-- Scratch session -->
+          <div class="session-card glass scratch">
+            <div class="sc-head">
+              <div class="sc-title-row">
+                <span class="dot dot-green"></span>
+                <div style="min-width: 0; flex: 1;">
+                  <div class="sc-title">scratch-h7p2</div>
+                </div>
+              </div>
+              <div class="sc-actions">
+                <button><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg></button>
+                <button><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/></svg></button>
+                <button><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/></svg></button>
+              </div>
+            </div>
+            <div class="sc-badges">
+              <span class="badge badge-warning">scratch</span>
+            </div>
+            <div class="sc-workdir">/tmp/lumbergh-scratch-h7p2</div>
+            <div class="sc-footer">
+              <span>1 window</span>
+              <div class="spacer"></div>
+              <button><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></button>
+            </div>
+          </div>
+
+          <!-- Working complex -->
+          <div class="session-card glass">
+            <div class="sc-head">
+              <div class="sc-title-row">
+                <span class="dot dot-green dot-pulse"></span>
+                <div style="min-width: 0; flex: 1;">
+                  <div class="sc-title">db-migration</div>
+                </div>
+              </div>
+              <div class="sc-actions">
+                <button><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg></button>
+                <button><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/></svg></button>
+                <button><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/></svg></button>
+              </div>
+            </div>
+            <div class="sc-badges">
+              <span class="badge badge-neutral">repo</span>
+              <span class="badge badge-info">main</span>
+            </div>
+            <div class="sc-workdir">~/src/work/data-platform</div>
+            <div class="sc-status working">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              <span>Generating migration scripts…</span>
+            </div>
+            <div class="sc-footer">
+              <span>4 windows</span>
+              <div class="spacer"></div>
+              <button><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></button>
+              <button><svg class="cloud-icon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg></button>
+            </div>
+          </div>
+
+          <!-- Stalled -->
+          <div class="session-card glass">
+            <div class="sc-head">
+              <div class="sc-title-row">
+                <span class="dot dot-red"></span>
+                <div style="min-width: 0; flex: 1;">
+                  <div class="sc-title">infra-terraform</div>
+                </div>
+              </div>
+              <div class="sc-actions">
+                <button><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg></button>
+                <button><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/></svg></button>
+                <button><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/></svg></button>
+              </div>
+            </div>
+            <div class="sc-badges">
+              <span class="badge badge-neutral">repo</span>
+            </div>
+            <div class="sc-workdir">~/src/work/infrastructure</div>
+            <div class="sc-status" style="color: var(--color-danger);">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              <span>Stalled</span>
+            </div>
+            <div class="sc-footer">
+              <span>1 window</span>
+              <div class="spacer"></div>
+              <button><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></button>
+              <button><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg></button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2 class="section-label" style="color: var(--text-muted);">Inactive Sessions</h2>
+        <div class="grid">
+          <div class="session-card glass paused">
+            <div class="sc-head">
+              <div class="sc-title-row">
+                <span class="dot dot-yellow"></span>
+                <div style="min-width: 0; flex: 1;">
+                  <div class="sc-title">old-experiment</div>
+                </div>
+              </div>
+              <div class="sc-actions">
+                <button><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg></button>
+              </div>
+            </div>
+            <div class="sc-badges">
+              <span class="badge badge-neutral">paused</span>
+            </div>
+            <div class="sc-workdir">~/src/scratch/old-experiment</div>
+            <div class="sc-footer">
+              <span>0 windows</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer>
+    <a href="#">v0.18.0</a>
+    <span>·</span>
+    <a href="#">I was told there would be ★ stars</a>
+  </footer>
+</div>
+<div class="preview-nav">
+  <a href="index.html">Index</a>
+  <a href="login.html">Login</a>
+  <a href="dashboard.html" class="active">Dashboard</a>
+  <a href="session-detail.html">Session</a>
+  <a href="components.html">Components</a>
+  <a href="../dashboard.html" title="Switch to dark theme">◐ Dark</a>
+</div>
+</body>
+</html>

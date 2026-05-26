@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Session — Lumbergh v0.18.0 Preview (Light)</title>
+<link rel="stylesheet" href="theme.css" />
+<style>
+  .app { height: 100vh; display: flex; flex-direction: column; background: var(--bg-sunken); overflow: hidden; }
+  .term-header { display: flex; flex-direction: column; }
+  .term-header-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 12px;
+  }
+  .back-btn {
+    background: transparent; border: none; padding: 4px;
+    color: var(--text-tertiary); cursor: pointer;
+  }
+  .back-btn:hover { color: var(--text-primary); }
+  .vsep { width: 1px; height: 16px; background: var(--border-subtle); margin: 0 4px; }
+  .session-name {
+    font-weight: 600; font-size: 14px; color: var(--text-secondary);
+    display: inline-flex; gap: 4px; align-items: center;
+    cursor: pointer;
+  }
+  .session-name:hover { color: var(--text-primary); }
+  .nav-dots { display: flex; gap: 6px; padding: 0 8px; }
+  .nav-dots .dot { width: 6px; height: 6px; cursor: pointer; }
+  .nav-dots .dot.current { width: 8px; height: 8px; box-shadow: 0 0 0 2px var(--bg-base), 0 0 0 3px var(--color-action); }
+  .spacer { flex: 1; }
+  .quick-actions { display: flex; align-items: center; gap: 4px; }
+  .qa-btn {
+    background: transparent; border: none; padding: 6px;
+    color: var(--text-tertiary); cursor: pointer; border-radius: var(--radius-sm);
+  }
+  .qa-btn:hover { background: var(--control-bg); color: var(--text-primary); }
+
+  .main { flex: 1; display: flex; min-height: 0; }
+  .terminal-pane { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .terminal {
+    flex: 1;
+    background: var(--terminal-bg);
+    color: var(--terminal-fg);
+    font-family: ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, monospace;
+    font-size: 13px;
+    padding: 12px 16px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    line-height: 1.5;
+  }
+  .terminal .prompt { color: var(--color-success); }
+  .terminal .user { color: var(--color-action); }
+  .terminal .ai { color: var(--text-primary); }
+  .terminal .muted { color: var(--text-tertiary); }
+
+  .quick-input {
+    border-top: 1px solid var(--border-default);
+    background: var(--bg-glass);
+    padding: 10px 12px;
+    display: flex; gap: 8px; align-items: flex-end;
+  }
+  .quick-input textarea {
+    flex: 1; min-height: 36px; max-height: 200px; resize: none;
+    background: var(--input-bg);
+    border: 1px solid var(--input-border);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    padding: 8px 12px;
+    font-family: inherit; font-size: 13px;
+    outline: none;
+  }
+  .quick-input textarea:focus { border-color: var(--color-action); }
+
+  .side {
+    width: 460px; flex-shrink: 0;
+    border-left: 1px solid var(--border-default);
+    display: flex; flex-direction: column;
+    background: var(--bg-base);
+  }
+  .tabs {
+    display: flex; border-bottom: 1px solid var(--border-default);
+    padding: 0 8px;
+    overflow-x: auto; scrollbar-width: none;
+  }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab {
+    padding: 10px 14px; font-size: 13px; font-weight: 500;
+    color: var(--text-tertiary);
+    border-bottom: 2px solid transparent;
+    cursor: pointer; white-space: nowrap;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .tab:hover { color: var(--text-primary); }
+  .tab.active { color: var(--text-primary); border-bottom-color: var(--color-action); }
+
+  .side-content { flex: 1; overflow-y: auto; padding: 16px; }
+  .diff-file {
+    border-radius: var(--radius-lg);
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+  .diff-file-header {
+    padding: 8px 12px;
+    background: var(--bg-glass-hover);
+    border-bottom: 1px solid var(--border-default);
+    display: flex; align-items: center; justify-content: space-between;
+    font-family: ui-monospace, monospace; font-size: 12px;
+  }
+  .diff-stat { font-size: 11px; display: flex; gap: 6px; }
+  .diff-stat .add { color: var(--color-success); }
+  .diff-stat .del { color: var(--color-danger); }
+  .diff-body {
+    font-family: ui-monospace, monospace; font-size: 12px;
+    background: var(--bg-inset);
+  }
+  .diff-line { padding: 1px 12px; display: flex; gap: 12px; line-height: 1.55; }
+  .diff-line.add { background: rgba(48, 209, 88, 0.08); color: var(--color-success); }
+  .diff-line.del { background: rgba(255, 69, 58, 0.08); color: var(--color-danger); }
+  .diff-line .ln { color: var(--text-muted); width: 24px; text-align: right; user-select: none; }
+
+  .todo-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    background: var(--bg-glass);
+    margin-bottom: 8px;
+    font-size: 13px;
+  }
+  .todo-item.done { opacity: 0.5; text-decoration: line-through; }
+  .todo-check {
+    width: 16px; height: 16px; border-radius: 4px;
+    border: 1.5px solid var(--text-tertiary);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .todo-item.done .todo-check { background: var(--color-action); border-color: var(--color-action); color: white; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="term-header glass">
+    <div class="term-header-row">
+      <button class="back-btn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+      </button>
+      <div class="vsep"></div>
+      <span class="session-name">
+        <span style="opacity:0.4;">‹</span>
+        payment-refactor
+        <span style="opacity:0.4;">›</span>
+      </span>
+      <div class="nav-dots">
+        <span class="dot dot-green" title="api-docs"></span>
+        <span class="dot dot-green current" title="payment-refactor"></span>
+        <span class="dot dot-yellow" title="frontend-tweaks"></span>
+        <span class="dot dot-green" title="db-migration"></span>
+        <span class="dot dot-red" title="infra-terraform"></span>
+      </div>
+      <div class="spacer"></div>
+      <div class="quick-actions">
+        <button class="qa-btn" title="Brain — context summary"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2z"/></svg></button>
+        <button class="qa-btn" title="Clear"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 20H7L3 16c-.5-.5-.5-1.5 0-2L13 4l7 7-7 7"/></svg></button>
+        <button class="qa-btn" title="Restart"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
+        <div class="vsep"></div>
+        <button class="qa-btn" title="Font smaller"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+        <button class="qa-btn" title="Font larger"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+        <button class="qa-btn" title="More"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
+      </div>
+    </div>
+  </header>
+
+  <div class="main">
+    <div class="terminal-pane">
+      <div class="terminal">
+<span class="prompt">●</span> <span class="muted">claude (sonnet-4)</span>
+<span class="user">› refactor the payment retry logic to use the new circuit breaker pattern</span>
+
+<span class="ai">I'll refactor the payment retry logic in `src/payments/retry.ts` to use the new
+CircuitBreaker class. Let me first read the current implementation.</span>
+
+<span class="muted">⏺ Read(src/payments/retry.ts)</span>
+<span class="muted">  ⎿  Read 142 lines</span>
+
+<span class="muted">⏺ Read(src/lib/circuit-breaker.ts)</span>
+<span class="muted">  ⎿  Read 89 lines</span>
+
+<span class="ai">The existing retry loop uses exponential backoff but doesn't track failure rates
+across calls. I'll wrap each upstream invocation in a CircuitBreaker scoped per
+merchant so a single bad merchant can't poison the pool.</span>
+
+<span class="muted">⏺ Edit(src/payments/retry.ts)</span>
+<span class="muted">  ⎿  +28 -17 lines</span>
+
+<span class="muted">⏺ Bash(npm test -- payments/retry)</span>
+<span class="muted">  ⎿  ✓ 14 tests passing (1.2s)</span>
+
+<span class="ai">All tests pass. The circuit breaker opens after 5 consecutive failures within a
+30s window and half-opens after a 60s cooldown. Want me to add metrics emission
+too?</span>
+
+<span class="user">›</span> <span style="background: var(--color-action); width: 8px; height: 14px; display: inline-block; vertical-align: text-bottom; animation: dot-pulse 1s infinite;"></span>
+      </div>
+      <div class="quick-input">
+        <textarea placeholder="Message claude…" rows="1">yes, add metrics emission via the existing statsd client</textarea>
+        <button class="btn btn-md btn-primary">Send</button>
+      </div>
+    </div>
+
+    <aside class="side">
+      <div class="tabs">
+        <div class="tab active">Diff</div>
+        <div class="tab">Files</div>
+        <div class="tab">Todos</div>
+        <div class="tab">Scratch</div>
+        <div class="tab">Prompts</div>
+        <div class="tab">Shared</div>
+      </div>
+      <div class="side-content">
+        <div class="row gap-2" style="justify-content: space-between; margin-bottom: 12px;">
+          <div class="row gap-2">
+            <span class="badge badge-info">feat/refactor-payments</span>
+            <span class="badge badge-neutral">2 files</span>
+          </div>
+          <button class="btn btn-sm btn-success">Commit…</button>
+        </div>
+
+        <div class="diff-file glass">
+          <div class="diff-file-header">
+            <span>src/payments/retry.ts</span>
+            <span class="diff-stat"><span class="add">+28</span><span class="del">-17</span></span>
+          </div>
+          <div class="diff-body">
+            <div class="diff-line del"><span class="ln">12</span><span>- export async function retryPayment(req: PaymentRequest) {</span></div>
+            <div class="diff-line add"><span class="ln">12</span><span>+ const breakers = new Map&lt;string, CircuitBreaker&gt;();</span></div>
+            <div class="diff-line add"><span class="ln">13</span><span>+</span></div>
+            <div class="diff-line add"><span class="ln">14</span><span>+ export async function retryPayment(req: PaymentRequest) {</span></div>
+            <div class="diff-line add"><span class="ln">15</span><span>+&nbsp;&nbsp;const breaker = breakers.get(req.merchantId) ?? new CircuitBreaker({</span></div>
+            <div class="diff-line add"><span class="ln">16</span><span>+&nbsp;&nbsp;&nbsp;&nbsp;failureThreshold: 5,</span></div>
+            <div class="diff-line add"><span class="ln">17</span><span>+&nbsp;&nbsp;&nbsp;&nbsp;cooldownMs: 60_000,</span></div>
+            <div class="diff-line add"><span class="ln">18</span><span>+&nbsp;&nbsp;});</span></div>
+            <div class="diff-line del"><span class="ln">13</span><span>- &nbsp;&nbsp;for (let attempt = 0; attempt &lt; 3; attempt++) {</span></div>
+            <div class="diff-line add"><span class="ln">19</span><span>+&nbsp;&nbsp;return breaker.run(() =&gt; sendPayment(req));</span></div>
+          </div>
+        </div>
+
+        <div class="diff-file glass">
+          <div class="diff-file-header">
+            <span>src/payments/__tests__/retry.test.ts</span>
+            <span class="diff-stat"><span class="add">+34</span><span class="del">-2</span></span>
+          </div>
+          <div class="diff-body">
+            <div class="diff-line add"><span class="ln">88</span><span>+ describe('circuit breaker integration', () =&gt; {</span></div>
+            <div class="diff-line add"><span class="ln">89</span><span>+&nbsp;&nbsp;it('opens after 5 consecutive failures', async () =&gt; {</span></div>
+            <div class="diff-line add"><span class="ln">90</span><span>+&nbsp;&nbsp;&nbsp;&nbsp;for (let i = 0; i &lt; 5; i++) await expectReject(retryPayment(req));</span></div>
+            <div class="diff-line add"><span class="ln">91</span><span>+&nbsp;&nbsp;&nbsp;&nbsp;expect(breaker.state).toBe('open');</span></div>
+            <div class="diff-line add"><span class="ln">92</span><span>+&nbsp;&nbsp;});</span></div>
+          </div>
+        </div>
+
+        <div style="margin-top: 24px;">
+          <h3 class="section-label">Todos (Manager)</h3>
+          <div class="todo-item done">
+            <div class="todo-check">✓</div>
+            <span>Read retry.ts and circuit-breaker.ts</span>
+          </div>
+          <div class="todo-item done">
+            <div class="todo-check">✓</div>
+            <span>Refactor retryPayment to use CircuitBreaker</span>
+          </div>
+          <div class="todo-item">
+            <div class="todo-check"></div>
+            <span>Add statsd metric emission on breaker state transitions</span>
+          </div>
+          <div class="todo-item">
+            <div class="todo-check"></div>
+            <span>Document new behavior in payments/README.md</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+<div class="preview-nav">
+  <a href="index.html">Index</a>
+  <a href="login.html">Login</a>
+  <a href="dashboard.html">Dashboard</a>
+  <a href="session-detail.html" class="active">Session</a>
+  <a href="session-detail-mobile.html">Session · Mobile</a>
+  <a href="components.html">Components</a>
+  <a href="../session-detail.html" title="Switch to dark theme">◐ Dark</a>
+</div>
+</body>
+</html>

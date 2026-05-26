@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Login — Lumbergh v0.18.0 Preview (Light)</title>
+<link rel="stylesheet" href="theme.css" />
+<style>
+  body {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    /* Subtle background gradient suggestive of light macOS-style desktop */
+    background:
+      radial-gradient(800px 600px at 20% 20%, rgba(0, 122, 255, 0.10), transparent 60%),
+      radial-gradient(700px 500px at 80% 80%, rgba(175, 82, 222, 0.08), transparent 60%),
+      var(--bg-base);
+  }
+  .login-panel {
+    width: 100%;
+    max-width: 380px;
+    padding: 24px;
+    border-radius: var(--radius-xl);
+  }
+  .login-panel form { display: flex; flex-direction: column; gap: 16px; }
+  .login-panel h1 { margin: 0; font-size: 20px; font-weight: 600; color: var(--text-primary); }
+  .login-panel p { margin: 0; font-size: 13px; color: var(--text-secondary); }
+  .login-panel button[type="submit"] { width: 100%; }
+</style>
+</head>
+<body>
+<div class="login-panel glass-elevated">
+  <form>
+    <h1>Lumbergh</h1>
+    <p>Enter the password to continue.</p>
+    <input class="input" type="password" placeholder="Password" autofocus />
+    <button class="btn btn-md btn-primary" type="submit">Sign in</button>
+  </form>
+</div>
+<div class="preview-nav">
+  <a href="index.html">Index</a>
+  <a href="login.html" class="active">Login</a>
+  <a href="dashboard.html">Dashboard</a>
+  <a href="session-detail.html">Session</a>
+  <a href="components.html">Components</a>
+  <a href="../login.html" title="Switch to dark theme">◐ Dark</a>
+</div>
+</body>
+</html>
