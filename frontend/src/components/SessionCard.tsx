@@ -11,6 +11,7 @@ import { getSessionStatus as getBaseStatus, statusColorClasses } from '../utils/
 
 interface Session extends SessionBase {
   workdir: string | null
+  workdirExists?: boolean
   description: string | null
   attached: boolean
   windows: number
@@ -58,7 +59,10 @@ function SessionCardFooter({
   onToggleCloud,
   onToggleTheOne,
 }: {
-  session: Pick<Session, 'windows' | 'attached' | 'workdir' | 'cloudEnabled' | 'theOne'>
+  session: Pick<
+    Session,
+    'windows' | 'attached' | 'workdir' | 'workdirExists' | 'cloudEnabled' | 'theOne'
+  >
   cloudAtLimit?: boolean
   onToggleCloud: (e: React.MouseEvent) => void
   onToggleTheOne: (e: React.MouseEvent) => void
@@ -70,6 +74,14 @@ function SessionCardFooter({
       </span>
       {session.attached && <span className="text-action">attached</span>}
       {!session.workdir && <span className="text-warning">orphan</span>}
+      {session.workdir && session.workdirExists === false && (
+        <span
+          className="text-danger"
+          title="The working directory for this session no longer exists. Click the session to clean it up."
+        >
+          workdir missing
+        </span>
+      )}
       <button
         onClick={onToggleTheOne}
         className={`ml-auto p-0.5 rounded-[var(--radius-md)] transition-colors ${

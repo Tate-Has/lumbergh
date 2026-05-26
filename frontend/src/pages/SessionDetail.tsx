@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Settings, PanelRightClose, PanelRightOpen } from 'lucide-react'
+import { ArrowLeft, Settings, PanelRightClose, PanelRightOpen, AlertTriangle } from 'lucide-react'
 import { getApiBase } from '../config'
+import GlassPanel from '../components/ui/GlassPanel'
+import Button from '../components/ui/Button'
 import Terminal from '../components/Terminal'
 import FileBrowser from '../components/FileBrowser'
 import ResizablePanes from '../components/ResizablePanes'
@@ -45,6 +47,154 @@ const DEFAULT_TAB_VISIBILITY: TabVisibility = {
 }
 
 // Compare diff data to avoid unnecessary re-renders
+type ExistenceState =
+  | { status: 'ok' }
+  | { status: 'notfound' }
+  | { status: 'workdir-missing'; workdir: string }
+
+function useSessionExistence(name: string | undefined): ExistenceState {
+  const [state, setState] = useState<ExistenceState>({ status: 'ok' })
+  useEffect(() => {
+    if (!name) return
+    let cancelled = false
+    fetch(`${getApiBase()}/sessions/${name}/touch`, { method: 'POST' })
+      .then(async (res) => {
+        if (cancelled) return
+        if (res.status === 404) {
+          setState({ status: 'notfound' })
+          return
+        }
+        if (res.status === 410) {
+          try {
+            const data = await res.json()
+            const detail = data?.detail
+            if (detail?.code === 'workdir_missing') {
+              setState({ status: 'workdir-missing', workdir: detail.workdir || '' })
+              return
+            }
+          } catch {
+            // fall through
+          }
+          setState({ status: 'workdir-missing', workdir: '' })
+        }
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [name])
+  return state
+}
+
+function NotFoundScreen({ sessionName, onBack }: { sessionName: string; onBack: () => void }) {
+  const [countdown, setCountdown] = useState(5)
+  useEffect(() => {
+    if (countdown <= 0) {
+      onBack()
+      return
+    }
+    const timer = setTimeout(() => setCountdown((c) => c - 1), 1000)
+    return () => clearTimeout(timer)
+  }, [countdown, onBack])
+  return (
+    <div className="h-full flex flex-col items-center justify-center bg-bg-sunken text-text-primary gap-4 px-4">
+      <GlassPanel variant="elevated" padding="lg" radius="2xl" className="max-w-md w-full">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <AlertTriangle size={32} className="text-danger" />
+          <div className="text-text-primary text-lg font-semibold">Session not found</div>
+          <p className="text-text-tertiary text-sm">
+            The session{' '}
+            <span className="text-text-secondary font-mono">&quot;{sessionName}&quot;</span> does
+            not exist or has been deleted.
+          </p>
+          <Button variant="primary" size="md" onClick={onBack}>
+            Go to dashboard
+          </Button>
+          <p className="text-text-muted text-xs">Redirecting in {countdown}s…</p>
+        </div>
+      </GlassPanel>
+    </div>
+  )
+}
+
+function WorkdirMissingScreen({
+  sessionName,
+  workdir,
+  onBack,
+}: {
+  sessionName: string
+  workdir: string
+  onBack: () => void
+}) {
+  const [deleting, setDeleting] = useState(false)
+  const onCleanup = async () => {
+    if (!sessionName || deleting) return
+    setDeleting(true)
+    try {
+      const res = await fetch(`${getApiBase()}/sessions/${sessionName}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.detail || 'Failed to delete session')
+      }
+      onBack()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to delete session')
+      setDeleting(false)
+    }
+  }
+  return (
+    <div className="h-full flex flex-col items-center justify-center bg-bg-sunken text-text-primary gap-4 px-4">
+      <GlassPanel variant="elevated" padding="lg" radius="2xl" className="max-w-lg w-full">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <AlertTriangle size={32} className="text-warning" />
+          <div className="text-text-primary text-lg font-semibold">Working directory missing</div>
+          <p className="text-text-tertiary text-sm">
+            The session{' '}
+            <span className="text-text-secondary font-mono">&quot;{sessionName}&quot;</span> points
+            to a directory that no longer exists:
+          </p>
+          {workdir && (
+            <div className="w-full">
+              <code className="block text-left text-text-secondary text-xs font-mono bg-bg-sunken/60 border border-border-default rounded-[var(--radius-md)] px-3 py-2 break-all">
+                {workdir}
+              </code>
+            </div>
+          )}
+          <p className="text-text-muted text-xs">
+            This usually happens when a git worktree is removed outside Lumbergh. The session can no
+            longer be opened — you can clean it up below.
+          </p>
+          <div className="flex gap-2 pt-1">
+            <Button variant="secondary" size="md" onClick={onBack}>
+              Back to dashboard
+            </Button>
+            <Button variant="danger" size="md" onClick={onCleanup} disabled={deleting}>
+              {deleting ? 'Deleting…' : 'Delete session'}
+            </Button>
+          </div>
+        </div>
+      </GlassPanel>
+    </div>
+  )
+}
+
+function renderExistenceGuard(
+  existence: ExistenceState,
+  sessionName: string | undefined,
+  onBack: () => void
+) {
+  const safeName = sessionName ?? ''
+  if (existence.status === 'workdir-missing') {
+    return (
+      <WorkdirMissingScreen sessionName={safeName} workdir={existence.workdir} onBack={onBack} />
+    )
+  }
+  if (existence.status === 'notfound') {
+    return <NotFoundScreen sessionName={safeName} onBack={onBack} />
+  }
+  return null
+}
+
 function diffDataEquals(a: DiffData | null, b: DiffData | null): boolean {
   if (a === b) return true
   if (!a || !b) return false
@@ -65,8 +215,7 @@ export default function SessionDetail() {
   const navigate = useNavigate()
   const isDesktop = useIsDesktop()
 
-  const [notFound, setNotFound] = useState(false)
-  const [countdown, setCountdown] = useState(5)
+  const existence = useSessionExistence(name)
 
   const [rightPanel, setRightPanel] = useState<RightPanel>(() => {
     const saved = localStorage.getItem('lumbergh:rightPanel')
@@ -97,17 +246,6 @@ export default function SessionDetail() {
   const [isScratch, setIsScratch] = useState(false)
   const tabSettingsRef = useRef<HTMLDivElement>(null)
   const focusFnRef = useRef<(() => void) | null>(null)
-
-  // Touch session to track last used time + check existence
-  useEffect(() => {
-    if (name) {
-      fetch(`${getApiBase()}/sessions/${name}/touch`, { method: 'POST' })
-        .then((res) => {
-          if (res.status === 404) setNotFound(true)
-        })
-        .catch(() => {})
-    }
-  }, [name])
 
   // Fetch settings (telemetry consent + tab visibility)
   useEffect(() => {
@@ -144,17 +282,6 @@ export default function SessionDetail() {
       })
       .catch(() => {})
   }, [name])
-
-  // Auto-redirect countdown when session not found
-  useEffect(() => {
-    if (!notFound) return
-    if (countdown <= 0) {
-      navigate('/')
-      return
-    }
-    const timer = setTimeout(() => setCountdown((c) => c - 1), 1000)
-    return () => clearTimeout(timer)
-  }, [notFound, countdown, navigate])
 
   // Persist right panel selection
   useEffect(() => {
@@ -657,24 +784,8 @@ export default function SessionDetail() {
     </div>
   )
 
-  if (notFound) {
-    return (
-      <div className="h-full flex flex-col items-center justify-center bg-bg-sunken text-text-primary gap-4">
-        <div className="text-danger text-xl font-semibold">Session Not Found</div>
-        <p className="text-text-tertiary text-sm text-center px-4">
-          The session <span className="text-text-secondary font-mono">"{name}"</span> does not exist
-          or has been deleted.
-        </p>
-        <button
-          onClick={() => navigate('/')}
-          className="px-4 py-2 bg-action hover:brightness-110 text-white rounded text-sm transition-colors"
-        >
-          Go to Dashboard
-        </button>
-        <p className="text-text-tertiary text-xs">Redirecting in {countdown}s...</p>
-      </div>
-    )
-  }
+  const guard = renderExistenceGuard(existence, name, () => navigate('/'))
+  if (guard) return guard
 
   return (
     <div className="h-full flex flex-col bg-bg-sunken text-text-primary">
