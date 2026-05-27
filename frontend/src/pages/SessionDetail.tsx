@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Settings, PanelRightClose, PanelRightOpen, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, Settings, PanelRightClose, AlertTriangle } from 'lucide-react'
 import { getApiBase } from '../config'
 import GlassPanel from '../components/ui/GlassPanel'
 import Button from '../components/ui/Button'
@@ -605,7 +605,7 @@ export default function SessionDetail() {
 
   // mobileTabs is now computed as visibleMobileTabs above
 
-  const renderTerminal = () => (
+  const renderTerminal = (opts?: { onExpandPanel?: () => void }) => (
     <div className="h-full relative" data-testid="terminal-container">
       {name ? (
         <Terminal
@@ -618,6 +618,7 @@ export default function SessionDetail() {
           isVisible={isDesktop || mobileTab === 'terminal'}
           showSummary={showSummary}
           onShowSummary={handleShowSummary}
+          onExpandPanel={opts?.onExpandPanel}
         />
       ) : (
         <div className="flex items-center justify-center h-full text-text-muted">
@@ -804,15 +805,9 @@ export default function SessionDetail() {
         <main className="flex-1 min-h-0">
           {isTerminalOnly ? (
             <div className="h-full relative">
-              {renderTerminal()}
-              <button
-                data-testid="tab-expand"
-                onClick={() => saveSessionTabVisibility({ ...globalTabVisibility })}
-                className="absolute top-2 right-2 p-1.5 rounded bg-bg-surface/80 border border-border-default text-text-tertiary hover:text-text-primary transition-colors backdrop-blur-sm"
-                title="Show side panels"
-              >
-                <PanelRightOpen size={14} />
-              </button>
+              {renderTerminal({
+                onExpandPanel: () => saveSessionTabVisibility({ ...globalTabVisibility }),
+              })}
             </div>
           ) : (
             <ResizablePanes

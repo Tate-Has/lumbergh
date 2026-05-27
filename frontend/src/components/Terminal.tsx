@@ -20,6 +20,7 @@ interface TerminalProps {
   isVisible?: boolean
   showSummary?: boolean
   onShowSummary?: () => void
+  onExpandPanel?: () => void
   hideHeader?: boolean
 }
 
@@ -35,6 +36,7 @@ export default memo(function Terminal({
   isVisible = true,
   showSummary = false,
   onShowSummary,
+  onExpandPanel,
   hideHeader = false,
 }: TerminalProps) {
   const { theme } = useTheme()
@@ -736,6 +738,7 @@ export default memo(function Terminal({
           showSessionDots={showSessionDots}
           showSummary={showSummary}
           onShowSummary={onShowSummary}
+          onExpandPanel={onExpandPanel}
         />
       )}
 

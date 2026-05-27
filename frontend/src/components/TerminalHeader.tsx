@@ -9,6 +9,7 @@ import {
   Brain,
   ExternalLink,
   RefreshCw,
+  PanelRightOpen,
 } from 'lucide-react'
 import Button from './ui/Button'
 import SessionNavigatorDots from './SessionNavigatorDots'
@@ -33,6 +34,7 @@ interface Props {
   showSessionDots?: boolean
   showSummary?: boolean
   onShowSummary?: () => void
+  onExpandPanel?: () => void
 }
 
 export default function TerminalHeader({
@@ -55,6 +57,7 @@ export default function TerminalHeader({
   showSessionDots = true,
   showSummary = false,
   onShowSummary,
+  onExpandPanel,
 }: Props) {
   return (
     <div className="glass border-b border-border-default">
@@ -108,6 +111,7 @@ export default function TerminalHeader({
           onSendViaApi={onSendViaApi}
           onHeaderExpandedChange={onHeaderExpandedChange}
           onShowSummary={onShowSummary}
+          onExpandPanel={onExpandPanel}
         />
       </div>
       {/* Expanded row */}
@@ -141,6 +145,7 @@ function QuickActions({
   onSendViaApi,
   onHeaderExpandedChange,
   onShowSummary,
+  onExpandPanel,
 }: {
   sessionName: string
   isConnected: boolean
@@ -153,6 +158,7 @@ function QuickActions({
   onSendViaApi: (text: string) => void
   onHeaderExpandedChange: (expanded: boolean) => void
   onShowSummary?: () => void
+  onExpandPanel?: () => void
 }) {
   const popOut = () => {
     window.open(
@@ -246,6 +252,16 @@ function QuickActions({
       >
         <MoreHorizontal size={16} />
       </button>
+      {onExpandPanel && (
+        <button
+          data-testid="tab-expand"
+          onClick={onExpandPanel}
+          className="w-8 h-8 rounded-[var(--radius-md)] bg-control-bg hover:bg-control-bg-hover flex items-center justify-center text-text-tertiary hover:text-text-primary transition-colors cursor-pointer"
+          title="Show side panels"
+        >
+          <PanelRightOpen size={14} />
+        </button>
+      )}
     </div>
   )
 }
