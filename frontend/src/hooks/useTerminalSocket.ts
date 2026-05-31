@@ -16,7 +16,10 @@ interface UseTerminalSocketOptions {
 
 interface UseTerminalSocketResult {
   send: (data: string) => void
-  sendResize: (cols: number, rows: number) => void
+  // Returns true if the resize was actually written to an OPEN socket. Callers
+  // use this to avoid caching a "last sent" size that never reached the backend
+  // (e.g. a fit computed while the socket is still CONNECTING).
+  sendResize: (cols: number, rows: number) => boolean
   isConnected: boolean
   error: string | null
   sessionDead: boolean
@@ -157,10 +160,12 @@ export function useTerminalSocket({
     }
   }, [])
 
-  const sendResize = useCallback((cols: number, rows: number) => {
+  const sendResize = useCallback((cols: number, rows: number): boolean => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'resize', cols, rows }))
+      return true
     }
+    return false
   }, [])
 
   useEffect(() => {

@@ -45,7 +45,7 @@ export default memo(function Terminal({
   const termRef = useRef<XTerm | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
   const sendRef = useRef<(data: string) => void>(() => {})
-  const sendResizeRef = useRef<(cols: number, rows: number) => void>(() => {})
+  const sendResizeRef = useRef<(cols: number, rows: number) => boolean>(() => false)
   const sendViaApiRef = useRef<(text: string, sendEnter?: boolean) => Promise<void>>(async () => {})
   // Track last-sent cols/rows so we can dedupe redundant resize sends without
   // suppressing legit small layout shifts that DO cross a column/row boundary.
@@ -267,10 +267,21 @@ export default memo(function Terminal({
       const last = lastSentSizeRef.current
       const willSend = !last || last.cols !== cols || last.rows !== rows
       if (willSend) {
-        lastSentSizeRef.current = { cols, rows }
-        sendResizeRef.current(cols, rows)
+        // Only cache the size as "sent" if it actually reached an OPEN socket.
+        // A fit can fire (via initialFitObserver) before the WebSocket finishes
+        // connecting — e.g. when collapsing the side panel remounts the terminal.
+        // If we cached unconditionally, the dropped resize would still poison the
+        // dedup cache, and the post-connect re-fit would be skipped as a no-op,
+        // leaving tmux stuck at the stale initial size (terminal renders at half
+        // width inside a full-width grid).
+        const delivered = sendResizeRef.current(cols, rows)
+        if (delivered) {
+          lastSentSizeRef.current = { cols, rows }
+        }
+        logFit(cols, rows, delivered)
+      } else {
+        logFit(cols, rows, false)
       }
-      logFit(cols, rows, willSend)
     }
   }, [logFit])
 
