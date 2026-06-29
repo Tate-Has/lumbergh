@@ -622,8 +622,29 @@ export default memo(function Terminal({
     const isMove = (t: string) => t === 'mousemove' || t === 'pointermove'
     const isUp = (t: string) => t === 'mouseup' || t === 'pointerup'
 
+    // eslint-disable-next-line complexity
     const onMouseEvent = (e: MouseEvent | PointerEvent) => {
       if (isTouch || bypass) return
+      // DECSET 1003 (any-event tracking) — which Claude Code's fullscreen
+      // ("no flicker") mouse mode enables, unlike the classic renderer's 1002 —
+      // makes xterm register a persistent bubble-phase mousemove listener that
+      // forwards every bare hover move (no button pressed) to the PTY. That
+      // fires xterm's onUserInput and clears any active text selection the
+      // instant the cursor moves, making highlight-to-copy impossible.
+      //
+      // Faking the force-selection modifier (below) does NOT help here: xterm's
+      // raw forward path forwards motion reports unconditionally and only honors
+      // the modifier on mousedown. So we must stop the event from reaching
+      // xterm's listener entirely. We run in the capture phase on the same
+      // element, so stopPropagation() prevents the bubble-phase forward.
+      //
+      // Gate on an active selection so normal TUI hover highlighting still works
+      // when nothing is selected; once there's a selection, hover stops clearing
+      // it so the user can reach Ctrl/Cmd+C or the right-click copy.
+      if (isMove(e.type) && !e.buttons && termRef.current?.hasSelection()) {
+        e.stopPropagation()
+        return
+      }
       // PointerEvent hover (no button pressed) reports button === -1. If we
       // don't mask those, xterm forwards them to the PTY as mouse-motion
       // reports when the app has DECSET 1003 enabled, which fires xterm's
