@@ -4,7 +4,6 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
 import '@xterm/xterm/css/xterm.css'
-import { ChevronUp, ChevronDown } from 'lucide-react'
 import { useTerminalSocket } from '../hooks/useTerminalSocket'
 import { getApiBase } from '../config'
 import { useTheme } from '../hooks/useTheme'
@@ -145,17 +144,6 @@ export default memo(function Terminal({
     },
     [sessionName]
   )
-
-  // Toggle scroll mode (tmux copy-mode)
-  // Uses tmux commands directly so it works regardless of the user's prefix key
-  const toggleScrollMode = useCallback(() => {
-    if (scrollMode) {
-      sendTmuxCommand('copy-mode-cancel')
-    } else {
-      sendTmuxCommand('copy-mode')
-    }
-    setScrollMode(!scrollMode)
-  }, [scrollMode, sendTmuxCommand])
 
   const handleData = useCallback(
     (data: string) => {
@@ -809,8 +797,6 @@ export default memo(function Terminal({
           headerExpanded={headerExpanded}
           onHeaderExpandedChange={setHeaderExpanded}
           isTouchDevice={isTouchDevice}
-          scrollMode={scrollMode}
-          onToggleScrollMode={toggleScrollMode}
           onSendRaw={(data) => {
             sendRef.current(data)
             termRef.current?.focus()
@@ -853,26 +839,6 @@ export default memo(function Terminal({
               Retry
             </button>
           </div>
-        </div>
-      )}
-
-      {/* Scroll controls overlay - shown when in scroll mode on touch devices */}
-      {isTouchDevice && scrollMode && (
-        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex flex-col gap-2 z-10">
-          <button
-            onClick={() => sendTmuxCommand('page-up')}
-            className="w-14 h-14 bg-warning/90 hover:bg-warning rounded-lg flex items-center justify-center shadow-lg"
-            title="Page Up"
-          >
-            <ChevronUp size={24} />
-          </button>
-          <button
-            onClick={() => sendTmuxCommand('page-down')}
-            className="w-14 h-14 bg-warning/90 hover:bg-warning rounded-lg flex items-center justify-center shadow-lg"
-            title="Page Down"
-          >
-            <ChevronDown size={24} />
-          </button>
         </div>
       )}
 

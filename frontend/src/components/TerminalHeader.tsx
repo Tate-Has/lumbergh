@@ -21,8 +21,6 @@ interface Props {
   headerExpanded: boolean
   onHeaderExpandedChange: (expanded: boolean) => void
   isTouchDevice: boolean
-  scrollMode: boolean
-  onToggleScrollMode: () => void
   onSendRaw: (data: string) => void
   onSendViaApi: (text: string) => void
   onSendTmuxCommand: (command: string) => void
@@ -43,8 +41,6 @@ export default function TerminalHeader({
   headerExpanded,
   onHeaderExpandedChange,
   isTouchDevice,
-  scrollMode,
-  onToggleScrollMode,
   onSendRaw,
   onSendViaApi,
   onSendTmuxCommand,
@@ -100,10 +96,8 @@ export default function TerminalHeader({
           sessionName={sessionName}
           isConnected={isConnected}
           isTouchDevice={isTouchDevice}
-          scrollMode={scrollMode}
           headerExpanded={headerExpanded}
           showSummary={showSummary}
-          onToggleScrollMode={onToggleScrollMode}
           onSendRaw={onSendRaw}
           onSendViaApi={onSendViaApi}
           onHeaderExpandedChange={onHeaderExpandedChange}
@@ -116,7 +110,6 @@ export default function TerminalHeader({
           fontSize={fontSize}
           onFontSizeChange={onFontSizeChange}
           isConnected={isConnected}
-          isTouchDevice={isTouchDevice}
           onSendRaw={onSendRaw}
           onSendViaApi={onSendViaApi}
           onSendTmuxCommand={onSendTmuxCommand}
@@ -133,10 +126,8 @@ function QuickActions({
   sessionName,
   isConnected,
   isTouchDevice,
-  scrollMode,
   headerExpanded,
   showSummary,
-  onToggleScrollMode,
   onSendRaw,
   onSendViaApi,
   onHeaderExpandedChange,
@@ -145,10 +136,8 @@ function QuickActions({
   sessionName: string
   isConnected: boolean
   isTouchDevice: boolean
-  scrollMode: boolean
   headerExpanded: boolean
   showSummary?: boolean
-  onToggleScrollMode: () => void
   onSendRaw: (data: string) => void
   onSendViaApi: (text: string) => void
   onHeaderExpandedChange: (expanded: boolean) => void
@@ -181,28 +170,6 @@ function QuickActions({
           <Brain size={14} className="text-purple" />
         </button>
       )}
-      {isTouchDevice &&
-        (scrollMode ? (
-          <Button
-            variant="warning"
-            size="sm"
-            onClick={onToggleScrollMode}
-            disabled={!isConnected}
-            title="Exit scroll mode (q)"
-          >
-            Exit
-          </Button>
-        ) : (
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={onToggleScrollMode}
-            disabled={!isConnected}
-            title="Enter scroll mode (copy-mode)"
-          >
-            Scroll
-          </Button>
-        ))}
       <Button
         variant="danger"
         size="sm"
@@ -254,7 +221,6 @@ function ExpandedRow({
   fontSize,
   onFontSizeChange,
   isConnected,
-  isTouchDevice,
   onSendRaw,
   onSendViaApi,
   onSendTmuxCommand,
@@ -265,7 +231,6 @@ function ExpandedRow({
   fontSize: number
   onFontSizeChange: (size: number) => void
   isConnected: boolean
-  isTouchDevice: boolean
   onSendRaw: (data: string) => void
   onSendViaApi: (text: string) => void
   onSendTmuxCommand: (command: string) => void
@@ -338,19 +303,6 @@ function ExpandedRow({
         >
           + Window
         </Button>
-        {isTouchDevice && (
-          <Button
-            variant="warning"
-            size="sm"
-            onClick={() => {
-              onSendRaw('q')
-              onCollapse()
-            }}
-            title="Exit scroll mode (press if stuck in scroll)"
-          >
-            Exit Scroll
-          </Button>
-        )}
         <button
           onClick={() => {
             onFit()
