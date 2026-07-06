@@ -577,12 +577,77 @@ export default memo(function Terminal({
       }
     }
 
+    // Flag set while we dispatch synthetic wheel events for touch scrolling
+    // (below). Those go to the app via xterm's encoder, NOT tmux copy-mode, so
+    // onWheel must ignore them or it would wrongly flip the copy-mode UI on.
+    let synthWheel = false
+
     // Detect scroll-up to immediately flag copy-mode entry
     // (tmux enters copy-mode on scroll-up when mouse mode is on)
     const onWheel = (e: WheelEvent) => {
+      if (synthWheel) return
       if (e.deltaY < 0 && !scrollModeRef.current) {
         setScrollMode(true)
       }
+    }
+
+    // Touch-drag to scroll (mobile). Claude Code now runs in the alternate
+    // screen with mouse tracking on and keeps its own scrollback — tmux history
+    // stays empty (hist=0), so tmux copy-mode has nothing to scroll. Instead we
+    // translate a one-finger vertical drag into wheel events dispatched through
+    // xterm's own encoder: the exact path desktop mouse-wheel already uses.
+    // xterm forwards these as mouse-wheel reports so Claude Code scrolls itself.
+    // On a plain shell (no mouse mode) xterm attaches no wheel listener, so the
+    // synthetic events are inert and those panes keep using the copy-mode buttons.
+    // A mouse-mode app (Claude Code) gets ONE wheel report per wheel event, no
+    // matter the deltaY — so speed is controlled by how many events we emit per
+    // drag, not by delta magnitude. WHEEL_NOTCH_PX = pixels of drag per emitted
+    // event; STEPS_PER_NOTCH = how many wheel reports each notch fires.
+    const WHEEL_NOTCH_PX = 18
+    const STEPS_PER_NOTCH = 6
+    let touchLastY = 0
+    let touchAccum = 0
+    let touchScrolling = false
+
+    const dispatchWheel = (clientX: number, clientY: number, deltaY: number) => {
+      synthWheel = true
+      for (let i = 0; i < STEPS_PER_NOTCH; i++) {
+        term.element?.dispatchEvent(
+          new WheelEvent('wheel', {
+            deltaY,
+            deltaMode: 0,
+            clientX,
+            clientY,
+            bubbles: true,
+            cancelable: true,
+          })
+        )
+      }
+      synthWheel = false
+    }
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length !== 1) return
+      touchLastY = e.touches[0].clientY
+      touchAccum = 0
+      touchScrolling = false
+    }
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length !== 1) return
+      const { clientX, clientY } = e.touches[0]
+      touchAccum += clientY - touchLastY
+      touchLastY = clientY
+      // Finger dragging DOWN (positive delta) reveals older content → wheel up.
+      while (Math.abs(touchAccum) >= WHEEL_NOTCH_PX) {
+        const up = touchAccum > 0
+        dispatchWheel(clientX, clientY, up ? -WHEEL_NOTCH_PX : WHEEL_NOTCH_PX)
+        touchAccum += up ? -WHEEL_NOTCH_PX : WHEEL_NOTCH_PX
+        touchScrolling = true
+      }
+      // Only claim the gesture (blocking page scroll / pull-to-refresh) once we
+      // are actually scrolling the terminal, so taps-to-focus still work.
+      if (touchScrolling) e.preventDefault()
     }
 
     const el = term.element
@@ -599,6 +664,12 @@ export default memo(function Terminal({
     if (el && !isTouch) {
       for (const evt of interceptEvents) el.addEventListener(evt, onMouseEvent, true)
     }
+    // Touch-drag scrolling (touch devices only). touchmove must be non-passive
+    // so we can preventDefault once the gesture is recognized as a scroll.
+    if (el && isTouch) {
+      el.addEventListener('touchstart', onTouchStart, { passive: true })
+      el.addEventListener('touchmove', onTouchMove, { passive: false })
+    }
     // Wheel listener for all devices (copy-mode detection)
     el?.addEventListener('wheel', onWheel, true)
 
@@ -608,6 +679,10 @@ export default memo(function Terminal({
       term.element?.removeEventListener('focusout', handleBlur)
       if (el && !isTouch) {
         for (const evt of interceptEvents) el.removeEventListener(evt, onMouseEvent, true)
+      }
+      if (el && isTouch) {
+        el.removeEventListener('touchstart', onTouchStart)
+        el.removeEventListener('touchmove', onTouchMove)
       }
       el?.removeEventListener('wheel', onWheel, true)
       term.dispose()
