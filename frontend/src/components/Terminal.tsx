@@ -597,7 +597,16 @@ export default memo(function Terminal({
     let touchAccum = 0
     let touchScrolling = false
 
-    const dispatchWheel = (clientX: number, clientY: number, deltaY: number) => {
+    // Anchor every wheel report to a fixed cell in the upper/transcript region
+    // rather than the finger position. Claude Code routes a wheel over its input
+    // box to command/input history instead of scrolling the conversation, so a
+    // drag that starts (or moves) over the lower input area would never scroll
+    // the transcript. Targeting near the top keeps all scrolling on the history.
+    const dispatchWheel = (deltaY: number) => {
+      const rect = term.element?.getBoundingClientRect()
+      if (!rect) return
+      const clientX = rect.left + rect.width / 2
+      const clientY = rect.top + rect.height * 0.25
       synthWheel = true
       for (let i = 0; i < STEPS_PER_NOTCH; i++) {
         term.element?.dispatchEvent(
@@ -623,13 +632,13 @@ export default memo(function Terminal({
 
     const onTouchMove = (e: TouchEvent) => {
       if (e.touches.length !== 1) return
-      const { clientX, clientY } = e.touches[0]
+      const { clientY } = e.touches[0]
       touchAccum += clientY - touchLastY
       touchLastY = clientY
       // Finger dragging DOWN (positive delta) reveals older content → wheel up.
       while (Math.abs(touchAccum) >= WHEEL_NOTCH_PX) {
         const up = touchAccum > 0
-        dispatchWheel(clientX, clientY, up ? -WHEEL_NOTCH_PX : WHEEL_NOTCH_PX)
+        dispatchWheel(up ? -WHEEL_NOTCH_PX : WHEEL_NOTCH_PX)
         touchAccum += up ? -WHEEL_NOTCH_PX : WHEEL_NOTCH_PX
         touchScrolling = true
       }
