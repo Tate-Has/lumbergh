@@ -9,6 +9,35 @@ import { getApiBase } from '../config'
 import { useTheme } from '../hooks/useTheme'
 import TerminalHeader from './TerminalHeader'
 
+// Copy text to the clipboard, falling back to a hidden-textarea execCommand
+// when the async Clipboard API is unavailable. Lumbergh is frequently opened
+// over plain http on a LAN IP (phones/tablets), which is not a secure context,
+// so navigator.clipboard is undefined there — the fallback covers that case.
+async function copyToClipboard(text: string): Promise<void> {
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(text)
+      return
+    } catch {
+      // Fall through to the execCommand path (e.g. permission denied)
+    }
+  }
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.style.position = 'fixed'
+  textarea.style.top = '0'
+  textarea.style.left = '0'
+  textarea.style.opacity = '0'
+  document.body.appendChild(textarea)
+  textarea.focus()
+  textarea.select()
+  try {
+    if (!document.execCommand('copy')) throw new Error('execCommand copy failed')
+  } finally {
+    document.body.removeChild(textarea)
+  }
+}
+
 interface TerminalProps {
   sessionName: string
   onSendReady?: (send: ((data: string) => void) | null) => void
@@ -82,6 +111,14 @@ export default memo(function Terminal({
   // Track whether a remote client resized the PTY (cleared on local re-fit)
   const remotelySizedRef = useRef(false)
 
+  // Selection freeze: Claude Code's fullscreen TUI runs a constantly-redrawing
+  // spinner/status line. Every redraw that touches the selected rows makes
+  // xterm drop the selection, so a drag-select gets wiped before it can be
+  // copied. While the mouse button is held we buffer incoming output here and
+  // flush it on release, keeping the screen stable long enough to select.
+  const suppressWritesRef = useRef(false)
+  const writeQueueRef = useRef<string[]>([])
+
   // Font size state with localStorage persistence
   const [fontSize, setFontSize] = useState(() => {
     const saved = localStorage.getItem('terminal-font-size')
@@ -98,8 +135,18 @@ export default memo(function Terminal({
   const [scrollMode, setScrollMode] = useState(false)
   const scrollModeRef = useRef(false)
 
-  // Track terminal focus (for click shield on desktop)
+  // Track terminal focus (for focus-border styling on desktop)
   const [hasFocus, setHasFocus] = useState(false)
+
+  // Brief "Copied" confirmation shown after a drag-select copies to clipboard
+  const [copied, setCopied] = useState(false)
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(
+    () => () => {
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current)
+    },
+    []
+  )
 
   // Detect touch device (hide scroll controls on desktop)
   const [isTouchDevice] = useState(() => {
@@ -185,6 +232,12 @@ export default memo(function Terminal({
           `[term ${sessionName}] +${(now - mountedAtRef.current).toFixed(0)}ms write ${data.length}B (xterm ${termRef.current?.cols}x${termRef.current?.rows})`,
           data.length < 200 ? JSON.stringify(data) : `[${data.length}B — call __termRawDump()]`
         )
+      }
+      // While a selection drag is in progress, queue output instead of writing
+      // it so the frozen screen keeps the selection intact. Flushed on release.
+      if (suppressWritesRef.current) {
+        writeQueueRef.current.push(data)
+        return
       }
       termRef.current?.write(data)
     },
@@ -500,6 +553,55 @@ export default memo(function Terminal({
     let clickStartY = 0
     let isClick = false
 
+    // Freeze/thaw output around a drag-select so it survives Claude Code's live
+    // redraws: while frozen, incoming output is buffered (see handleData) and
+    // flushed on thaw. We freeze only once a real drag is detected (never on a
+    // plain click) and thaw on a window-level pointerup/mouseup, so a click can
+    // never leave output stuck and a release outside the terminal still thaws.
+    let freezeTimer: ReturnType<typeof setTimeout> | null = null
+    const beginFreeze = () => {
+      if (suppressWritesRef.current) return
+      suppressWritesRef.current = true
+      // Safety net: thaw unconditionally if no release event ever reaches us.
+      if (freezeTimer) clearTimeout(freezeTimer)
+      freezeTimer = setTimeout(thawAndCopy, 4000)
+    }
+    const thawAndCopy = () => {
+      if (freezeTimer) {
+        clearTimeout(freezeTimer)
+        freezeTimer = null
+      }
+      if (!suppressWritesRef.current) return
+      // Read the selection directly at release. xterm's onSelectionChange
+      // reports empty mid-drag, but term.getSelection() (with a DOM-selection
+      // fallback) is populated by the time the button is released.
+      const selText = term.getSelection() || (window.getSelection()?.toString() ?? '')
+      if (selText) {
+        copyToClipboard(selText)
+          .then(() => {
+            setCopied(true)
+            if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current)
+            copiedTimerRef.current = setTimeout(() => setCopied(false), 1200)
+          })
+          .catch((err) => {
+            if (debugEnabledRef.current) console.warn(`[term ${sessionName}] copy failed`, err)
+          })
+          .finally(() => {
+            // The execCommand fallback focuses a temp textarea; return focus.
+            term.focus()
+          })
+      }
+      suppressWritesRef.current = false
+      const queued = writeQueueRef.current
+      writeQueueRef.current = []
+      for (const chunk of queued) term.write(chunk)
+    }
+    // Guaranteed thaw on release regardless of where the button comes up or
+    // which branch the capture handler took. Idempotent: no-op when not frozen.
+    const onWindowPointerUp = () => {
+      if (suppressWritesRef.current) thawAndCopy()
+    }
+
     // xterm.js checks different modifier keys per platform to force selection:
     //   macOS: event.altKey (+ macOptionClickForcesSelection option)
     //   Linux/Windows: event.shiftKey
@@ -526,11 +628,17 @@ export default memo(function Terminal({
         } else if (isMove(e.type) && isClick) {
           const dx = e.clientX - clickStartX
           const dy = e.clientY - clickStartY
-          if (dx * dx + dy * dy > 25) isClick = false
+          // Crossed the drag threshold: this is a selection, not a click. Freeze
+          // output now so a spinner redraw can't wipe the in-progress selection.
+          if (dx * dx + dy * dy > 25) {
+            isClick = false
+            beginFreeze()
+          }
         } else if (isUp(e.type) && isClick) {
+          // Plain click (no drag): replay it unmodified so tmux sees it (e.g.
+          // tab switching). No freeze was started, so there is nothing to thaw.
           isClick = false
           fakeShift(e)
-          // Replay unmodified click so tmux sees it (e.g. tab switching)
           bypass = true
           const target = e.target as Element
           target.dispatchEvent(
@@ -556,6 +664,9 @@ export default memo(function Terminal({
           bypass = false
           return
         }
+        // A drag's mouseup falls through to here: fakeShift so xterm finalizes
+        // the selection instead of reporting the click to tmux. Thaw + copy are
+        // handled by onWindowPointerUp.
         fakeShift(e)
       } else if (e.button === 1 || e.button === 2) {
         // Middle-click (1): prevent tmux from seeing it so only the browser's
@@ -669,8 +780,19 @@ export default memo(function Terminal({
     }
     // Wheel listener for all devices (copy-mode detection)
     el?.addEventListener('wheel', onWheel, true)
+    // Thaw on release anywhere (desktop) so a drag that ends off the terminal
+    // still flushes buffered output and copies the selection.
+    if (!isTouch) {
+      window.addEventListener('pointerup', onWindowPointerUp)
+      window.addEventListener('mouseup', onWindowPointerUp)
+    }
 
     return () => {
+      // Reset the selection-freeze state so an unmount mid-drag doesn't leave
+      // the next session's terminal buffering output forever.
+      if (freezeTimer) clearTimeout(freezeTimer)
+      suppressWritesRef.current = false
+      writeQueueRef.current = []
       initialFitObserver.disconnect()
       term.element?.removeEventListener('focusin', handleFocus)
       term.element?.removeEventListener('focusout', handleBlur)
@@ -682,6 +804,10 @@ export default memo(function Terminal({
         el.removeEventListener('touchmove', onTouchMove)
       }
       el?.removeEventListener('wheel', onWheel, true)
+      if (!isTouch) {
+        window.removeEventListener('pointerup', onWindowPointerUp)
+        window.removeEventListener('mouseup', onWindowPointerUp)
+      }
       term.dispose()
       termRef.current = null
       fitAddonRef.current = null
@@ -879,15 +1005,11 @@ export default memo(function Terminal({
             </div>
           </div>
         )}
-        {/* Focus click shield - intercepts first click to focus without triggering tmux selection */}
-        {!isTouchDevice && !hasFocus && (
-          <div
-            className="absolute inset-0 z-10 cursor-text"
-            onMouseDown={(e) => {
-              e.preventDefault()
-              termRef.current?.focus()
-            }}
-          />
+        {/* Copy confirmation flash (desktop drag-select copy-on-release) */}
+        {copied && (
+          <div className="absolute top-1 left-1/2 -translate-x-1/2 z-20 px-2 py-0.5 bg-black/80 text-success text-xs rounded pointer-events-none">
+            Copied
+          </div>
         )}
         <div ref={containerRef} data-testid="xterm-container" className="h-full w-full" />
       </div>
