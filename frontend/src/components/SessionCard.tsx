@@ -164,7 +164,7 @@ export default function SessionCard({ session, onDelete, onUpdate, onReset, clou
     e.stopPropagation()
     if (
       confirm(
-        `⚠️ Reset "${session.name}"?\n\nThis will:\n• Close ALL tmux windows and terminals\n• Kill any running processes\n• Start a fresh Claude session\n\nAny unsaved work will be lost!`
+        `⚠️ Reset "${session.name}"?\n\nThis will:\n• Close ALL tmux windows and terminals\n• Kill any running processes\n• Start a fresh agent session\n\nAny unsaved work will be lost!`
       )
     ) {
       onReset(session.name)

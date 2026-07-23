@@ -267,14 +267,14 @@ function ExpandedRow({
             onClick={() => {
               if (
                 confirm(
-                  '⚠️ Reset this session?\n\nThis will:\n• Close ALL tmux windows and terminals\n• Kill any running processes\n• Start a fresh Claude session\n\nAny unsaved work will be lost!'
+                  '⚠️ Reset this session?\n\nThis will:\n• Close ALL tmux windows and terminals\n• Kill any running processes\n• Start a fresh agent session\n\nAny unsaved work will be lost!'
                 )
               ) {
                 onReset()
                 onCollapse()
               }
             }}
-            title="Reset session (close all windows and restart Claude)"
+            title="Reset session (close all windows and restart the agent)"
           >
             Reset
           </Button>

@@ -10,6 +10,7 @@ PROVIDERS: dict[str, dict[str, str]] = {
     "gemini-cli": {"launch": "gemini", "label": "Gemini CLI"},
     "aider": {"launch": "aider", "label": "Aider"},
     "codex": {"launch": "codex", "label": "Codex CLI"},
+    "pi": {"launch": "pi", "label": "Pi"},
 }
 
 DEFAULT_PROVIDER = "claude-code"

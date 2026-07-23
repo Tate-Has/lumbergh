@@ -7,6 +7,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   'gemini-cli': 'Gemini CLI',
   aider: 'Aider',
   codex: 'Codex CLI',
+  pi: 'Pi',
 }
 
 interface Props {

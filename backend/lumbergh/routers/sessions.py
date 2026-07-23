@@ -781,7 +781,7 @@ async def create_scratch_session():
 
 @router.post("/{name}/reset")
 async def reset_session(name: str):
-    """Reset a session: kill all windows and start fresh with venv + claude."""
+    """Reset a session: kill all windows and start fresh with venv + agent."""
     live = get_live_sessions()
     stored = get_stored_sessions()
 
@@ -940,7 +940,7 @@ def _kill_pane_children(pane_pid: str) -> None:
 
 @router.post("/{name}/pause")
 async def pause_session(name: str, force: bool = False):
-    """Pause a session by killing the Claude Code process (and its MCP children).
+    """Pause a session by killing the agent process (and its MCP children).
 
     If the pane has more than one child process (e.g. extra shells the user
     started), responds 409 with the list of extras so the UI can confirm.
@@ -979,7 +979,7 @@ async def pause_session(name: str, force: bool = False):
 
 @router.post("/{name}/resume")
 async def resume_session(name: str):
-    """Resume a paused session by restarting Claude Code with --continue.
+    """Resume a paused session by restarting the agent using its provider launch command.
 
     Any lingering child processes from the previous run are killed before the
     agent is relaunched — the user has already chosen to resume, so there's
