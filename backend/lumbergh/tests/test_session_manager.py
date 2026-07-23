@@ -5,12 +5,13 @@ failures without killing the child, leaking stdout/stderr pipes until the
 backend hit EMFILE. These tests lock down the kill+reap contract.
 """
 
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from pytest_mock import MockerFixture
 
-from lumbergh.session_manager import SessionManager
+from lumbergh.session_manager import ManagedSession, SessionManager, TerminalClient
 
 
 def _make_proc(stdout: bytes = b"", returncode: int | None = None) -> MagicMock:
@@ -114,3 +115,89 @@ def _reset_singleton() -> None:
     """SessionManager is a singleton — clear _sessions between tests."""
     mgr = SessionManager()
     mgr._sessions.clear()
+
+
+def _fake_pty() -> MagicMock:
+    pty = MagicMock()
+    pty.cols = 80
+    pty.rows = 24
+
+    def resize(cols: int, rows: int) -> None:
+        pty.cols, pty.rows = cols, rows
+
+    pty.resize.side_effect = resize
+    return pty
+
+
+def _register(mgr: SessionManager, name: str, *clients: AsyncMock) -> ManagedSession:
+    managed = ManagedSession(pty=_fake_pty())
+    managed.clients.update(cast("tuple[TerminalClient, ...]", clients))
+    mgr._sessions[name] = managed
+    return managed
+
+
+def _last_sync(client: AsyncMock) -> tuple[int, int] | None:
+    """Return (cols, rows) of the most recent resize_sync sent to a client."""
+    for call in reversed(client.send_json.call_args_list):
+        msg = call.args[0]
+        if msg.get("type") == "resize_sync":
+            return (msg["cols"], msg["rows"])
+    return None
+
+
+async def test_latest_active_device_wins_shared_size() -> None:
+    """Desktop is active first; then the phone activates. The phone (latest
+    active) drives the shared window and every client is synced to its size."""
+    mgr = SessionManager()
+    desktop, phone = AsyncMock(), AsyncMock()
+    managed = _register(mgr, "s", desktop, phone)
+
+    await mgr.handle_client_message("s", {"type": "activate", "cols": 200, "rows": 50}, desktop)
+    await mgr.handle_client_message("s", {"type": "activate", "cols": 48, "rows": 40}, phone)
+
+    assert (managed.pty.cols, managed.pty.rows) == (48, 40)
+    assert _last_sync(desktop) == (48, 40)
+
+
+async def test_backgrounded_device_yields_window_to_remaining_device() -> None:
+    """When the active phone backgrounds, the desktop reclaims the window and
+    all clients are resized back to the desktop's size."""
+    mgr = SessionManager()
+    desktop, phone = AsyncMock(), AsyncMock()
+    managed = _register(mgr, "s", desktop, phone)
+
+    await mgr.handle_client_message("s", {"type": "activate", "cols": 200, "rows": 50}, desktop)
+    await mgr.handle_client_message("s", {"type": "activate", "cols": 48, "rows": 40}, phone)
+    await mgr.handle_client_message("s", {"type": "deactivate"}, phone)
+
+    assert (managed.pty.cols, managed.pty.rows) == (200, 50)
+    assert _last_sync(phone) == (200, 50)
+
+
+async def test_background_resize_does_not_steal_window() -> None:
+    """A resize from a backgrounded device updates its stored size but must not
+    yank the window away from the active device."""
+    mgr = SessionManager()
+    desktop, phone = AsyncMock(), AsyncMock()
+    managed = _register(mgr, "s", desktop, phone)
+
+    await mgr.handle_client_message("s", {"type": "activate", "cols": 48, "rows": 40}, phone)
+    # Desktop never activated (background tab) but reports a layout change.
+    await mgr.handle_client_message("s", {"type": "resize", "cols": 200, "rows": 50}, desktop)
+
+    assert (managed.pty.cols, managed.pty.rows) == (48, 40)
+
+
+async def test_disconnect_lets_remaining_device_reclaim_window() -> None:
+    """Unregistering the active device hands the window to whoever is left."""
+    mgr = SessionManager()
+    desktop, phone = AsyncMock(), AsyncMock()
+    managed = _register(mgr, "s", desktop, phone)
+
+    await mgr.handle_client_message("s", {"type": "activate", "cols": 200, "rows": 50}, desktop)
+    await mgr.handle_client_message("s", {"type": "activate", "cols": 48, "rows": 40}, phone)
+
+    await mgr.unregister_client("s", phone)
+
+    assert (managed.pty.cols, managed.pty.rows) == (200, 50)
+    assert _last_sync(desktop) == (200, 50)

@@ -37,6 +37,17 @@ class ManagedSession:
     clients: set[TerminalClient] = field(default_factory=set)
     read_task: asyncio.Task | None = None
     copy_mode_task: asyncio.Task | None = None
+    # "Latest active device wins" sizing. A tmux window has one size for every
+    # client, so when the same session is open on e.g. a phone and a desktop we
+    # can't show both at their native size at once. Instead the most recently
+    # activated (focused/foregrounded) client drives the shared size; the others
+    # reflow to match via resize_sync. Backgrounded clients drop out of
+    # ``active_clients`` so the remaining device reclaims the window.
+    client_sizes: dict[TerminalClient, tuple[int, int]] = field(default_factory=dict)
+    active_clients: set[TerminalClient] = field(default_factory=set)
+    activity_seq: dict[TerminalClient, int] = field(default_factory=dict)
+    seq_counter: int = 0
+    applied_size: tuple[int, int] | None = None
 
 
 class SessionManager:
@@ -144,34 +155,49 @@ class SessionManager:
         # to the reconstructed capture-pane snapshot (which can't reproduce the
         # status bar/borders — the source of the "missing decorations" repaint).
         if not is_new_pty:
-            loop = asyncio.get_event_loop()
-            try:
-                refreshed = await loop.run_in_executor(None, refresh_client, session_name)
-            except Exception as e:
-                logger.warning(f"refresh-client failed for {session_name}: {e}")
-                refreshed = False
-            if not refreshed:
-                try:
-                    content = await loop.run_in_executor(None, capture_pane_content, session_name)
-                    if content:
-                        await websocket.send_json({"type": "output", "data": content})
-                        logger.info(f"Sent initial pane capture to client ({len(content)} chars)")
-                except Exception as e:
-                    logger.warning(f"Failed to send initial pane capture: {e}")
+            await self._send_initial_repaint(session_name, websocket)
 
         return managed
+
+    async def _send_initial_repaint(self, session_name: str, websocket: TerminalClient) -> None:
+        """Repaint a client joining an already-attached (pooled) PTY.
+
+        Prefers a native ``tmux refresh-client`` redraw (pane + status bar +
+        borders); falls back to the reconstructed capture-pane snapshot (which
+        can't reproduce the status bar/borders) only when no client is attached
+        for tmux to redraw.
+        """
+        loop = asyncio.get_event_loop()
+        try:
+            refreshed = await loop.run_in_executor(None, refresh_client, session_name)
+        except Exception as e:
+            logger.warning(f"refresh-client failed for {session_name}: {e}")
+            refreshed = False
+        if refreshed:
+            return
+        try:
+            content = await loop.run_in_executor(None, capture_pane_content, session_name)
+            if content:
+                await websocket.send_json({"type": "output", "data": content})
+                logger.info(f"Sent initial pane capture to client ({len(content)} chars)")
+        except Exception as e:
+            logger.warning(f"Failed to send initial pane capture: {e}")
 
     async def unregister_client(self, session_name: str, websocket: TerminalClient) -> None:
         """
         Unregister a WebSocket client.
         Closes the PTY if this was the last client.
         """
+        still_connected = False
         async with self._lock:
             if session_name not in self._sessions:
                 return
 
             managed = self._sessions[session_name]
             managed.clients.discard(websocket)
+            managed.client_sizes.pop(websocket, None)
+            managed.active_clients.discard(websocket)
+            managed.activity_seq.pop(websocket, None)
 
             logger.info(f"Session {session_name}: {len(managed.clients)} client(s) remaining")
 
@@ -195,6 +221,14 @@ class SessionManager:
 
                 managed.pty.close()
                 del self._sessions[session_name]
+            else:
+                still_connected = True
+
+        # A device left — let the most-recently-active remaining device reclaim
+        # the window size (done outside the lock so the resize_sync sends don't
+        # block other register/unregister calls).
+        if still_connected:
+            await self._apply_active_size(session_name)
 
     async def _check_eof(
         self, session_name: str, managed: ManagedSession, consecutive_eof: int
@@ -429,33 +463,94 @@ class SessionManager:
 
         managed = self._sessions[session_name]
 
-        if message.get("type") == "input":
+        mtype = message.get("type")
+        if mtype == "input":
             data = message.get("data", "")
             if data:
                 await managed.pty.write_async(data.encode("utf-8"))
 
-        elif message.get("type") == "refresh":
+        elif mtype == "refresh":
             # Client asked for a repaint (session switch/activate, Fit button).
             # Force a native tmux redraw so decorations come back — see
             # refresh_client for why this beats a reconstructed snapshot.
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(None, refresh_client, session_name)
 
-        elif message.get("type") == "resize":
-            cols = message.get("cols", 80)
-            rows = message.get("rows", 24)
-            managed.pty.resize(cols, rows)
+        elif mtype in ("resize", "activate", "deactivate"):
+            await self._handle_sizing_message(session_name, managed, mtype, message, sender)
 
-            # Notify all OTHER clients so they can sync their terminal dimensions
-            # This prevents garbled text when multiple clients have different sizes
-            if sender and len(managed.clients) > 1:
-                sync_msg = {"type": "resize_sync", "cols": cols, "rows": rows}
-                for client in list(managed.clients):
-                    if client is not sender:
-                        try:
-                            await client.send_json(sync_msg)
-                        except Exception:  # noqa: S110 - best-effort sync
-                            pass
+    async def _handle_sizing_message(
+        self,
+        session_name: str,
+        managed: ManagedSession,
+        mtype: str,
+        message: dict,
+        sender: TerminalClient | None,
+    ) -> None:
+        """Update per-client sizing state, then re-apply "latest active wins".
+
+        - ``resize``: record this device's viewport; only bump its activity
+          while it's active so a background tab's stale layout can't yank the
+          focused device.
+        - ``activate``: device came to the foreground / gained focus — it wins.
+        - ``deactivate``: device backgrounded — stop it voting so a remaining
+          device reclaims the window.
+        """
+        if sender is not None:
+            if mtype == "resize":
+                managed.client_sizes[sender] = (message.get("cols", 80), message.get("rows", 24))
+                if sender in managed.active_clients:
+                    managed.seq_counter += 1
+                    managed.activity_seq[sender] = managed.seq_counter
+            elif mtype == "activate":
+                cols, rows = message.get("cols"), message.get("rows")
+                if cols and rows:
+                    managed.client_sizes[sender] = (cols, rows)
+                managed.active_clients.add(sender)
+                managed.seq_counter += 1
+                managed.activity_seq[sender] = managed.seq_counter
+            elif mtype == "deactivate":
+                managed.active_clients.discard(sender)
+        await self._apply_active_size(session_name)
+
+    async def _apply_active_size(self, session_name: str) -> None:
+        """Resize the shared PTY to the most-recently-active client's size.
+
+        Implements "latest active device wins": the winner is the active client
+        with the highest activity sequence; if every client is backgrounded we
+        keep the last known winner (highest sequence overall) so the window
+        doesn't collapse to nothing. When the winning size changes, resize the
+        PTY and tell every client (including the winner, whose grid may have
+        been shrunk by a previous winner) to match.
+        """
+        managed = self._sessions.get(session_name)
+        if managed is None:
+            return
+
+        candidates = [c for c in managed.active_clients if c in managed.client_sizes]
+        if not candidates:
+            candidates = list(managed.client_sizes)
+        if not candidates:
+            return
+
+        winner = max(candidates, key=lambda c: managed.activity_seq.get(c, 0))
+        size = managed.client_sizes[winner]
+        if size == managed.applied_size:
+            return
+
+        managed.applied_size = size
+        cols, rows = size
+        try:
+            managed.pty.resize(cols, rows)
+        except Exception as e:
+            logger.warning(f"PTY resize failed for {session_name}: {e}")
+
+        sync_msg = {"type": "resize_sync", "cols": cols, "rows": rows}
+        for client in list(managed.clients):
+            try:
+                await client.send_json(sync_msg)
+            except Exception:  # noqa: S110 - best-effort sync
+                pass
 
     def get_session(self, session_name: str) -> ManagedSession | None:
         """Get a managed session by name."""

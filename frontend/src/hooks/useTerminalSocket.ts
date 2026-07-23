@@ -17,6 +17,8 @@ interface UseTerminalSocketResult {
   send: (data: string) => void
   sendResize: (cols: number, rows: number) => void
   sendRefresh: () => void
+  sendActivate: (cols?: number, rows?: number) => void
+  sendDeactivate: () => void
   isConnected: boolean
   error: string | null
   sessionDead: boolean
@@ -167,6 +169,23 @@ export function useTerminalSocket({
     }
   }, [])
 
+  // Claim the shared tmux window size for this device ("latest active wins").
+  // Sent on connect, foreground, and focus so picking up a phone (or clicking
+  // back to the desktop) reshapes the window to the device you're using.
+  const sendActivate = useCallback((cols?: number, rows?: number) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'activate', cols, rows }))
+    }
+  }, [])
+
+  // Stop this device from driving the size once it's backgrounded, so the
+  // remaining active device reclaims the window.
+  const sendDeactivate = useCallback(() => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'deactivate' }))
+    }
+  }, [])
+
   useEffect(() => {
     connect()
 
@@ -222,5 +241,14 @@ export function useTerminalSocket({
     }
   }, [connect])
 
-  return { send, sendResize, sendRefresh, isConnected, error, sessionDead }
+  return {
+    send,
+    sendResize,
+    sendRefresh,
+    sendActivate,
+    sendDeactivate,
+    isConnected,
+    error,
+    sessionDead,
+  }
 }

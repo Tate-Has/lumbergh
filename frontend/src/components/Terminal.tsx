@@ -73,6 +73,8 @@ export default memo(function Terminal({
   const sendRef = useRef<(data: string) => void>(() => {})
   const sendResizeRef = useRef<(cols: number, rows: number) => void>(() => {})
   const sendRefreshRef = useRef<() => void>(() => {})
+  const sendActivateRef = useRef<(cols?: number, rows?: number) => void>(() => {})
+  const sendDeactivateRef = useRef<() => void>(() => {})
   // Track last-sent cols/rows so we can dedupe redundant resize sends without
   // suppressing legit small layout shifts that DO cross a column/row boundary.
   const lastSentSizeRef = useRef<{ cols: number; rows: number } | null>(null)
@@ -341,9 +343,21 @@ export default memo(function Terminal({
     // tmux redraws on its own, but reconnects/pooled joins to a same-size
     // session get no size-driven redraw, so decorations wouldn't repaint.
     setTimeout(() => sendRefreshRef.current(), 200)
+    // Opening the session on this device makes it the active client, so the
+    // shared window resizes to fit here (the phone-just-opened case).
+    setTimeout(() => sendActivateRef.current(termRef.current?.cols, termRef.current?.rows), 220)
   }, [handleFit])
 
-  const { send, sendResize, sendRefresh, isConnected, error, sessionDead } = useTerminalSocket({
+  const {
+    send,
+    sendResize,
+    sendRefresh,
+    sendActivate,
+    sendDeactivate,
+    isConnected,
+    error,
+    sessionDead,
+  } = useTerminalSocket({
     sessionName,
     onData: handleData,
     onResizeSync: handleResizeSync,
@@ -362,13 +376,21 @@ export default memo(function Terminal({
     sendRef.current = send
     sendResizeRef.current = sendResize
     sendRefreshRef.current = sendRefresh
-  }, [send, sendResize, sendRefresh])
+    sendActivateRef.current = sendActivate
+    sendDeactivateRef.current = sendDeactivate
+  }, [send, sendResize, sendRefresh, sendActivate, sendDeactivate])
 
   // Ask tmux for a full native redraw (pane + status bar + borders). Used on
   // session switch/activate and the manual Fit button, where the size often
   // doesn't change so no resize-driven redraw would otherwise fire.
   const requestRefresh = useCallback(() => {
     sendRefreshRef.current()
+  }, [])
+
+  // Claim the shared tmux window for this device, reporting our current grid so
+  // the backend can size the window to us ("latest active device wins").
+  const requestActivate = useCallback(() => {
+    sendActivateRef.current(termRef.current?.cols, termRef.current?.rows)
   }, [])
 
   // The manual "Fit" control (triple-dot menu) should always produce a visible
@@ -553,9 +575,14 @@ export default memo(function Terminal({
     const handleFocus = () => {
       setHasFocus(true)
       if (remotelySizedRef.current) {
+        // A previous winner shrank our grid — re-fit to our own container
+        // before claiming the window so we reclaim our natural size.
         remotelySizedRef.current = false
         handleFit()
       }
+      // Interacting with this device makes it the active client that drives the
+      // shared tmux window size.
+      requestActivate()
     }
     const handleBlur = () => setHasFocus(false)
     term.element?.addEventListener('focusin', handleFocus)
@@ -861,24 +888,34 @@ export default memo(function Terminal({
       // Re-assert size doesn't guarantee a redraw when cols/rows are unchanged,
       // so force a native tmux redraw to bring decorations back on activate.
       const refreshId = setTimeout(requestRefresh, 350)
+      // Showing the terminal here claims the shared window for this device.
+      const activateId = setTimeout(requestActivate, 360)
       return () => {
         clearTimeout(timeoutId)
         clearTimeout(refreshId)
+        clearTimeout(activateId)
       }
     }
-  }, [isVisible, handleFit, requestRefresh])
+  }, [isVisible, handleFit, requestRefresh, requestActivate])
 
   // Handle browser/app visibility change (mobile app switching, screen lock/unlock)
   // and orientation changes - both can leave the xterm canvas in a corrupted state
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && termRef.current && isVisible) {
+      if (!termRef.current) return
+      if (document.visibilityState === 'visible' && isVisible) {
         // Clear the last-sent-size cache so the next handleFit re-asserts the
         // size to the backend even if cols/rows look unchanged. Visibility /
         // orientation changes can leave tmux's idea of the pane size stale.
         lastSentSizeRef.current = null
         setTimeout(handleFit, 200)
         setTimeout(requestRefresh, 250)
+        // Foregrounding this device reclaims the shared window size.
+        setTimeout(requestActivate, 260)
+      } else if (document.visibilityState === 'hidden') {
+        // Backgrounded (screen off / app switched away) — stop driving the
+        // shared size so another connected device can take over.
+        sendDeactivateRef.current()
       }
     }
 
@@ -889,6 +926,7 @@ export default memo(function Terminal({
       lastSentSizeRef.current = null
       setTimeout(handleFit, 300)
       setTimeout(requestRefresh, 350)
+      setTimeout(requestActivate, 360)
     }
 
     document.addEventListener('visibilitychange', handleVisibilityChange)
@@ -897,7 +935,7 @@ export default memo(function Terminal({
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       window.removeEventListener('orientationchange', handleOrientation)
     }
-  }, [handleFit, isVisible, requestRefresh])
+  }, [handleFit, isVisible, requestRefresh, requestActivate])
 
   // Update terminal font size when it changes
   useEffect(() => {

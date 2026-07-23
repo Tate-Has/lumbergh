@@ -81,9 +81,7 @@ def test_refresh_client_reports_failure_when_no_clients(monkeypatch):
 
 
 def test_refresh_client_reports_failure_when_list_clients_errors(monkeypatch):
-    monkeypatch.setattr(
-        tmux_pty.subprocess, "run", _fake_tmux_clients(["/dev/pts/3"], list_rc=1)
-    )
+    monkeypatch.setattr(tmux_pty.subprocess, "run", _fake_tmux_clients(["/dev/pts/3"], list_rc=1))
 
     assert tmux_pty.refresh_client("probe") is False
 
