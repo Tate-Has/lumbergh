@@ -1,12 +1,24 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import SubtaskEditor from './SubtaskEditor'
 import type { Task, SubTask } from '../../types/focus'
+import type { Repo } from '../../utils/repos'
+import { resolveBoardStatus } from '../../utils/statusMigration'
 
 export interface TaskModalProps {
   isOpen: boolean
   task: Task | null
   defaultStatus: string
-  projects: string[]
+  /** Pre-fills the Repo field for a new task (e.g. launched from a specific RepoLane's "+ Task"). */
+  defaultProject?: string
+  /** Repos derived via deriveRepos(allTasks); used to populate the Repo datalist. */
+  repos: Repo[]
+  /**
+   * Worktree branch/name for the task's active session, if any. The parent page owns
+   * session/worktree lookups (e.g. mapping task.session_name -> branch) and passes the
+   * resolved string in here. Undefined/empty means no worktree info to show. Only
+   * rendered when task.session_name is set.
+   */
+  worktreeBranch?: string
   onSave: (data: Partial<Task> & { title: string }) => void
   onDelete: () => void
   onClose: () => void
@@ -16,7 +28,9 @@ export default function TaskModal({
   isOpen,
   task,
   defaultStatus,
-  projects,
+  defaultProject,
+  repos,
+  worktreeBranch,
   onSave,
   onDelete,
   onClose,
@@ -39,22 +53,29 @@ export default function TaskModal({
         setTitle(task.title)
         setProject(task.project)
         setPriority(task.priority)
-        setStatus(task.status)
+        // task.status may hold a legacy value ('today'/'running') that is no longer a
+        // selectable <option>; resolve it to a valid Kanban/inbox status so the <select>
+        // always has a matching option to display.
+        setStatus(task.status === 'inbox' ? 'inbox' : resolveBoardStatus(task))
         setBlocker(task.blocker)
         setCheckin(task.check_in_note)
         setSubtasks(task.subtasks ? task.subtasks.map((s) => ({ ...s })) : [])
       } else {
         setTitle('')
-        setProject('')
+        setProject(defaultProject || '')
         setPriority('med')
-        setStatus(defaultStatus || 'today')
+        setStatus(
+          defaultStatus === 'today' || defaultStatus === 'running'
+            ? 'backlog'
+            : defaultStatus || 'backlog'
+        )
         setBlocker('')
         setCheckin('')
         setSubtasks([])
       }
       setTimeout(() => titleRef.current?.focus(), 100)
     }
-  }, [isOpen, task, defaultStatus])
+  }, [isOpen, task, defaultStatus, defaultProject])
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleSave = useCallback(() => {
@@ -85,7 +106,7 @@ export default function TaskModal({
   }
 
   const showBlocker = status === 'waiting'
-  const showCheckin = status === 'running' || status === 'waiting'
+  const showCheckin = status === 'in-progress' || status === 'waiting'
   const isEditMode = task !== null
 
   return (
@@ -114,20 +135,20 @@ export default function TaskModal({
         </div>
 
         <div className="modal-field mb-3">
-          <label className="block text-xs font-semibold text-text-secondary mb-1">Project</label>
+          <label className="block text-xs font-semibold text-text-secondary mb-1">Repo</label>
           <input
             type="text"
             id="modalTaskProject"
             className="w-full bg-bg-surface border border-border-subtle rounded-md py-2.5 px-3 text-[0.82rem] text-text-primary outline-none transition-[border-color] duration-150 focus:border-accent"
-            placeholder="Optional project tag"
+            placeholder="No repo"
             list="projectSuggestions"
             autoComplete="off"
             value={project}
             onChange={(e) => setProject(e.target.value)}
           />
           <datalist id="projectSuggestions">
-            {projects.map((p) => (
-              <option key={p} value={p} />
+            {repos.map((repo) => (
+              <option key={repo.id} value={repo.name} />
             ))}
           </datalist>
         </div>
@@ -154,13 +175,11 @@ export default function TaskModal({
             value={status}
             onChange={(e) => setStatus(e.target.value)}
           >
-            <option value="today">Today</option>
             <option value="inbox">Inbox</option>
             <option value="backlog">Backlog</option>
             <option value="in-progress">In Progress</option>
             <option value="waiting">Waiting On</option>
             <option value="review">Review</option>
-            <option value="running">Running</option>
             <option value="done">Done</option>
           </select>
         </div>
@@ -192,6 +211,15 @@ export default function TaskModal({
             onChange={(e) => setCheckin(e.target.value)}
           />
         </div>
+
+        {task?.session_name && (
+          <div className="modal-field mb-3" id="worktreeField">
+            <label className="block text-xs font-semibold text-text-secondary mb-1">Worktree</label>
+            <div className="text-[0.82rem] text-text-secondary py-1">
+              {worktreeBranch ? `Worktree: ${worktreeBranch}` : 'No worktree'}
+            </div>
+          </div>
+        )}
 
         <SubtaskEditor subtasks={subtasks} onChange={setSubtasks} />
 

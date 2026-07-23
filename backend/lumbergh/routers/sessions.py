@@ -55,6 +55,7 @@ from lumbergh.git_utils import (
     git_stash,
     git_stash_drop,
     git_stash_pop,
+    list_worktrees,
     remove_worktree,
     reset_to_commit,
     reset_to_head,
@@ -90,6 +91,7 @@ T = TypeVar("T")
 
 GIT_READ_TIMEOUT = 10  # seconds — status, diff, log, branches
 GIT_WRITE_TIMEOUT = 30  # seconds — push, pull, rebase, commit
+STALE_WORKTREE_DAYS = 5  # worktrees with no commits in this many days are flagged stale
 
 # Auto-cleanup gating: only check stale scratch sessions once per hour
 _last_scratch_cleanup: float = 0.0
@@ -1304,6 +1306,93 @@ async def get_worktree_branches(repo_path: str):
         if "error" in result:
             raise HTTPException(status_code=400, detail=result["error"])
         return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def _get_worktree_last_activity(worktree_path: str) -> str | None:
+    """Get the ISO8601 timestamp of the last commit in a worktree, or None."""
+    result = subprocess.run(
+        ["git", "log", "-1", "--format=%ct"],
+        cwd=worktree_path,
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+
+    from datetime import UTC, datetime
+
+    try:
+        epoch_seconds = int(result.stdout.strip())
+    except ValueError:
+        return None
+    return datetime.fromtimestamp(epoch_seconds, UTC).isoformat()
+
+
+def _list_worktrees_with_activity(repo_path: Path) -> list[dict]:
+    """List worktrees for a repo, annotated with last_activity and stale status."""
+    from datetime import UTC, datetime
+
+    cutoff_ts = datetime.now(UTC).timestamp() - STALE_WORKTREE_DAYS * 86400
+    worktrees = []
+    for wt in list_worktrees(repo_path):
+        last_activity = _get_worktree_last_activity(wt.path)
+        stale = False
+        if last_activity is not None:
+            stale = datetime.fromisoformat(last_activity).timestamp() < cutoff_ts
+        worktrees.append(
+            {
+                "path": wt.path,
+                "branch": wt.branch,
+                "commit": wt.commit,
+                "is_main": wt.is_main,
+                "last_activity": last_activity,
+                "stale": stale,
+            }
+        )
+    return worktrees
+
+
+@router.get("/worktrees")
+async def get_worktrees(repo_path: str):
+    """List git worktrees for a repository, annotated with staleness info."""
+    path = Path(repo_path).expanduser().resolve()
+    if not path.exists():
+        raise HTTPException(status_code=400, detail=f"Repository path does not exist: {repo_path}")
+
+    try:
+        worktrees = await _run_git(_list_worktrees_with_activity, path)
+        return {"worktrees": worktrees}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/worktrees")
+async def delete_worktree(repo_path: str, worktree_path: str):
+    """Remove a git worktree directly, independent of any linked session.
+
+    Unlike `DELETE /{name}?cleanup_worktree=true`, this does not require an
+    active session tied to the worktree — useful for manually created or
+    already-merged-and-orphaned worktrees.
+    """
+    path = Path(repo_path).expanduser().resolve()
+    if not path.exists():
+        raise HTTPException(status_code=400, detail=f"Repository path does not exist: {repo_path}")
+
+    try:
+        result = await _run_git(
+            remove_worktree, path, Path(worktree_path), force=True, timeout=GIT_WRITE_TIMEOUT
+        )
+        if "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
+        return result
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

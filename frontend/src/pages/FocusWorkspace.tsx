@@ -2,13 +2,13 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { Task } from '../types/focus'
 import { generateId, todayISO } from '../utils/focus'
+import { getApiBase } from '../config'
 
 // Contexts
 import { TaskProvider, useTasks } from '../contexts/FocusTaskContext'
 
 // Hooks
 import { useTheme } from '../hooks/useTheme'
-import { usePomodoro } from '../hooks/usePomodoro'
 import { useFilters } from '../hooks/useFilters'
 import { useNotes } from '../hooks/useNotes'
 import { useArchive } from '../hooks/useArchive'
@@ -18,15 +18,23 @@ import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
 import { useClickOutside } from '../hooks/useClickOutside'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { useSessionStatus } from '../hooks/useSessionStatus'
+import { useWorktrees, type RawSession } from '../hooks/useWorktrees'
+import { useAttentionItems } from '../hooks/useAttentionItems'
+
+// Utils
+import { deriveRepos } from '../utils/repos'
+import { resolveBoardStatus } from '../utils/statusMigration'
 
 // Components
-import Topbar from '../components/focus/Topbar'
-import TodayPanel from '../components/focus/TodayPanel'
-import InFlightPanel from '../components/focus/InFlightPanel'
 import NotesBar from '../components/focus/NotesBar'
 import Inbox from '../components/focus/Inbox'
+import AttentionStrip from '../components/focus/AttentionStrip'
+import WorktreePanel from '../components/focus/WorktreePanel'
+import Toolbar from '../components/focus/Toolbar'
+import RepoLane from '../components/focus/RepoLane'
 import TaskBoard from '../components/focus/TaskBoard'
 import TaskModal from '../components/focus/TaskModal'
+import type { LaunchAgentChoice } from '../components/focus/LaunchAgentForm'
 import FocusCreateSessionModal from '../components/focus/create-session/FocusCreateSessionModal'
 import ArchiveModal from '../components/focus/ArchiveModal'
 import FilterDropdown from '../components/focus/FilterDropdown'
@@ -35,6 +43,24 @@ import Toast from '../components/focus/Toast'
 import MobileActionBar from '../components/focus/MobileActionBar'
 import ConfirmDialog from '../components/focus/ConfirmDialog'
 import SessionPicker from '../components/focus/SessionPicker'
+
+// Grace period after sending a "close out" prompt during which we ignore idle
+// state reads — the backend's own idle detector has hysteresis but we still
+// need a moment for the agent to start typing before its idle state can be
+// trusted (see idle_detector.py: STATE_CHANGE_DELAY_MS/LEAVE_WORKING_DELAY_MS).
+const CLOSE_OUT_GRACE_MS = 3000
+
+function toSlug(text: string): string {
+  return (
+    text
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s_-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '') || 'session'
+  )
+}
 
 // ---------------------------------------------------------------------------
 // Inner component (needs to be inside TaskProvider)
@@ -68,11 +94,37 @@ function FocusWorkspaceInner() {
     setTheme(theme === 'dark' ? 'light' : 'dark')
   }, [theme, setTheme])
 
-  const { pomo, pomoStart, pomoPause, pomoResume, pomoStop } = usePomodoro()
   const filters = useFilters()
   const { notesContent, setNotesContent, notesOpen, setNotesOpen } = useNotes()
   const { archiveData, loading: archiveLoading, openArchive, archiveDoneTasks } = useArchive()
   const { getDragHandlers, getDropZoneHandlers } = useDragDrop()
+
+  // Repos derived from tasks' project field
+  const repos = useMemo(() => deriveRepos(tasks), [tasks])
+
+  // Raw sessions (fetched once, polled) — feeds useWorktrees + WorktreePanel
+  const [sessions, setSessions] = useState<RawSession[]>([])
+  useEffect(() => {
+    let cancelled = false
+    async function fetchSessions() {
+      try {
+        const res = await fetch(`${getApiBase()}/sessions`)
+        if (!res.ok) return
+        const data = await res.json()
+        if (!cancelled) setSessions(data.sessions || data || [])
+      } catch {
+        /* ignore — leave previous sessions list in place */
+      }
+    }
+    fetchSessions()
+    const interval = setInterval(fetchSessions, 3000)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [])
+
+  const { worktreesByRepo, refetch: refetchWorktrees } = useWorktrees(repos, tasks, sessions)
 
   // Session status polling
   const sessionNames = useMemo(
@@ -81,6 +133,19 @@ function FocusWorkspaceInner() {
   )
   const sessionStatusMap = useSessionStatus(sessionNames)
 
+  const attentionItems = useAttentionItems(tasks, sessionStatusMap)
+
+  // Branch lookup per task (via linked session's worktreeBranch), keyed by task.id
+  const worktreeBranchByTaskId = useMemo(() => {
+    const map: Record<string, string | undefined> = {}
+    for (const task of tasks) {
+      if (!task.session_name) continue
+      const session = sessions.find((s) => s.name === task.session_name)
+      map[task.id] = session?.worktreeBranch || undefined
+    }
+    return map
+  }, [tasks, sessions])
+
   // -------------------------------------------------------------------------
   // UI state
   // -------------------------------------------------------------------------
@@ -88,18 +153,25 @@ function FocusWorkspaceInner() {
   const [showShortcuts, setShowShortcuts] = useState(false)
   const [editingTask, setEditingTask] = useState<Task | null>(null)
   const [newTaskStatus, setNewTaskStatus] = useState<string | null>(null)
+  const [newTaskProject, setNewTaskProject] = useState<string | undefined>(undefined)
   const [sessionTask, setSessionTask] = useState<Task | null>(null)
   const [inboxOpen, setInboxOpen] = useState(false)
-  const [boardCollapsed, setBoardCollapsed] = useState(false)
   const [backlogCollapsed, setBacklogCollapsed] = useLocalStorage('backlogCollapsed', true)
   const [doneCollapsed, setDoneCollapsed] = useLocalStorage('doneCollapsed', true)
-  const [swimlaneMode, setSwimlaneMode] = useState(false)
-  const [swimlaneOrder, setSwimlaneOrder] = useLocalStorage<string[]>('swimlaneOrder', [])
+  const [groupByRepo, setGroupByRepo] = useLocalStorage('lumbergh:focus:groupByRepo', true)
+  const [worktreePanelOpen, setWorktreePanelOpen] = useLocalStorage(
+    'lumbergh:focus:worktreePanelOpen',
+    false
+  )
   const [pickerTask, setPickerTask] = useState<Task | null>(null)
   const [confirmDialog, setConfirmDialog] = useState<{
     message: string
     onConfirm: () => void
   } | null>(null)
+
+  // Worktree close-out state machine (owned here per WorktreePanel's doc comment)
+  const [closingWorktreePaths, setClosingWorktreePaths] = useState<Set<string>>(new Set())
+  const [mergedWorktreePaths, setMergedWorktreePaths] = useState<Set<string>>(new Set())
 
   // Filter dropdown state
   const [projectFilterOpen, setProjectFilterOpen] = useState(false)
@@ -108,7 +180,6 @@ function FocusWorkspaceInner() {
   const projectFilterRef = useRef<HTMLDivElement>(null)
   const priorityFilterRef = useRef<HTMLDivElement>(null)
   const inboxInputRef = useRef<HTMLInputElement>(null)
-  const todayPanelRef = useRef<HTMLDivElement>(null)
   const boardSectionRef = useRef<HTMLDivElement>(null)
 
   // Close filter dropdowns when clicking outside
@@ -154,18 +225,7 @@ function FocusWorkspaceInner() {
       },
       [moveTaskToStatus]
     ),
-    onReorderSwimlane: useCallback(
-      (source: string, target: string) => {
-        const order = [...swimlaneOrder]
-        const si = order.indexOf(source)
-        const ti = order.indexOf(target)
-        if (si === -1 || ti === -1) return
-        order.splice(si, 1)
-        order.splice(ti, 0, source)
-        setSwimlaneOrder(order)
-      },
-      [swimlaneOrder, setSwimlaneOrder]
-    ),
+    onReorderSwimlane: useCallback(() => {}, []),
   })
 
   // -------------------------------------------------------------------------
@@ -177,9 +237,6 @@ function FocusWorkspaceInner() {
         onNewInbox: () => {
           setInboxOpen(true)
           inboxInputRef.current?.focus()
-        },
-        onFocusToday: () => {
-          todayPanelRef.current?.scrollIntoView({ behavior: 'smooth' })
         },
         onToggleTheme: toggleTheme,
         onShowHelp: () => setShowShortcuts((prev) => !prev),
@@ -219,17 +276,6 @@ function FocusWorkspaceInner() {
   )
 
   // -------------------------------------------------------------------------
-  // Pomodoro auto-stop: if pomo task is no longer "today", stop
-  // -------------------------------------------------------------------------
-  useEffect(() => {
-    if (!pomo.active || !pomo.taskId) return
-    const task = tasks.find((t) => t.id === pomo.taskId)
-    if (!task || task.status !== 'today') {
-      pomoStop()
-    }
-  }, [tasks, pomo.active, pomo.taskId, pomoStop])
-
-  // -------------------------------------------------------------------------
   // Derived data
   // -------------------------------------------------------------------------
   const uniqueProjects = useMemo(() => filters.getUniqueProjects(tasks), [tasks, filters])
@@ -240,11 +286,20 @@ function FocusWorkspaceInner() {
   const handleEditTask = useCallback((task: Task) => {
     setEditingTask(task)
     setNewTaskStatus(null)
+    setNewTaskProject(undefined)
   }, [])
 
   const handleAddTask = useCallback((status: string) => {
     setEditingTask(null)
     setNewTaskStatus(status)
+    setNewTaskProject(undefined)
+  }, [])
+
+  /** Used by RepoLane's per-repo "+ Task" button — opens the modal pre-filled with that repo. */
+  const handleAddTaskForRepo = useCallback((repoId: string) => {
+    setEditingTask(null)
+    setNewTaskStatus('backlog')
+    setNewTaskProject(repoId)
   }, [])
 
   const handleSaveTask = useCallback(
@@ -265,7 +320,7 @@ function FocusWorkspaceInner() {
           title: data.title,
           project: data.project || '',
           priority: data.priority || 'med',
-          status: data.status || newTaskStatus || 'today',
+          status: data.status || newTaskStatus || 'backlog',
           blocker: data.blocker || '',
           check_in_note: data.check_in_note || '',
           completed: data.status === 'done' || false,
@@ -278,6 +333,7 @@ function FocusWorkspaceInner() {
       }
       setEditingTask(null)
       setNewTaskStatus(null)
+      setNewTaskProject(undefined)
     },
     [editingTask, newTaskStatus, addTask, updateTask]
   )
@@ -288,38 +344,14 @@ function FocusWorkspaceInner() {
     }
     setEditingTask(null)
     setNewTaskStatus(null)
+    setNewTaskProject(undefined)
   }, [editingTask, deleteTask])
 
   const handleCloseTaskModal = useCallback(() => {
     setEditingTask(null)
     setNewTaskStatus(null)
+    setNewTaskProject(undefined)
   }, [])
-
-  // -------------------------------------------------------------------------
-  // Handler: toggle complete (Today card)
-  // -------------------------------------------------------------------------
-  const handleToggleComplete = useCallback(
-    (taskId: string) => {
-      const task = tasks.find((t) => t.id === taskId)
-      if (!task) return
-      if (task.completed) {
-        updateTask(taskId, { completed: false, status: 'today', completed_date: '' })
-      } else {
-        updateTask(taskId, { completed: true, status: 'done', completed_date: todayISO() })
-      }
-    },
-    [tasks, updateTask]
-  )
-
-  // -------------------------------------------------------------------------
-  // Handler: Pomodoro
-  // -------------------------------------------------------------------------
-  const handleStartPomo = useCallback(
-    (taskId: string, durationSeconds?: number) => {
-      pomoStart(taskId, tasks, durationSeconds)
-    },
-    [pomoStart, tasks]
-  )
 
   // -------------------------------------------------------------------------
   // Handler: Session picker + linking
@@ -359,14 +391,6 @@ function FocusWorkspaceInner() {
     [sessionTask, updateTask, showToast, navigate]
   )
 
-  const handleDetachSession = useCallback(
-    (taskId: string) => {
-      updateTask(taskId, { session_name: '', session_status: '' })
-      showToast('Session detached')
-    },
-    [updateTask, showToast]
-  )
-
   // -------------------------------------------------------------------------
   // Handler: Inbox
   // -------------------------------------------------------------------------
@@ -398,6 +422,13 @@ function FocusWorkspaceInner() {
     [updateTask]
   )
 
+  const handlePromoteToBacklog = useCallback(
+    (taskId: string, repoId: string) => {
+      updateTask(taskId, { project: repoId, status: 'backlog' })
+    },
+    [updateTask]
+  )
+
   // -------------------------------------------------------------------------
   // Handler: Archive
   // -------------------------------------------------------------------------
@@ -415,21 +446,35 @@ function FocusWorkspaceInner() {
     return () => window.removeEventListener('lumbergh:open-archive', handler)
   }, [handleOpenArchive])
 
-  const handleArchiveDone = useCallback(() => {
-    const doneTasks = tasks.filter((t) => t.status === 'done')
-    if (!doneTasks.length) return
-    setConfirmDialog({
-      message: `Archive ${doneTasks.length} done task${doneTasks.length > 1 ? 's' : ''}?`,
-      onConfirm: async () => {
-        setConfirmDialog(null)
-        const msg = await archiveDoneTasks(tasks, (newTasks) => {
-          setTasks(newTasks)
-          markChanged()
-        })
-        if (msg) showToast(msg)
-      },
-    })
-  }, [tasks, archiveDoneTasks, setTasks, markChanged, showToast])
+  const handleArchiveDone = useCallback(
+    (repoId?: string) => {
+      const scoped = repoId ? tasks.filter((t) => t.project === repoId) : tasks
+      const doneTasks = scoped.filter((t) => resolveBoardStatus(t) === 'done')
+      if (!doneTasks.length) return
+      setConfirmDialog({
+        message: `Archive ${doneTasks.length} done task${doneTasks.length > 1 ? 's' : ''}?`,
+        onConfirm: async () => {
+          setConfirmDialog(null)
+          const doneIds = new Set(doneTasks.map((t) => t.id))
+          const msg = await archiveDoneTasks(scoped, () => {
+            setTasks((prev) => prev.filter((t) => !doneIds.has(t.id)))
+            markChanged()
+          })
+          if (msg) showToast(msg)
+        },
+      })
+    },
+    [tasks, archiveDoneTasks, setTasks, markChanged, showToast]
+  )
+
+  const handleToggleBacklogCollapsed = useCallback(
+    () => setBacklogCollapsed(!backlogCollapsed),
+    [backlogCollapsed, setBacklogCollapsed]
+  )
+  const handleToggleDoneCollapsed = useCallback(
+    () => setDoneCollapsed(!doneCollapsed),
+    [doneCollapsed, setDoneCollapsed]
+  )
 
   // -------------------------------------------------------------------------
   // Handler: Board drop
@@ -441,71 +486,135 @@ function FocusWorkspaceInner() {
     [moveTaskToStatus]
   )
 
-  const handleDropSwimlane = useCallback(
-    (taskId: string, status: string, project: string) => {
+  // -------------------------------------------------------------------------
+  // Handler: Launch agent — creates a session (new worktree or existing one)
+  // and links it to the task.
+  // -------------------------------------------------------------------------
+  const handleLaunchAgent = useCallback(
+    async (taskId: string, choice: LaunchAgentChoice) => {
       const task = tasks.find((t) => t.id === taskId)
       if (!task) return
-      updateTask(taskId, {
-        status,
-        project,
-        completed: status === 'done',
-        completed_date: status === 'done' ? todayISO() : '',
+
+      try {
+        let body: Record<string, unknown>
+
+        if (choice.worktreePath) {
+          // Launch directly into an already-existing worktree directory.
+          body = {
+            name: `${toSlug(task.title)}-${generateId().slice(0, 5)}`,
+            description: task.title,
+            mode: 'direct',
+            workdir: choice.worktreePath,
+          }
+        } else if (choice.newBranch) {
+          const repoWorktrees = task.project ? worktreesByRepo[task.project] || [] : []
+          const mainWorktree = repoWorktrees.find((w) => w.is_main)
+          if (!mainWorktree) {
+            showToast('Cannot resolve repo path — link an existing session in this repo first')
+            return
+          }
+          body = {
+            name: `${toSlug(choice.newBranch)}-${generateId().slice(0, 5)}`,
+            description: task.title,
+            mode: 'worktree',
+            worktree: {
+              parent_repo: mainWorktree.path,
+              branch: choice.newBranch,
+              create_branch: true,
+            },
+          }
+        } else {
+          return
+        }
+
+        const res = await fetch(`${getApiBase()}/sessions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          throw new Error(data.detail || 'Failed to create session')
+        }
+        const data = await res.json()
+        updateTask(taskId, { session_name: data.name, status: 'in-progress' })
+        showToast('Agent launched: ' + data.name)
+        refetchWorktrees()
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : 'Failed to launch agent')
+      }
+    },
+    [tasks, worktreesByRepo, updateTask, showToast, refetchWorktrees]
+  )
+
+  // -------------------------------------------------------------------------
+  // Handler: Worktree close-out state machine
+  // -------------------------------------------------------------------------
+  const handleSendWrapup = useCallback(
+    (sessionName: string, promptText: string, worktreePath: string) => {
+      fetch(`${getApiBase()}/session/${sessionName}/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: promptText, send_enter: true }),
+      }).catch(() => {
+        showToast('Failed to send prompt to agent')
       })
+
+      setClosingWorktreePaths((prev) => new Set(prev).add(worktreePath))
+
+      const sentAt = Date.now()
+      const poll = setInterval(async () => {
+        if (Date.now() - sentAt < CLOSE_OUT_GRACE_MS) return
+
+        try {
+          const res = await fetch(`${getApiBase()}/sessions`)
+          if (!res.ok) return
+          const data = await res.json()
+          const liveSessions: RawSession[] = data.sessions || data || []
+          const session = liveSessions.find((s) => s.name === sessionName)
+          if (!session) return
+          if (session.idleState && session.idleState !== 'working') {
+            clearInterval(poll)
+            setClosingWorktreePaths((prev) => {
+              const next = new Set(prev)
+              next.delete(worktreePath)
+              return next
+            })
+            setMergedWorktreePaths((prev) => new Set(prev).add(worktreePath))
+            const linkedTask = tasks.find((t) => t.session_name === sessionName)
+            if (linkedTask) {
+              updateTask(linkedTask.id, { status: 'done' })
+            }
+          }
+        } catch {
+          /* ignore poll errors, try again next tick */
+        }
+      }, 1500)
     },
-    [tasks, updateTask]
+    [tasks, updateTask, showToast]
   )
 
-  const handleReorderSwimlane = useCallback(
-    (sourceProject: string, targetProject: string) => {
-      const order = [...swimlaneOrder]
-      const si = order.indexOf(sourceProject)
-      const ti = order.indexOf(targetProject)
-      if (si === -1 || ti === -1) return
-      order.splice(si, 1)
-      order.splice(ti, 0, sourceProject)
-      setSwimlaneOrder(order)
+  const handleCleanupWorktree = useCallback(
+    async (repoPath: string, worktreePath: string) => {
+      try {
+        const url = `${getApiBase()}/sessions/worktrees?repo_path=${encodeURIComponent(repoPath)}&worktree_path=${encodeURIComponent(worktreePath)}`
+        const res = await fetch(url, { method: 'DELETE' })
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          throw new Error(data.detail || 'Failed to remove worktree')
+        }
+        setMergedWorktreePaths((prev) => {
+          const next = new Set(prev)
+          next.delete(worktreePath)
+          return next
+        })
+        showToast('Worktree removed')
+        refetchWorktrees()
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : 'Failed to remove worktree')
+      }
     },
-    [swimlaneOrder, setSwimlaneOrder]
-  )
-
-  // -------------------------------------------------------------------------
-  // Handler: Promote to today from board
-  // -------------------------------------------------------------------------
-  const handlePromoteToday = useCallback(
-    (taskId: string) => {
-      moveTaskToStatus(taskId, 'today')
-    },
-    [moveTaskToStatus]
-  )
-
-  // -------------------------------------------------------------------------
-  // Handler: Today panel drop
-  // -------------------------------------------------------------------------
-  const handleTodayDrop = useCallback(
-    (taskId: string, beforeTaskId: string | null) => {
-      moveTaskToStatus(taskId, 'today', beforeTaskId)
-    },
-    [moveTaskToStatus]
-  )
-
-  // -------------------------------------------------------------------------
-  // In Flight drop zone handlers
-  // -------------------------------------------------------------------------
-  const inFlightDropHandlers = useMemo(
-    () =>
-      getDropZoneHandlers((taskId: string) => {
-        moveTaskToStatus(taskId, 'running')
-      }),
-    [getDropZoneHandlers, moveTaskToStatus]
-  )
-
-  // Inbox drop zone handlers
-  const inboxDropHandlers = useMemo(
-    () =>
-      getDropZoneHandlers((taskId: string) => {
-        moveTaskToStatus(taskId, 'inbox')
-      }),
-    [getDropZoneHandlers, moveTaskToStatus]
+    [showToast, refetchWorktrees]
   )
 
   // -------------------------------------------------------------------------
@@ -562,7 +671,7 @@ function FocusWorkspaceInner() {
   )
 
   // -------------------------------------------------------------------------
-  // Filter dropdowns JSX (passed to TaskBoard)
+  // Filter dropdowns JSX (passed to Toolbar)
   // -------------------------------------------------------------------------
   const filterDropdowns = useMemo(
     () => (
@@ -614,15 +723,17 @@ function FocusWorkspaceInner() {
   )
 
   // -------------------------------------------------------------------------
-  // Drag handlers object for TodayPanel
+  // Worktree count (for Toolbar's "Worktrees (N)" toggle)
   // -------------------------------------------------------------------------
-  const todayDragHandlers = useMemo(
-    () => ({
-      getDragHandlers,
-      getDropZoneHandlers,
-    }),
-    [getDragHandlers, getDropZoneHandlers]
+  const worktreeCount = useMemo(
+    () => repos.reduce((sum, repo) => sum + (worktreesByRepo[repo.id]?.length || 0), 0),
+    [repos, worktreesByRepo]
   )
+
+  // -------------------------------------------------------------------------
+  // Worktree branch for the task currently open in the modal (read-only display)
+  // -------------------------------------------------------------------------
+  const editingTaskWorktreeBranch = editingTask ? worktreeBranchByTaskId[editingTask.id] : undefined
 
   // -------------------------------------------------------------------------
   // Render
@@ -661,34 +772,30 @@ function FocusWorkspaceInner() {
         </div>
       </header>
 
-      <Topbar pomo={pomo} onPomoPause={pomoPause} onPomoResume={pomoResume} onPomoStop={pomoStop} />
-
       <div className="main-content flex-1 overflow-y-auto px-8 py-6 flex flex-col gap-5">
-        <div className="top-split grid grid-cols-[1fr_1fr] gap-5">
-          <TodayPanel
-            tasks={tasks}
-            pomo={pomo}
-            onToggleComplete={handleToggleComplete}
-            onStartPomo={handleStartPomo}
-            onOpenSessionPicker={handleOpenSessionPicker}
-            onEditTask={handleEditTask}
-            onAddTask={useCallback(() => handleAddTask('today'), [handleAddTask])}
-            onDropTask={handleTodayDrop}
-            dragHandlers={todayDragHandlers}
-            panelRef={todayPanelRef}
-            sessionStatusMap={sessionStatusMap}
-            onDetachSession={handleDetachSession}
-          />
-          <InFlightPanel
-            tasks={tasks}
-            onEditTask={handleEditTask}
-            onOpenSessionPicker={handleOpenSessionPicker}
-            sessionStatusMap={sessionStatusMap}
-            onDetachSession={handleDetachSession}
-            dropZoneHandlers={inFlightDropHandlers}
-            getDragHandlers={getDragHandlers}
-          />
-        </div>
+        <AttentionStrip
+          attentionItems={attentionItems}
+          sessionStatusMap={sessionStatusMap}
+          worktreeBranches={worktreeBranchByTaskId as Record<string, string>}
+          onEditTask={handleEditTask}
+        />
+
+        <Inbox
+          tasks={tasks}
+          repos={repos}
+          isOpen={inboxOpen}
+          onToggleOpen={useCallback(() => setInboxOpen((prev) => !prev), [])}
+          onAddTask={handleInboxAdd}
+          onEditTask={handleEditTask}
+          onUpdateTitle={handleInboxUpdateTitle}
+          onPromoteToBacklog={handlePromoteToBacklog}
+          getDragHandlers={getDragHandlers}
+          dropZoneHandlers={useMemo(
+            () => getDropZoneHandlers((taskId: string) => moveTaskToStatus(taskId, 'inbox')),
+            [getDropZoneHandlers, moveTaskToStatus]
+          )}
+          inputRef={inboxInputRef}
+        />
 
         <NotesBar
           content={notesContent}
@@ -697,55 +804,82 @@ function FocusWorkspaceInner() {
           onToggleOpen={useCallback(() => setNotesOpen(!notesOpen), [notesOpen, setNotesOpen])}
         />
 
-        <Inbox
-          tasks={tasks}
-          isOpen={inboxOpen}
-          onToggleOpen={useCallback(() => setInboxOpen((prev) => !prev), [])}
-          onAddTask={handleInboxAdd}
-          onEditTask={handleEditTask}
-          onUpdateTitle={handleInboxUpdateTitle}
-          getDragHandlers={getDragHandlers}
-          dropZoneHandlers={inboxDropHandlers}
-          inputRef={inboxInputRef}
+        <Toolbar
+          groupByRepo={groupByRepo}
+          onSetGroupByRepo={setGroupByRepo}
+          worktreeCount={worktreeCount}
+          worktreePanelOpen={worktreePanelOpen}
+          onToggleWorktreePanel={useCallback(
+            () => setWorktreePanelOpen(!worktreePanelOpen),
+            [worktreePanelOpen, setWorktreePanelOpen]
+          )}
+          onAddTask={useCallback(() => handleAddTask('backlog'), [handleAddTask])}
+          onOpenArchive={handleOpenArchive}
+          filterDropdowns={filterDropdowns}
         />
 
-        <TaskBoard
+        <WorktreePanel
+          isOpen={worktreePanelOpen}
+          onToggleOpen={useCallback(
+            () => setWorktreePanelOpen(!worktreePanelOpen),
+            [worktreePanelOpen, setWorktreePanelOpen]
+          )}
+          repos={repos}
+          worktreesByRepo={worktreesByRepo}
           tasks={tasks}
-          swimlaneMode={swimlaneMode}
-          onToggleSwimlane={useCallback(() => setSwimlaneMode((prev) => !prev), [])}
-          boardCollapsed={boardCollapsed}
-          onToggleBoardCollapsed={useCallback(() => setBoardCollapsed((prev) => !prev), [])}
-          backlogCollapsed={backlogCollapsed}
-          onToggleBacklogCollapsed={useCallback(
-            () => setBacklogCollapsed(!backlogCollapsed),
-            [backlogCollapsed, setBacklogCollapsed]
-          )}
-          doneCollapsed={doneCollapsed}
-          onToggleDoneCollapsed={useCallback(
-            () => setDoneCollapsed(!doneCollapsed),
-            [doneCollapsed, setDoneCollapsed]
-          )}
-          onEditTask={handleEditTask}
-          onAddTask={handleAddTask}
-          onPromoteToday={handlePromoteToday}
-          onArchiveDone={handleArchiveDone}
-          onDropTask={handleDropTask}
-          onDropSwimlane={handleDropSwimlane}
-          onReorderSwimlane={handleReorderSwimlane}
-          getDragHandlers={getDragHandlers}
-          taskMatchesFilters={filters.taskMatchesFilters}
-          swimlaneOrder={swimlaneOrder}
-          onUpdateSwimlaneOrder={setSwimlaneOrder}
-          filterDropdowns={filterDropdowns}
-          boardRef={boardSectionRef}
+          sessions={sessions}
+          closingWorktreePaths={closingWorktreePaths}
+          mergedWorktreePaths={mergedWorktreePaths}
+          onCleanupWorktree={handleCleanupWorktree}
+          onSendWrapup={handleSendWrapup}
+          onViewTask={handleEditTask}
         />
+
+        {groupByRepo ? (
+          <RepoLane
+            repos={repos}
+            tasks={tasks}
+            worktreesByRepo={worktreesByRepo}
+            worktreeBranchByTaskId={worktreeBranchByTaskId}
+            sessionStatusByTaskId={sessionStatusMap}
+            onEditTask={handleEditTask}
+            onAddTask={handleAddTaskForRepo}
+            onArchiveDone={handleArchiveDone}
+            onDropTask={handleDropTask}
+            getDragHandlers={getDragHandlers}
+            onLaunchAgent={handleLaunchAgent}
+            onOpenSessionPicker={handleOpenSessionPicker}
+            taskMatchesFilters={filters.taskMatchesFilters}
+          />
+        ) : (
+          <TaskBoard
+            tasks={tasks}
+            backlogCollapsed={backlogCollapsed}
+            onToggleBacklogCollapsed={handleToggleBacklogCollapsed}
+            doneCollapsed={doneCollapsed}
+            onToggleDoneCollapsed={handleToggleDoneCollapsed}
+            onEditTask={handleEditTask}
+            onAddTask={handleAddTask}
+            onArchiveDone={handleArchiveDone}
+            onDropTask={handleDropTask}
+            getDragHandlers={getDragHandlers}
+            taskMatchesFilters={filters.taskMatchesFilters}
+            worktreeBranchByTaskId={worktreeBranchByTaskId}
+            sessionStatusByTaskId={sessionStatusMap}
+            onLaunchAgent={handleLaunchAgent}
+            onOpenSessionPicker={handleOpenSessionPicker}
+            boardRef={boardSectionRef}
+          />
+        )}
       </div>
 
       <TaskModal
         isOpen={editingTask !== null || newTaskStatus !== null}
         task={editingTask}
-        defaultStatus={newTaskStatus || 'today'}
-        projects={uniqueProjects}
+        defaultStatus={newTaskStatus || 'backlog'}
+        defaultProject={newTaskProject}
+        repos={repos}
+        worktreeBranch={editingTaskWorktreeBranch}
         onSave={handleSaveTask}
         onDelete={handleDeleteTask}
         onClose={handleCloseTaskModal}
@@ -788,7 +922,7 @@ function FocusWorkspaceInner() {
       />
 
       <MobileActionBar
-        onAddToday={useCallback(() => handleAddTask('today'), [handleAddTask])}
+        onAddToday={useCallback(() => handleAddTask('backlog'), [handleAddTask])}
         onAddInbox={useCallback(() => handleAddTask('inbox'), [handleAddTask])}
         onScrollToBoard={useCallback(() => {
           boardSectionRef.current?.scrollIntoView({ behavior: 'smooth' })

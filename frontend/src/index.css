@@ -29,6 +29,7 @@
   --color-danger: var(--color-danger);
   --color-warning: var(--color-warning);
   --color-purple: var(--color-purple);
+  --color-teal: var(--color-teal);
   --color-amber: var(--color-amber);
 
   /* Focus Workspace semantic tokens — shared with v0.18.1 palette */
@@ -43,8 +44,11 @@
   --color-priority-low-bg: var(--priority-low-bg);
   --color-status-running: var(--status-running);
   --color-status-running-bg: var(--status-running-bg);
+  --color-status-running-strong: var(--status-running-strong);
   --color-status-waiting: var(--status-waiting);
   --color-status-waiting-bg: var(--status-waiting-bg);
+  --color-status-error: var(--status-error);
+  --color-status-error-bg: var(--status-error-bg);
   --color-waiting-col-bg: var(--waiting-col-bg);
   --radius-sm: var(--radius-sm);
   --radius-md: var(--radius-md);
@@ -86,6 +90,7 @@
   --color-danger: #ff453a;
   --color-warning: #ff9f0a;
   --color-purple: #bf5af2;
+  --color-teal: oklch(70% 0.1 195);
   --color-amber: #ffd60a;
 
   /* Radius scale */
@@ -114,8 +119,11 @@
   --priority-low-bg: rgba(142, 142, 147, 0.15);
   --status-running: #30d158;
   --status-running-bg: rgba(48, 209, 88, 0.15);
+  --status-running-strong: #1d9e46;
   --status-waiting: #ff9f0a;
   --status-waiting-bg: rgba(255, 159, 10, 0.15);
+  --status-error: #ff453a;
+  --status-error-bg: rgba(255, 69, 58, 0.15);
   --waiting-col-bg: rgba(255, 159, 10, 0.06);
   --done-opacity: 0.4;
 }
@@ -149,6 +157,7 @@
   --color-danger: #ff3b30;
   --color-warning: #ff9500;
   --color-purple: #af52de;
+  --color-teal: oklch(60% 0.1 195);
   --color-amber: #ffcc00;
 
   --radius-sm: 6px;
@@ -173,8 +182,11 @@
   --priority-low-bg: rgba(142, 142, 147, 0.1);
   --status-running: #28cd41;
   --status-running-bg: rgba(40, 205, 65, 0.1);
+  --status-running-strong: #178f3d;
   --status-waiting: #ff9500;
   --status-waiting-bg: rgba(255, 149, 0, 0.1);
+  --status-error: #ff3b30;
+  --status-error-bg: rgba(255, 59, 48, 0.1);
   --waiting-col-bg: rgba(255, 149, 0, 0.05);
   --done-opacity: 0.45;
 }

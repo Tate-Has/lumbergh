@@ -1,13 +1,16 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import type { Task } from '../../types/focus'
+import type { Repo } from '../../utils/repos'
 
 interface InboxProps {
   tasks: Task[]
+  repos: Repo[]
   isOpen: boolean
   onToggleOpen: () => void
   onAddTask: (title: string) => void
   onEditTask: (task: Task) => void
   onUpdateTitle: (taskId: string, newTitle: string) => void
+  onPromoteToBacklog: (taskId: string, repoId: string) => void
   getDragHandlers: (taskId: string) => {
     draggable: boolean
     onDragStart: (e: React.DragEvent) => void
@@ -23,11 +26,13 @@ interface InboxProps {
 
 export default function Inbox({
   tasks,
+  repos,
   isOpen,
   onToggleOpen,
   onAddTask,
   onEditTask,
   onUpdateTitle,
+  onPromoteToBacklog,
   getDragHandlers,
   dropZoneHandlers,
   inputRef: externalInputRef,
@@ -35,6 +40,7 @@ export default function Inbox({
   const [inputValue, setInputValue] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
+  const [selectedRepo, setSelectedRepo] = useState<Record<string, string>>({})
   const internalInputRef = useRef<HTMLInputElement>(null)
   const inputRef = externalInputRef ?? internalInputRef
   const editInputRef = useRef<HTMLInputElement>(null)
@@ -190,6 +196,37 @@ export default function Inbox({
                     {task.title}
                   </span>
                 )}
+                <select
+                  className="inbox-repo-select bg-bg-elevated border border-border-subtle rounded-[5px] py-0.5 px-1.5 text-[0.7rem] text-text-secondary cursor-pointer outline-none max-w-[110px]"
+                  data-task-id={task.id}
+                  title="Select repo"
+                  value={selectedRepo[task.id] ?? ''}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => {
+                    const value = e.target.value
+                    setSelectedRepo((prev) => ({ ...prev, [task.id]: value }))
+                  }}
+                >
+                  <option value="">Repo...</option>
+                  {repos.map((repo) => (
+                    <option key={repo.id} value={repo.id}>
+                      {repo.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  className="promote-to-backlog-btn bg-transparent border border-border-default rounded-[5px] py-0.5 px-2 text-[0.7rem] font-semibold text-accent cursor-pointer transition-all duration-150 ease-[ease] whitespace-nowrap hover:bg-orange-subtle hover:border-accent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:border-border-default"
+                  data-task-id={task.id}
+                  title="Promote to backlog"
+                  disabled={!selectedRepo[task.id]}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    const repoId = selectedRepo[task.id]
+                    if (repoId) onPromoteToBacklog(task.id, repoId)
+                  }}
+                >
+                  &rarr; Backlog
+                </button>
                 <button
                   className="promote-btn bg-transparent border border-border-default rounded-[5px] py-0.5 px-2 text-[0.7rem] font-semibold text-accent cursor-pointer transition-all duration-150 ease-[ease] whitespace-nowrap hover:bg-orange-subtle hover:border-accent"
                   data-task-id={task.id}

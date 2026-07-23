@@ -14,6 +14,7 @@ export const STATUSES_ALL = [
   'done',
 ] as const
 export const WIP_LIMITS: Record<string, number> = { 'in-progress': 3 }
+export const ATTENTION_IDLE_THRESHOLD_MS = 15 * 60 * 1000
 export const KANBAN_LABELS: Record<string, string> = {
   backlog: 'Backlog',
   'in-progress': 'In Progress',

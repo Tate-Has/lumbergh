@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react'
-import { findTodayInsertGap } from './useTodayDragDrop'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -70,9 +69,6 @@ function cleanupDrag(dragState: TouchDragState): void {
     dragState.currentDropZone = null
   }
   document.querySelectorAll('.insert-line.visible').forEach((l) => l.classList.remove('visible'))
-  document
-    .querySelectorAll('.today-insert-indicator.visible')
-    .forEach((i) => i.classList.remove('visible'))
 
   dragState.active = false
   dragState.taskId = null
@@ -86,16 +82,6 @@ function cleanupDrag(dragState: TouchDragState): void {
 function resolveDropStatus(dropZone: HTMLElement): string | null {
   if (dropZone.dataset.status) {
     return dropZone.dataset.status
-  }
-  if (
-    dropZone.id === 'todayGrid' ||
-    dropZone.id === 'todayPanel' ||
-    dropZone.closest('#todayPanel')
-  ) {
-    return 'today'
-  }
-  if (dropZone.id === 'sessionsPanel' || dropZone.closest('#sessionsPanel')) {
-    return 'running'
   }
   if (dropZone.classList.contains('collapsed-col') && dropZone.dataset.status) {
     return dropZone.dataset.status
@@ -264,7 +250,7 @@ export function useTouchDrag(options: UseTouchDragOptions): void {
 
       // ----- Task card drag -----
       const dropZone = hitEl.closest(
-        '.col-cards, .swimlane-cell, .today-grid, .panel, .board-col.collapsed-col'
+        '.col-cards, .swimlane-cell, .board-col.collapsed-col'
       ) as HTMLElement | null
 
       if (dropZone !== dragState.currentDropZone) {
@@ -275,38 +261,21 @@ export function useTouchDrag(options: UseTouchDragOptions): void {
 
       if (!dropZone) return
 
-      // Visual insert indicators
-      if (dropZone.classList.contains('today-grid')) {
-        const indicator = dropZone.querySelector('.today-insert-indicator') as HTMLElement | null
-        if (indicator) {
-          const gap = findTodayInsertGap(dropZone, touch.clientX, touch.clientY)
-          if (gap) {
-            indicator.style.left = gap.left + 'px'
-            indicator.style.top = gap.top + 'px'
-            indicator.style.height = gap.height + 'px'
-            indicator.dataset.beforeTask = gap.beforeTaskId ?? '__end__'
-            indicator.classList.add('visible')
-          } else {
-            indicator.classList.remove('visible')
+      // Visual insert indicators (column-style insert lines)
+      const lines = dropZone.querySelectorAll('.insert-line')
+      if (lines.length) {
+        let closest: Element | null = null
+        let closestDist = Infinity
+        for (const line of lines) {
+          const rect = line.getBoundingClientRect()
+          const mid = rect.top + rect.height / 2
+          const dist = Math.abs(touch.clientY - mid)
+          if (dist < closestDist) {
+            closestDist = dist
+            closest = line
           }
         }
-      } else {
-        // Column-style insert lines
-        const lines = dropZone.querySelectorAll('.insert-line')
-        if (lines.length) {
-          let closest: Element | null = null
-          let closestDist = Infinity
-          for (const line of lines) {
-            const rect = line.getBoundingClientRect()
-            const mid = rect.top + rect.height / 2
-            const dist = Math.abs(touch.clientY - mid)
-            if (dist < closestDist) {
-              closestDist = dist
-              closest = line
-            }
-          }
-          for (const line of lines) line.classList.toggle('visible', line === closest)
-        }
+        for (const line of lines) line.classList.toggle('visible', line === closest)
       }
     }
 
@@ -346,7 +315,7 @@ export function useTouchDrag(options: UseTouchDragOptions): void {
       // ----- Task card drop -----
       if (dragState.taskId && hitEl) {
         const dropZone = hitEl.closest(
-          '.col-cards, .swimlane-cell, .today-grid, .panel, .board-col.collapsed-col'
+          '.col-cards, .swimlane-cell, .board-col.collapsed-col'
         ) as HTMLElement | null
 
         if (dropZone) {
@@ -355,16 +324,9 @@ export function useTouchDrag(options: UseTouchDragOptions): void {
           if (newStatus) {
             let beforeId: string | null = null
 
-            if (dropZone.classList.contains('today-grid')) {
-              // Use the shared gap finder for the Today grid
-              const gap = findTodayInsertGap(dropZone, touch.clientX, touch.clientY)
-              beforeId = gap ? gap.beforeTaskId : null
-            } else {
-              // Column insert-line approach
-              const bid = findColumnBeforeId(dropZone, touch.clientY)
-              if (bid !== undefined) {
-                beforeId = bid
-              }
+            const bid = findColumnBeforeId(dropZone, touch.clientY)
+            if (bid !== undefined) {
+              beforeId = bid
             }
 
             onMoveTaskRef.current(dragState.taskId, newStatus, beforeId)

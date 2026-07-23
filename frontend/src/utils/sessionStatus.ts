@@ -2,6 +2,7 @@ export interface SessionBase {
   name: string
   alive: boolean
   idleState?: 'unknown' | 'idle' | 'working' | 'error' | 'stalled' | null
+  idleStateUpdatedAt?: string | null
   paused?: boolean
   displayName: string | null
   theOne?: boolean

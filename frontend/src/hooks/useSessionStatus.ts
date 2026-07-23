@@ -6,6 +6,7 @@ export interface SessionStatusInfo {
   color: string
   pulse: boolean
   label: string
+  idleStateUpdatedAt?: string
 }
 
 export function useSessionStatus(sessionNames: string[]): Record<string, SessionStatusInfo> {
@@ -31,7 +32,10 @@ export function useSessionStatus(sessionNames: string[]): Record<string, Session
       for (const name of names) {
         const session = sessions.find((s: SessionBase) => s.name === name)
         if (session) {
-          newMap[name] = getSessionStatus(session)
+          newMap[name] = {
+            ...getSessionStatus(session),
+            idleStateUpdatedAt: session.idleStateUpdatedAt || undefined,
+          }
         } else {
           // Session not found in Lumbergh — treat as offline
           newMap[name] = { color: 'gray', pulse: false, label: 'Offline' }
