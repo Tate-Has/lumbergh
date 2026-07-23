@@ -12,7 +12,12 @@ from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from lumbergh.constants import TMUX_CMD
-from lumbergh.tmux_pty import IS_WINDOWS, TmuxPtySession, capture_pane_content
+from lumbergh.tmux_pty import (
+    IS_WINDOWS,
+    TmuxPtySession,
+    capture_pane_content,
+    refresh_client,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -131,20 +136,28 @@ class SessionManager:
             logger.info(f"Session {session_name}: {len(managed.clients)} client(s) connected")
 
         # For a fresh PTY, ``tmux attach-session`` will stream a full redraw
-        # to the new client — sending capture-pane on top of that has caused
-        # offset/garbled rendering (snapshot text writes don't carry cursor
-        # positioning, so they pile into xterm above tmux's positioned redraw).
-        # Only send the snapshot when joining an existing PTY where there's
-        # no fresh attach to rely on.
+        # to the new client — nothing else to do. When joining an existing
+        # pooled PTY there's no fresh attach, so we ask tmux to redraw the
+        # client with ``refresh-client``: that streams a genuine full repaint
+        # (pane + status bar + borders) through the PTY, which the broadcast
+        # loop forwards to this new client. Only if that fails do we fall back
+        # to the reconstructed capture-pane snapshot (which can't reproduce the
+        # status bar/borders — the source of the "missing decorations" repaint).
         if not is_new_pty:
+            loop = asyncio.get_event_loop()
             try:
-                loop = asyncio.get_event_loop()
-                content = await loop.run_in_executor(None, capture_pane_content, session_name)
-                if content:
-                    await websocket.send_json({"type": "output", "data": content})
-                    logger.info(f"Sent initial pane capture to client ({len(content)} chars)")
+                refreshed = await loop.run_in_executor(None, refresh_client, session_name)
             except Exception as e:
-                logger.warning(f"Failed to send initial pane capture: {e}")
+                logger.warning(f"refresh-client failed for {session_name}: {e}")
+                refreshed = False
+            if not refreshed:
+                try:
+                    content = await loop.run_in_executor(None, capture_pane_content, session_name)
+                    if content:
+                        await websocket.send_json({"type": "output", "data": content})
+                        logger.info(f"Sent initial pane capture to client ({len(content)} chars)")
+                except Exception as e:
+                    logger.warning(f"Failed to send initial pane capture: {e}")
 
         return managed
 
@@ -420,6 +433,13 @@ class SessionManager:
             data = message.get("data", "")
             if data:
                 await managed.pty.write_async(data.encode("utf-8"))
+
+        elif message.get("type") == "refresh":
+            # Client asked for a repaint (session switch/activate, Fit button).
+            # Force a native tmux redraw so decorations come back — see
+            # refresh_client for why this beats a reconstructed snapshot.
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, refresh_client, session_name)
 
         elif message.get("type") == "resize":
             cols = message.get("cols", 80)

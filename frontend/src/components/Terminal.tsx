@@ -72,6 +72,7 @@ export default memo(function Terminal({
   const fitAddonRef = useRef<FitAddon | null>(null)
   const sendRef = useRef<(data: string) => void>(() => {})
   const sendResizeRef = useRef<(cols: number, rows: number) => void>(() => {})
+  const sendRefreshRef = useRef<() => void>(() => {})
   // Track last-sent cols/rows so we can dedupe redundant resize sends without
   // suppressing legit small layout shifts that DO cross a column/row boundary.
   const lastSentSizeRef = useRef<{ cols: number; rows: number } | null>(null)
@@ -336,9 +337,13 @@ export default memo(function Terminal({
     })
     // Mobile browsers may need additional time for layout to settle
     setTimeout(handleFit, 100)
+    // Force a native tmux redraw once the fit has settled. On a fresh attach
+    // tmux redraws on its own, but reconnects/pooled joins to a same-size
+    // session get no size-driven redraw, so decorations wouldn't repaint.
+    setTimeout(() => sendRefreshRef.current(), 200)
   }, [handleFit])
 
-  const { send, sendResize, isConnected, error, sessionDead } = useTerminalSocket({
+  const { send, sendResize, sendRefresh, isConnected, error, sessionDead } = useTerminalSocket({
     sessionName,
     onData: handleData,
     onResizeSync: handleResizeSync,
@@ -356,7 +361,23 @@ export default memo(function Terminal({
   useEffect(() => {
     sendRef.current = send
     sendResizeRef.current = sendResize
-  }, [send, sendResize])
+    sendRefreshRef.current = sendRefresh
+  }, [send, sendResize, sendRefresh])
+
+  // Ask tmux for a full native redraw (pane + status bar + borders). Used on
+  // session switch/activate and the manual Fit button, where the size often
+  // doesn't change so no resize-driven redraw would otherwise fire.
+  const requestRefresh = useCallback(() => {
+    sendRefreshRef.current()
+  }, [])
+
+  // The manual "Fit" control (triple-dot menu) should always produce a visible
+  // repaint. handleFit only sends a resize when cols/rows actually change, so
+  // pair it with a forced tmux redraw to cover the unchanged-size case.
+  const handleManualFit = useCallback(() => {
+    handleFit()
+    setTimeout(requestRefresh, 50)
+  }, [handleFit, requestRefresh])
 
   // Expose send function to parent
   useEffect(() => {
@@ -837,9 +858,15 @@ export default memo(function Terminal({
       // Additional delayed fit for mobile layout settling (mobile browsers
       // can take 200-300ms to finalize layout after display:none removal)
       const timeoutId = setTimeout(handleFit, 300)
-      return () => clearTimeout(timeoutId)
+      // Re-assert size doesn't guarantee a redraw when cols/rows are unchanged,
+      // so force a native tmux redraw to bring decorations back on activate.
+      const refreshId = setTimeout(requestRefresh, 350)
+      return () => {
+        clearTimeout(timeoutId)
+        clearTimeout(refreshId)
+      }
     }
-  }, [isVisible, handleFit])
+  }, [isVisible, handleFit, requestRefresh])
 
   // Handle browser/app visibility change (mobile app switching, screen lock/unlock)
   // and orientation changes - both can leave the xterm canvas in a corrupted state
@@ -851,6 +878,7 @@ export default memo(function Terminal({
         // orientation changes can leave tmux's idea of the pane size stale.
         lastSentSizeRef.current = null
         setTimeout(handleFit, 200)
+        setTimeout(requestRefresh, 250)
       }
     }
 
@@ -860,6 +888,7 @@ export default memo(function Terminal({
       // orientation changes can leave tmux's idea of the pane size stale.
       lastSentSizeRef.current = null
       setTimeout(handleFit, 300)
+      setTimeout(requestRefresh, 350)
     }
 
     document.addEventListener('visibilitychange', handleVisibilityChange)
@@ -868,7 +897,7 @@ export default memo(function Terminal({
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       window.removeEventListener('orientationchange', handleOrientation)
     }
-  }, [handleFit, isVisible])
+  }, [handleFit, isVisible, requestRefresh])
 
   // Update terminal font size when it changes
   useEffect(() => {
@@ -918,7 +947,7 @@ export default memo(function Terminal({
           }}
           onSendViaApi={sendViaApi}
           onSendTmuxCommand={sendTmuxCommand}
-          onFit={handleFit}
+          onFit={handleManualFit}
           onBack={onBack}
           onReset={onReset}
           onCycleSession={onCycleSession}

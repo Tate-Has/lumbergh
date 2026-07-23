@@ -31,6 +31,63 @@ def _fake_tmux_run(pane_lines, display_stdout):
     return fake_run
 
 
+def _fake_tmux_clients(ttys, *, list_rc=0, refresh_rc=0, refresh_calls=None):
+    """subprocess.run stand-in for list-clients + refresh-client.
+
+    list-clients returns one client_tty per line; refresh-client records the
+    tty it was asked to redraw so tests can assert every attached client got
+    a repaint.
+    """
+
+    def fake_run(argv, **_kwargs):
+        result = MagicMock()
+        if "list-clients" in argv:
+            result.returncode = list_rc
+            result.stdout = "".join(f"{t}\n" for t in ttys)
+        elif "refresh-client" in argv:
+            result.returncode = refresh_rc
+            result.stdout = ""
+            if refresh_calls is not None:
+                refresh_calls.append(argv[argv.index("-t") + 1])
+        else:
+            result.returncode = 0
+            result.stdout = ""
+        return result
+
+    return fake_run
+
+
+def test_refresh_client_redraws_every_attached_client(monkeypatch):
+    """A session with two attached clients (e.g. the web bridge plus a real
+    terminal) must have refresh-client issued for each tty so decorations
+    repaint everywhere the session is visible."""
+    calls: list[str] = []
+    monkeypatch.setattr(
+        tmux_pty.subprocess,
+        "run",
+        _fake_tmux_clients(["/dev/pts/3", "/dev/pts/7"], refresh_calls=calls),
+    )
+
+    assert tmux_pty.refresh_client("probe") is True
+    assert calls == ["/dev/pts/3", "/dev/pts/7"]
+
+
+def test_refresh_client_reports_failure_when_no_clients(monkeypatch):
+    """No attached clients means nothing was redrawn — refresh_client must
+    report False so the caller falls back to the capture-pane snapshot."""
+    monkeypatch.setattr(tmux_pty.subprocess, "run", _fake_tmux_clients([]))
+
+    assert tmux_pty.refresh_client("probe") is False
+
+
+def test_refresh_client_reports_failure_when_list_clients_errors(monkeypatch):
+    monkeypatch.setattr(
+        tmux_pty.subprocess, "run", _fake_tmux_clients(["/dev/pts/3"], list_rc=1)
+    )
+
+    assert tmux_pty.refresh_client("probe") is False
+
+
 def test_capture_pane_offsets_lines_for_top_status_bar(monkeypatch):
     """Regression: with `status-position top`, tmux gives the pane one fewer
     row (the top status bar) and capture-pane returns only those pane lines.

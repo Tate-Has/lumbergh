@@ -16,6 +16,7 @@ interface UseTerminalSocketOptions {
 interface UseTerminalSocketResult {
   send: (data: string) => void
   sendResize: (cols: number, rows: number) => void
+  sendRefresh: () => void
   isConnected: boolean
   error: string | null
   sessionDead: boolean
@@ -157,6 +158,15 @@ export function useTerminalSocket({
     }
   }, [])
 
+  // Ask the backend to force a native tmux redraw (refresh-client). Repaints
+  // the whole client — pane + status bar + borders — without changing size,
+  // which a bare xterm refresh() can't do (it only re-blits the stale buffer).
+  const sendRefresh = useCallback(() => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'refresh' }))
+    }
+  }, [])
+
   useEffect(() => {
     connect()
 
@@ -212,5 +222,5 @@ export function useTerminalSocket({
     }
   }, [connect])
 
-  return { send, sendResize, isConnected, error, sessionDead }
+  return { send, sendResize, sendRefresh, isConnected, error, sessionDead }
 }

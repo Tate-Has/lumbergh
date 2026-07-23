@@ -196,6 +196,48 @@ def capture_pane_content(session_name: str) -> str:
         return ""
 
 
+def refresh_client(session_name: str) -> bool:
+    """Force tmux to redraw every client attached to a session.
+
+    ``capture_pane_content`` reconstructs only the pane cells, so it can never
+    reproduce the status bar or pane borders — that's why a snapshot-based
+    repaint drops tmux decorations. ``tmux refresh-client`` instead makes tmux
+    stream a genuine full redraw (pane + status line + borders) down each
+    attached client's tty. For our pooled PTY that tty is the WebSocket bridge,
+    so the redraw reaches the browser through the normal broadcast loop.
+
+    Returns True if at least one client was refreshed.
+    """
+    try:
+        listing = subprocess.run(
+            [TMUX_CMD, "list-clients", "-t", session_name, "-F", "#{client_tty}"],
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=2,
+        )
+        if listing.returncode != 0:
+            return False
+
+        refreshed = False
+        for tty in listing.stdout.splitlines():
+            tty = tty.strip()
+            if not tty:
+                continue
+            result = subprocess.run(
+                [TMUX_CMD, "refresh-client", "-t", tty],
+                capture_output=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=2,
+            )
+            if result.returncode == 0:
+                refreshed = True
+        return refreshed
+    except Exception:
+        return False
+
+
 def capture_scrollback(session_name: str, max_lines: int = 500) -> str:
     """Capture scrollback history from the active pane (plain text, no ANSI).
 
