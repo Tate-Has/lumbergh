@@ -676,63 +676,42 @@ export default memo(function Terminal({
       }
     }
 
-    // Flag set while we dispatch synthetic wheel events for touch scrolling
-    // (below). Those go to the app via xterm's encoder, NOT tmux copy-mode, so
-    // onWheel must ignore them or it would wrongly flip the copy-mode UI on.
-    let synthWheel = false
+    // Scrolling via PageUp/PageDown. Claude Code's fullscreen TUI scrolls its
+    // own transcript in response to PageUp/PageDown, which is far more reliable
+    // than synthesizing xterm wheel reports (coordinate-sensitive, and routed to
+    // input history when the wheel lands over the prompt box). We send the key
+    // sequences through the same WebSocket path as real keystrokes.
+    const PAGE_UP = '\x1b[5~'
+    const PAGE_DOWN = '\x1b[6~'
+    // Pixels of wheel/drag travel per PageUp/PageDown emitted. Raise if it
+    // scrolls too fast, lower if too slow — these are the knobs to tune feel.
+    const WHEEL_PAGE_PX = 160
+    const TOUCH_PAGE_PX = 45
+    const scrollByKeys = (up: boolean, count: number) => {
+      if (count <= 0) return
+      sendRef.current((up ? PAGE_UP : PAGE_DOWN).repeat(count))
+    }
 
-    // Detect scroll-up to immediately flag copy-mode entry
-    // (tmux enters copy-mode on scroll-up when mouse mode is on)
+    // Desktop wheel → PageUp/PageDown. preventDefault/stopPropagation so xterm
+    // doesn't ALSO handle the wheel (double-scroll / its own dodgy reports).
+    let wheelAccum = 0
     const onWheel = (e: WheelEvent) => {
-      if (synthWheel) return
-      if (e.deltaY < 0 && !scrollModeRef.current) {
-        setScrollMode(true)
+      e.preventDefault()
+      e.stopPropagation()
+      // Normalize line-mode deltas (some mice report deltaMode 1) to pixels.
+      wheelAccum += e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY
+      const steps = Math.trunc(wheelAccum / WHEEL_PAGE_PX)
+      if (steps !== 0) {
+        // deltaY < 0 = scroll up = PageUp; > 0 = down = PageDown.
+        scrollByKeys(steps < 0, Math.abs(steps))
+        wheelAccum -= steps * WHEEL_PAGE_PX
       }
     }
 
-    // Touch-drag to scroll (mobile). Claude Code now runs in the alternate
-    // screen with mouse tracking on and keeps its own scrollback — tmux history
-    // stays empty (hist=0), so tmux copy-mode has nothing to scroll. Instead we
-    // translate a one-finger vertical drag into wheel events dispatched through
-    // xterm's own encoder: the exact path desktop mouse-wheel already uses.
-    // xterm forwards these as mouse-wheel reports so Claude Code scrolls itself.
-    // On a plain shell (no mouse mode) xterm attaches no wheel listener, so the
-    // synthetic events are inert and those panes keep using the copy-mode buttons.
-    // A mouse-mode app (Claude Code) gets ONE wheel report per wheel event, no
-    // matter the deltaY — so speed is controlled by how many events we emit per
-    // drag, not by delta magnitude. WHEEL_NOTCH_PX = pixels of drag per emitted
-    // event; STEPS_PER_NOTCH = how many wheel reports each notch fires.
-    const WHEEL_NOTCH_PX = 18
-    const STEPS_PER_NOTCH = 6
+    // Touch-drag to scroll (mobile) → PageUp/PageDown.
     let touchLastY = 0
     let touchAccum = 0
     let touchScrolling = false
-
-    // Anchor every wheel report to a fixed cell in the upper/transcript region
-    // rather than the finger position. Claude Code routes a wheel over its input
-    // box to command/input history instead of scrolling the conversation, so a
-    // drag that starts (or moves) over the lower input area would never scroll
-    // the transcript. Targeting near the top keeps all scrolling on the history.
-    const dispatchWheel = (deltaY: number) => {
-      const rect = term.element?.getBoundingClientRect()
-      if (!rect) return
-      const clientX = rect.left + rect.width / 2
-      const clientY = rect.top + rect.height * 0.25
-      synthWheel = true
-      for (let i = 0; i < STEPS_PER_NOTCH; i++) {
-        term.element?.dispatchEvent(
-          new WheelEvent('wheel', {
-            deltaY,
-            deltaMode: 0,
-            clientX,
-            clientY,
-            bubbles: true,
-            cancelable: true,
-          })
-        )
-      }
-      synthWheel = false
-    }
 
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length !== 1) return
@@ -746,11 +725,11 @@ export default memo(function Terminal({
       const { clientY } = e.touches[0]
       touchAccum += clientY - touchLastY
       touchLastY = clientY
-      // Finger dragging DOWN (positive delta) reveals older content → wheel up.
-      while (Math.abs(touchAccum) >= WHEEL_NOTCH_PX) {
+      // Finger dragging DOWN (positive delta) reveals older content → PageUp.
+      while (Math.abs(touchAccum) >= TOUCH_PAGE_PX) {
         const up = touchAccum > 0
-        dispatchWheel(up ? -WHEEL_NOTCH_PX : WHEEL_NOTCH_PX)
-        touchAccum += up ? -WHEEL_NOTCH_PX : WHEEL_NOTCH_PX
+        scrollByKeys(up, 1)
+        touchAccum += up ? -TOUCH_PAGE_PX : TOUCH_PAGE_PX
         touchScrolling = true
       }
       // Only claim the gesture (blocking page scroll / pull-to-refresh) once we
@@ -778,8 +757,9 @@ export default memo(function Terminal({
       el.addEventListener('touchstart', onTouchStart, { passive: true })
       el.addEventListener('touchmove', onTouchMove, { passive: false })
     }
-    // Wheel listener for all devices (copy-mode detection)
-    el?.addEventListener('wheel', onWheel, true)
+    // Wheel listener for all devices. Non-passive so preventDefault() can stop
+    // xterm from also handling the wheel; capture so we run before xterm.
+    el?.addEventListener('wheel', onWheel, { capture: true, passive: false })
     // Thaw on release anywhere (desktop) so a drag that ends off the terminal
     // still flushes buffered output and copies the selection.
     if (!isTouch) {
