@@ -15,11 +15,12 @@ import SessionSummaryOverlay from '../components/SessionSummaryBanner'
 import ScratchPromoteBanner from '../components/ScratchPromoteBanner'
 import { isSummaryDismissed, dismissSummary, enableSummary } from '../hooks/useSessionSummary'
 import GitTab from '../components/graph/GitTab'
+import ActivityFeed from '../components/activity/ActivityFeed'
 import SessionNavigatorDots from '../components/SessionNavigatorDots'
 import { useIsDesktop } from '../hooks/useMediaQuery'
 
 type RightPanel = 'git' | 'files' | 'todos' | 'prompts' | 'shared'
-type MobileTab = 'terminal' | 'git' | 'files' | 'todos' | 'prompts' | 'shared'
+type MobileTab = 'terminal' | 'activity' | 'git' | 'files' | 'todos' | 'prompts' | 'shared'
 
 type DiffData = {
   files: Array<{ path: string; diff: string }>
@@ -177,9 +178,10 @@ export default function SessionDetail() {
 
   const visibleMobileTabs = useMemo(
     () =>
-      [{ id: 'terminal' as MobileTab, label: 'Terminal' }].concat(
-        ALL_TABS.filter((t) => effectiveTabVisibility[t.id] !== false)
-      ),
+      [
+        { id: 'terminal' as MobileTab, label: 'Terminal' },
+        { id: 'activity' as MobileTab, label: 'Activity' },
+      ].concat(ALL_TABS.filter((t) => effectiveTabVisibility[t.id] !== false)),
     [effectiveTabVisibility]
   )
 
@@ -503,6 +505,52 @@ export default function SessionDetail() {
     </div>
   )
 
+  const renderMobileTabContent = () => (
+    <>
+      {mobileTab === 'activity' && name && <ActivityFeed sessionName={name} />}
+      {mobileTab === 'git' && (
+        <GitTab
+          sessionName={name}
+          diffData={diffData}
+          onRefreshDiff={() => fetchDiffData({ force: true })}
+          onJumpToTodos={handleJumpToTodos}
+          onFocusTerminal={handleFocusTerminal}
+          resetTrigger={gitTabResetTrigger}
+        />
+      )}
+      {mobileTab === 'files' && (
+        <FileBrowser sessionName={name} onFocusTerminal={handleFocusTerminal} />
+      )}
+      {mobileTab === 'todos' && name && (
+        <VerticalResizablePanes
+          top={
+            <TodoList
+              sessionName={name}
+              onFocusTerminal={handleFocusTerminal}
+              onTodoSent={handleTodoSent}
+              onSwitchToTerminal={handleSwitchToTerminal}
+            />
+          }
+          bottom={<Scratchpad sessionName={name} onFocusTerminal={handleFocusTerminal} />}
+          defaultTopHeight={50}
+          minTopHeight={20}
+          maxTopHeight={80}
+          storageKey="lumbergh:todoSplitHeight"
+        />
+      )}
+      {mobileTab === 'prompts' && (
+        <PromptTemplates sessionName={name} onFocusTerminal={handleFocusTerminal} />
+      )}
+      {mobileTab === 'shared' && (
+        <SharedFiles
+          sessionName={name}
+          onFocusTerminal={handleFocusTerminal}
+          refreshTrigger={sharedRefreshTrigger}
+        />
+      )}
+    </>
+  )
+
   const renderRightPanel = () => (
     <div className="h-full flex flex-col">
       {/* Panel switcher */}
@@ -745,46 +793,7 @@ export default function SessionDetail() {
             <div className={`h-full ${mobileTab === 'terminal' ? '' : 'hidden'}`}>
               {renderTerminal()}
             </div>
-            {mobileTab === 'git' && (
-              <GitTab
-                sessionName={name}
-                diffData={diffData}
-                onRefreshDiff={() => fetchDiffData({ force: true })}
-                onJumpToTodos={handleJumpToTodos}
-                onFocusTerminal={handleFocusTerminal}
-                resetTrigger={gitTabResetTrigger}
-              />
-            )}
-            {mobileTab === 'files' && (
-              <FileBrowser sessionName={name} onFocusTerminal={handleFocusTerminal} />
-            )}
-            {mobileTab === 'todos' && name && (
-              <VerticalResizablePanes
-                top={
-                  <TodoList
-                    sessionName={name}
-                    onFocusTerminal={handleFocusTerminal}
-                    onTodoSent={handleTodoSent}
-                    onSwitchToTerminal={handleSwitchToTerminal}
-                  />
-                }
-                bottom={<Scratchpad sessionName={name} onFocusTerminal={handleFocusTerminal} />}
-                defaultTopHeight={50}
-                minTopHeight={20}
-                maxTopHeight={80}
-                storageKey="lumbergh:todoSplitHeight"
-              />
-            )}
-            {mobileTab === 'prompts' && (
-              <PromptTemplates sessionName={name} onFocusTerminal={handleFocusTerminal} />
-            )}
-            {mobileTab === 'shared' && (
-              <SharedFiles
-                sessionName={name}
-                onFocusTerminal={handleFocusTerminal}
-                refreshTrigger={sharedRefreshTrigger}
-              />
-            )}
+            {renderMobileTabContent()}
           </div>
         </div>
       )}

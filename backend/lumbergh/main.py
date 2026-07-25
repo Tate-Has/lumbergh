@@ -360,6 +360,16 @@ async def _exit_copy_mode(session_name: str) -> None:
         await _run_tmux("send-keys", "-t", session_name, "q")
 
 
+async def _session_cwd(session_name: str) -> Path | None:
+    """Resolve a tmux session's current pane directory."""
+    try:
+        out = await _run_tmux("display-message", "-p", "-t", session_name, "#{pane_current_path}")
+    except Exception:
+        return None
+    path = out.strip()
+    return Path(path) if path else None
+
+
 async def _run_tmux(*args: str, input_data: str | None = None, timeout: float = 5.0) -> str:
     """Run a tmux command asynchronously with a timeout.
 
@@ -512,6 +522,41 @@ async def session_stream(
     finally:
         # Unregister client - PTY closes only when last client disconnects
         await session_manager.unregister_client(session_name, websocket)
+
+
+@app.websocket("/api/session/{session_name}/activity")
+async def session_activity(websocket: WebSocket, session_name: str):
+    from fastapi import WebSocketDisconnect
+
+    from lumbergh.activity.claude_code import ClaudeCodeAdapter
+
+    await websocket.accept()
+    cwd = await _session_cwd(session_name)
+    adapter = ClaudeCodeAdapter.for_cwd(cwd) if cwd else None
+    if adapter is None:
+        await websocket.send_json({"type": "no_transcript", "id": "none"})
+        await websocket.close()
+        return
+
+    stop = asyncio.Event()
+
+    async def drain_client():
+        # We don't expect inbound frames, but reading detects disconnect promptly.
+        try:
+            while True:
+                await websocket.receive_text()
+        except WebSocketDisconnect:
+            stop.set()
+
+    reader = asyncio.create_task(drain_client())
+    try:
+        async for event in adapter.tail(stop):
+            await websocket.send_json(event.model_dump())
+    except WebSocketDisconnect:
+        pass
+    finally:
+        stop.set()
+        reader.cancel()
 
 
 def mount_frontend(app: FastAPI):

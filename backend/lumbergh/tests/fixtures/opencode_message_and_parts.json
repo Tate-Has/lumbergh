@@ -1,0 +1,8 @@
+{
+  "message": {"id": "msg_x", "sessionID": "ses_x", "role": "assistant", "modelID": "qwen3-coder:30b"},
+  "parts": [
+    {"type": "step-start"},
+    {"type": "text", "text": "PONG from jv-desktop"},
+    {"type": "step-finish"}
+  ]
+}
