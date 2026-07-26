@@ -407,11 +407,14 @@ async def send_to_session(session_name: str, body: SendInput):
     if len(text) > 128:
         # For large text, use load-buffer + paste-buffer (much faster than send-keys
         # which processes each character individually through tmux's key pipeline).
-        # Include trailing newline in the buffer itself so the Enter is delivered
-        # atomically with the text — a separate send-keys Enter can race.
-        buf = text + "\n" if body.send_enter else text
-        await _run_tmux("load-buffer", "-", input_data=buf)
+        # The buffer must NOT contain the trailing newline: paste-buffer -p wraps it
+        # in bracketed-paste control codes, and an agent like Claude Code treats a
+        # newline inside a bracketed paste as a literal newline (multi-line input)
+        # rather than a submit. The Enter has to arrive as its own key press below.
+        await _run_tmux("load-buffer", "-", input_data=text)
         await _run_tmux("paste-buffer", "-t", session_name, "-d", "-p")
+        if body.send_enter:
+            await _run_tmux("send-keys", "-t", session_name, "Enter")
     else:
         # For short text, send-keys -l is fine
         await _run_tmux("send-keys", "-t", session_name, "-l", text)
