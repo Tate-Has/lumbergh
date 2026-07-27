@@ -1,0 +1,756 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lumbergh Workspace Orchestration Mockup</title>
+  <style>
+    :root {
+      --bg: #f4f6f8;
+      --panel: #ffffff;
+      --panel-soft: #f9fafb;
+      --line: #d9dee5;
+      --line-strong: #b9c2ce;
+      --ink: #1d2733;
+      --muted: #657386;
+      --blue: #1769e0;
+      --green: #17844b;
+      --amber: #b95f00;
+      --red: #b6332a;
+      --teal: #0f766e;
+      --violet: #6d4aff;
+      --shadow: 0 1px 2px rgba(29, 39, 51, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Aptos", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: linear-gradient(180deg, #f8fafc 0%, var(--bg) 100%);
+    }
+
+    button, input, textarea, select {
+      font: inherit;
+    }
+
+    .app {
+      height: 100vh;
+      display: grid;
+      grid-template-columns: 248px minmax(620px, 1fr) 420px;
+      grid-template-rows: 56px 1fr;
+      overflow: hidden;
+    }
+
+    .topbar {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(10px);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .mark {
+      width: 28px;
+      height: 28px;
+      border-radius: 7px;
+      background: conic-gradient(from 220deg, var(--blue), var(--teal), #252f3f, var(--blue));
+    }
+
+    .brand-title {
+      font-weight: 700;
+      line-height: 1.1;
+    }
+
+    .brand-subtitle {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 2px;
+    }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .search {
+      width: min(36vw, 460px);
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      padding: 8px 10px;
+      background: #fff;
+      color: var(--ink);
+    }
+
+    .btn {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      border-radius: 7px;
+      padding: 7px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .btn.primary {
+      background: var(--blue);
+      border-color: var(--blue);
+      color: #fff;
+      font-weight: 600;
+    }
+
+    .sidebar {
+      border-right: 1px solid var(--line);
+      background: #fbfcfd;
+      padding: 12px;
+      overflow: auto;
+    }
+
+    .side-section {
+      margin-bottom: 18px;
+    }
+
+    .side-heading {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.07em;
+      margin: 0 0 8px;
+      text-transform: uppercase;
+    }
+
+    .project {
+      border: 1px solid transparent;
+      border-radius: 7px;
+      padding: 8px;
+      margin-bottom: 5px;
+      cursor: pointer;
+    }
+
+    .project.active {
+      background: #eef5ff;
+      border-color: #c8ddff;
+    }
+
+    .project-title {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .project-meta {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 3px;
+    }
+
+    .repo {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 7px;
+      padding: 7px 8px;
+      margin-bottom: 6px;
+      font-size: 12px;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      display: inline-block;
+      margin-right: 7px;
+      background: var(--line-strong);
+    }
+
+    .dot.green { background: var(--green); }
+    .dot.blue { background: var(--blue); }
+    .dot.amber { background: var(--amber); }
+
+    .main {
+      min-width: 0;
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+    }
+
+    .workspace-head {
+      padding: 14px 16px 10px;
+      border-bottom: 1px solid var(--line);
+      background: #fff;
+    }
+
+    .workspace-row {
+      display: flex;
+      align-items: start;
+      justify-content: space-between;
+      gap: 14px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 18px;
+      letter-spacing: 0;
+    }
+
+    .workspace-meta {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 5px;
+    }
+
+    .mode-toggle {
+      display: flex;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: #fff;
+    }
+
+    .mode-toggle button {
+      border: 0;
+      border-right: 1px solid var(--line);
+      background: #fff;
+      padding: 7px 10px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .mode-toggle button:last-child { border-right: 0; }
+    .mode-toggle .active {
+      background: #eaf2ff;
+      color: #0b4fa8;
+      font-weight: 700;
+    }
+
+    .capture {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfcfd;
+      display: grid;
+      grid-template-columns: 1fr 118px 116px 96px;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .capture input, .capture select {
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #fff;
+      padding: 8px 10px;
+      font-size: 13px;
+      min-width: 0;
+    }
+
+    .board {
+      overflow: auto;
+      padding: 12px;
+      display: grid;
+      grid-template-columns: repeat(5, minmax(230px, 1fr));
+      gap: 10px;
+      align-items: start;
+    }
+
+    .column {
+      min-height: calc(100vh - 190px);
+      background: #eef1f5;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px;
+    }
+
+    .column-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #3d4b5c;
+    }
+
+    .count {
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    .task {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 9px;
+      margin-bottom: 8px;
+      box-shadow: var(--shadow);
+      cursor: pointer;
+    }
+
+    .task.selected {
+      border-color: #8fbaff;
+      box-shadow: 0 0 0 2px #dceaff;
+    }
+
+    .task-title {
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.25;
+    }
+
+    .task-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-top: 8px;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 2px 7px;
+      font-size: 11px;
+      color: var(--muted);
+      background: #fff;
+      max-width: 100%;
+    }
+
+    .tag.blue { background: #eaf2ff; border-color: #bfd8ff; color: #0b4fa8; }
+    .tag.green { background: #eaf8f0; border-color: #bfe7cf; color: #11613a; }
+    .tag.amber { background: #fff6e8; border-color: #f5ce95; color: #8a4600; }
+    .tag.red { background: #fff0ef; border-color: #efbbb7; color: #89231c; }
+    .tag.teal { background: #e6f7f5; border-color: #a8ddd8; color: #0c5e58; }
+
+    .order {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 9px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .grab {
+      color: #8a96a6;
+      letter-spacing: 1px;
+    }
+
+    .detail {
+      border-left: 1px solid var(--line);
+      background: #fff;
+      overflow: auto;
+      padding: 12px;
+    }
+
+    .detail-section {
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 12px;
+      margin-bottom: 12px;
+    }
+
+    .detail-section:last-child {
+      border-bottom: 0;
+      margin-bottom: 0;
+    }
+
+    .detail h2 {
+      margin: 0 0 6px;
+      font-size: 15px;
+    }
+
+    .detail h3 {
+      margin: 0 0 8px;
+      font-size: 12px;
+      color: var(--muted);
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+    }
+
+    .selected-title {
+      font-weight: 800;
+      font-size: 17px;
+      line-height: 1.25;
+    }
+
+    .field-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .field {
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      padding: 7px 8px;
+      background: #fbfcfd;
+      font-size: 12px;
+    }
+
+    .field span {
+      display: block;
+      color: var(--muted);
+      margin-bottom: 2px;
+    }
+
+    .graph {
+      display: grid;
+      grid-template-columns: 1fr 24px 1fr 24px 1fr;
+      align-items: center;
+      gap: 4px;
+      margin-top: 8px;
+    }
+
+    .graph-node {
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--line-strong);
+      border-radius: 7px;
+      padding: 7px;
+      font-size: 12px;
+      background: #fff;
+      min-height: 54px;
+    }
+
+    .graph-node.done { border-left-color: var(--green); }
+    .graph-node.running { border-left-color: var(--blue); }
+    .graph-node.blocked { border-left-color: var(--amber); }
+
+    .arrow {
+      color: #8a96a6;
+      text-align: center;
+      font-weight: 800;
+    }
+
+    .terminal {
+      background: #101820;
+      color: #d8e1eb;
+      border-radius: 8px;
+      border: 1px solid #1e2b38;
+      padding: 10px;
+      font-family: "Cascadia Mono", "Consolas", monospace;
+      font-size: 12px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      min-height: 146px;
+    }
+
+    .terminal .prompt { color: #8ecbff; }
+    .terminal .warn { color: #f2bd72; }
+    .terminal .ask { color: #ff9a91; }
+
+    textarea {
+      width: 100%;
+      min-height: 96px;
+      resize: vertical;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      padding: 8px;
+      font-size: 12px;
+      color: var(--ink);
+      background: #fff;
+    }
+
+    .linked-session {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      padding: 8px;
+      margin-bottom: 7px;
+      font-size: 12px;
+      background: #fbfcfd;
+    }
+
+    .footer-actions {
+      position: sticky;
+      bottom: 0;
+      background: #fff;
+      padding-top: 8px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    @media (max-width: 1280px) {
+      .app {
+        grid-template-columns: 220px minmax(560px, 1fr);
+      }
+      .detail {
+        grid-column: 1 / -1;
+        border-left: 0;
+        border-top: 1px solid var(--line);
+      }
+    }
+
+    @media (max-width: 880px) {
+      .app {
+        height: auto;
+        min-height: 100vh;
+        grid-template-columns: 1fr;
+        grid-template-rows: auto;
+      }
+      .topbar, .sidebar, .main, .detail {
+        grid-column: 1;
+      }
+      .capture {
+        grid-template-columns: 1fr;
+      }
+      .board {
+        grid-template-columns: 1fr;
+      }
+      .column {
+        min-height: auto;
+      }
+      .search {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="mark"></div>
+        <div>
+          <div class="brand-title">Lumbergh Workspaces</div>
+          <div class="brand-subtitle">Kanban, queue, sessions, and agent orchestration</div>
+        </div>
+      </div>
+      <div class="top-actions">
+        <input class="search" value="intraday recon late confirms" aria-label="Search" />
+        <button class="btn">Import</button>
+        <button class="btn primary">New Task</button>
+      </div>
+    </header>
+
+    <aside class="sidebar">
+      <section class="side-section">
+        <p class="side-heading">Projects</p>
+        <div class="project active">
+          <div class="project-title"><span>CTRM Core</span><span>18</span></div>
+          <div class="project-meta">3 repos, 5 live sessions</div>
+        </div>
+        <div class="project">
+          <div class="project-title"><span>Project Mgmt UI</span><span>9</span></div>
+          <div class="project-meta">planning source of truth</div>
+        </div>
+        <div class="project">
+          <div class="project-title"><span>Skills Lab</span><span>12</span></div>
+          <div class="project-meta">custom skills and agents</div>
+        </div>
+      </section>
+
+      <section class="side-section">
+        <p class="side-heading">Linked Repos</p>
+        <div class="repo"><span><span class="dot green"></span>ctrm-engine</span><span>main</span></div>
+        <div class="repo"><span><span class="dot blue"></span>project-ui</span><span>task-42</span></div>
+        <div class="repo"><span><span class="dot amber"></span>agent-skills</span><span>draft</span></div>
+      </section>
+
+      <section class="side-section">
+        <p class="side-heading">Views</p>
+        <div class="repo"><span>Workspace Board</span><span>active</span></div>
+        <div class="repo"><span>Global Queue</span><span>43</span></div>
+        <div class="repo"><span>Clarifications</span><span>4</span></div>
+        <div class="repo"><span>Review Gates</span><span>7</span></div>
+      </section>
+    </aside>
+
+    <main class="main">
+      <section class="workspace-head">
+        <div class="workspace-row">
+          <div>
+            <h1>CTRM Core Workspace</h1>
+            <div class="workspace-meta">Parent initiative: intraday exposure reconciliation. Tasks can span repos but stay attached to this workspace.</div>
+          </div>
+          <div class="mode-toggle" aria-label="Execution mode">
+            <button>Autopilot</button>
+            <button>Guided</button>
+            <button class="active">Live Pairing</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="capture">
+        <input value="Add task: validate PJM late-confirm fallback against signed-off examples" aria-label="Quick task capture" />
+        <select aria-label="Project">
+          <option>CTRM Core</option>
+          <option>Project Mgmt UI</option>
+          <option>Skills Lab</option>
+        </select>
+        <select aria-label="Agent">
+          <option>CTRM Analyst</option>
+          <option>Backend Impl</option>
+          <option>QA Scenario</option>
+        </select>
+        <button class="btn primary">Queue</button>
+      </section>
+
+      <section class="board">
+        <div class="column">
+          <div class="column-head"><span>Inbox</span><span class="count">5</span></div>
+          <article class="task">
+            <div class="task-title">Map project-management epic into executable tasks</div>
+            <div class="task-meta">
+              <span class="tag teal">project-ui</span>
+              <span class="tag">needs triage</span>
+            </div>
+            <div class="order"><span>#1 in inbox</span><span class="grab">::</span></div>
+          </article>
+          <article class="task">
+            <div class="task-title">Capture settlement exception taxonomy from notes</div>
+            <div class="task-meta">
+              <span class="tag amber">domain</span>
+              <span class="tag red">high risk</span>
+            </div>
+            <div class="order"><span>#2 in inbox</span><span class="grab">::</span></div>
+          </article>
+        </div>
+
+        <div class="column">
+          <div class="column-head"><span>Queued</span><span class="count">8</span></div>
+          <article class="task selected">
+            <div class="task-title">Implement PJM late-confirm fallback and audit flag</div>
+            <div class="task-meta">
+              <span class="tag blue">ctrm-engine</span>
+              <span class="tag red">approval gate</span>
+              <span class="tag">T3.3</span>
+            </div>
+            <div class="order"><span>#1 in queue</span><span class="grab">::</span></div>
+          </article>
+          <article class="task">
+            <div class="task-title">Generate regression cases for gas nomination changes</div>
+            <div class="task-meta">
+              <span class="tag green">QA Scenario</span>
+              <span class="tag">depends T3.3</span>
+            </div>
+            <div class="order"><span>#2 in queue</span><span class="grab">::</span></div>
+          </article>
+          <article class="task">
+            <div class="task-title">Update project UI task status from Lumbergh state</div>
+            <div class="task-meta">
+              <span class="tag teal">project-ui</span>
+              <span class="tag">cross-repo</span>
+            </div>
+            <div class="order"><span>#3 in queue</span><span class="grab">::</span></div>
+          </article>
+        </div>
+
+        <div class="column">
+          <div class="column-head"><span>Running</span><span class="count">2</span></div>
+          <article class="task">
+            <div class="task-title">Trace exposure calc path through confirm cutoff</div>
+            <div class="task-meta">
+              <span class="tag blue">Backend Impl</span>
+              <span class="tag">last diff 2m</span>
+            </div>
+            <div class="order"><span>session codex-7</span><span class="grab">::</span></div>
+          </article>
+        </div>
+
+        <div class="column">
+          <div class="column-head"><span>Blocked</span><span class="count">3</span></div>
+          <article class="task">
+            <div class="task-title">Choose source of truth after pricing cutoff</div>
+            <div class="task-meta">
+              <span class="tag red">clarification</span>
+              <span class="tag amber">domain</span>
+            </div>
+            <div class="order"><span>waiting on Tate</span><span class="grab">::</span></div>
+          </article>
+        </div>
+
+        <div class="column">
+          <div class="column-head"><span>Review</span><span class="count">4</span></div>
+          <article class="task">
+            <div class="task-title">Verify generated context packet before downstream agents use it</div>
+            <div class="task-meta">
+              <span class="tag green">CTRM Analyst</span>
+              <span class="tag">review ready</span>
+            </div>
+            <div class="order"><span>gate required</span><span class="grab">::</span></div>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <aside class="detail">
+      <section class="detail-section">
+        <h3>Selected Task</h3>
+        <div class="selected-title">Implement PJM late-confirm fallback and audit flag</div>
+        <div class="task-meta">
+          <span class="tag blue">ctrm-engine</span>
+          <span class="tag red">high-risk logic</span>
+          <span class="tag">queued #1</span>
+          <span class="tag teal">linked to PM-184</span>
+        </div>
+        <div class="field-grid">
+          <div class="field"><span>Mode</span>Live Pairing</div>
+          <div class="field"><span>Owner</span>Backend Impl</div>
+          <div class="field"><span>Agent Prep</span>CTRM Analyst</div>
+          <div class="field"><span>Checkpoint</span>Before code edit</div>
+        </div>
+      </section>
+
+      <section class="detail-section">
+        <h3>Dependency Path</h3>
+        <div class="graph">
+          <div class="graph-node done">Domain packet<br><span class="tag green">done</span></div>
+          <div class="arrow">></div>
+          <div class="graph-node running">Calc trace<br><span class="tag blue">running</span></div>
+          <div class="arrow">></div>
+          <div class="graph-node blocked">PJM fallback<br><span class="tag amber">queued</span></div>
+        </div>
+      </section>
+
+      <section class="detail-section">
+        <h3>Linked Sessions</h3>
+        <div class="linked-session">
+          <div><strong>codex-7</strong><br><span class="muted">ctrm-engine, tracing cutoff logic</span></div>
+          <button class="btn">Focus</button>
+        </div>
+        <div class="linked-session">
+          <div><strong>codex-12</strong><br><span class="muted">project-ui, syncing PM task state</span></div>
+          <button class="btn">Focus</button>
+        </div>
+      </section>
+
+      <section class="detail-section">
+        <h3>Terminal Snapshot</h3>
+        <div class="terminal"><span class="prompt">$</span> pytest test_recon_late_confirms.py -k cutoff
+<span class="warn">E assert exposure.qty == 1.7</span>
+<span class="prompt">$</span> rg "confirm_time|cutoff" backend -n
+<span class="ask">Agent asks:</span> Should PJM use provisional scheduled qty after cutoff?</div>
+      </section>
+
+      <section class="detail-section">
+        <h3>Operator Notes</h3>
+        <textarea>Use provisional scheduled quantity after cutoff for PJM intraday exposure. Backfill to confirmed quantity on the next cycle. Add late_confirm_applied=true to audit trail. Do not infer missing quantity from prior-day position.</textarea>
+        <div class="footer-actions">
+          <button class="btn">Promote Context</button>
+          <button class="btn primary">Approve Next Step</button>
+        </div>
+      </section>
+    </aside>
+  </div>
+</body>
+</html>
