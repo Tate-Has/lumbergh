@@ -18,7 +18,7 @@ interface AISettingsData {
 }
 
 interface Settings {
-  repoSearchDir: string
+  repoSearchDirs: string[]
   gitGraphCommits: number
   ai: AISettingsData
   defaultAgent?: string
@@ -36,7 +36,7 @@ type TabId = 'general' | 'ai' | 'cloud' | 'security'
 
 export default function SettingsModal({ onClose }: Props) {
   const [activeTab, setActiveTab] = useState<TabId>('general')
-  const [repoSearchDir, setRepoSearchDir] = useState('')
+  const [repoSearchDirs, setRepoSearchDirs] = useState<string[]>([])
   const [gitGraphCommits, setGitGraphCommits] = useState('100')
   const [aiProvider, setAiProvider] = useState('ollama')
   const [providerConfigs, setProviderConfigs] =
@@ -83,7 +83,7 @@ export default function SettingsModal({ onClose }: Props) {
       const res = await fetch(`${getApiBase()}/settings`)
       if (!res.ok) throw new Error('Failed to fetch settings')
       const data: Settings = await res.json()
-      setRepoSearchDir(data.repoSearchDir || '')
+      setRepoSearchDirs(data.repoSearchDirs || [])
       if (data.gitGraphCommits) setGitGraphCommits(String(data.gitGraphCommits))
       setPasswordSet(!!data.passwordSet)
       setPasswordSource(data.passwordSource ?? null)
@@ -120,9 +120,7 @@ export default function SettingsModal({ onClose }: Props) {
 
     try {
       const payload: Record<string, unknown> = {}
-      if (repoSearchDir.trim()) {
-        payload.repoSearchDir = repoSearchDir.trim()
-      }
+      payload.repoSearchDirs = repoSearchDirs.map((d) => d.trim()).filter(Boolean)
       const parsedCommits = parseInt(gitGraphCommits) || 100
       payload.gitGraphCommits = Math.min(1000, Math.max(10, parsedCommits))
       payload.telemetryConsent = telemetryConsent
@@ -205,8 +203,8 @@ export default function SettingsModal({ onClose }: Props) {
           <form onSubmit={handleSubmit} className="p-4 space-y-4 max-h-[60vh] overflow-y-auto">
             {activeTab === 'general' && (
               <GeneralSettings
-                repoSearchDir={repoSearchDir}
-                onRepoSearchDirChange={setRepoSearchDir}
+                repoSearchDirs={repoSearchDirs}
+                onRepoSearchDirsChange={setRepoSearchDirs}
                 gitGraphCommits={gitGraphCommits}
                 onGitGraphCommitsChange={setGitGraphCommits}
                 defaultAgent={defaultAgent}

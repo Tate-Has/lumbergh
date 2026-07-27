@@ -224,16 +224,25 @@ async def validate_directory(path: str):
 
 @directories_router.get("/search")
 async def search_directories(query: str = ""):
-    """Search for git repositories in the configured search directory."""
+    """Search for git repositories across all configured search directories."""
     from lumbergh.routers.settings import get_settings
 
     settings = get_settings()
-    base_dir = Path(settings.get("repoSearchDir", str(Path.home() / "src")))
-    if not base_dir.exists():
-        return {"directories": []}
+    search_dirs = settings.get("repoSearchDirs") or [str(Path.home() / "src")]
 
-    directories = find_git_repos(base_dir, query, limit=20)
-    return {"directories": directories}
+    seen_paths: set[str] = set()
+    directories: list[dict] = []
+    for raw_dir in search_dirs:
+        base_dir = Path(raw_dir).expanduser()
+        if not base_dir.exists():
+            continue
+        for repo in find_git_repos(base_dir, query, limit=20):
+            if repo["path"] not in seen_paths:
+                seen_paths.add(repo["path"])
+                directories.append(repo)
+
+    directories.sort(key=lambda x: x["name"].lower())
+    return {"directories": directories[:20]}
 
 
 def get_tmux_server() -> libtmux.Server:

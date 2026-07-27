@@ -113,7 +113,7 @@ export default function CreateSessionModal({ isOpen, task, onClose, onSessionCre
     fetch(`${getApiBase()}/settings`)
       .then((res) => res.json())
       .then((data) => {
-        if (data.repoSearchDir) setParentDir(data.repoSearchDir)
+        if (data.repoSearchDirs?.[0]) setParentDir(data.repoSearchDirs[0])
         if (data.agentProviders) setAgentProviders(data.agentProviders)
         if (data.defaultAgent) setDefaultAgent(data.defaultAgent)
         if (data.tabVisibility) {

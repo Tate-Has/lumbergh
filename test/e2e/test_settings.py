@@ -5,7 +5,7 @@ def test_get_settings_returns_defaults(client):
     r = client.get("/api/settings")
     assert r.status_code == 200
     data = r.json()
-    assert "repoSearchDir" in data
+    assert "repoSearchDirs" in data
     assert "gitGraphCommits" in data
     assert "ai" in data
     assert data["gitGraphCommits"] >= 10

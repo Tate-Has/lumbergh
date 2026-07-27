@@ -400,7 +400,7 @@ export default function Dashboard() {
       if (res.ok) {
         const data = await res.json()
         setIsFirstRun(data.isFirstRun ?? false)
-        setDefaultRepoDir(data.repoSearchDir ?? '')
+        setDefaultRepoDir(data.repoSearchDirs?.[0] ?? '')
       }
     } catch {
       // Silently fail - not critical

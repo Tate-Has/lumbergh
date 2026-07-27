@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { getApiBase } from '../config'
 
 interface Props {
-  repoSearchDir: string
-  onRepoSearchDirChange: (value: string) => void
+  repoSearchDirs: string[]
+  onRepoSearchDirsChange: (value: string[]) => void
   gitGraphCommits: string
   onGitGraphCommitsChange: (value: string) => void
   defaultAgent: string
@@ -75,6 +76,101 @@ const TAB_OPTIONS: [string, string][] = [
   ['shared', 'Shared'],
 ]
 
+type DirStatus = 'checking' | 'found' | 'missing'
+
+function DirStatusBadge({ status }: { status: DirStatus | undefined }) {
+  if (status === 'checking') {
+    return <span className="text-xs text-text-muted shrink-0">checking&hellip;</span>
+  }
+  if (status === 'missing') {
+    return <span className="text-xs text-danger shrink-0">not found</span>
+  }
+  if (status === 'found') {
+    return <span className="text-xs text-success shrink-0">found</span>
+  }
+  return null
+}
+
+function RepoSearchDirsEditor({
+  dirs,
+  onChange,
+}: {
+  dirs: string[]
+  onChange: (dirs: string[]) => void
+}) {
+  const [statuses, setStatuses] = useState<Record<number, DirStatus>>({})
+
+  useEffect(() => {
+    let cancelled = false
+    dirs.forEach((dir, index) => {
+      if (!dir.trim()) return
+      setStatuses((prev) => ({ ...prev, [index]: 'checking' }))
+      fetch(`${getApiBase()}/directories/validate?path=${encodeURIComponent(dir)}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (cancelled) return
+          setStatuses((prev) => ({ ...prev, [index]: data.exists ? 'found' : 'missing' }))
+        })
+        .catch(() => {
+          if (!cancelled) setStatuses((prev) => ({ ...prev, [index]: 'missing' }))
+        })
+    })
+    return () => {
+      cancelled = true
+    }
+    // Re-check whenever the set of paths changes, not on every keystroke render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dirs.join('\n')])
+
+  const updateDir = (index: number, value: string) => {
+    onChange(dirs.map((d, i) => (i === index ? value : d)))
+  }
+
+  const removeDir = (index: number) => {
+    onChange(dirs.filter((_, i) => i !== index))
+  }
+
+  return (
+    <div>
+      <label className="block text-sm text-text-tertiary mb-1">Repository Search Directories</label>
+      <div className="space-y-1.5">
+        {dirs.map((dir, index) => (
+          <div key={index} className="flex items-center gap-2">
+            <input
+              type="text"
+              value={dir}
+              onChange={(e) => updateDir(index, e.target.value)}
+              placeholder="e.g., ~/src or /home/user/projects"
+              className="flex-1 px-3 py-2 bg-input-bg text-text-primary rounded-[var(--radius-lg)] border border-input-border focus:outline-none focus:border-action/50 font-mono text-sm"
+            />
+            <DirStatusBadge status={statuses[index]} />
+            <button
+              type="button"
+              onClick={() => removeDir(index)}
+              title="Remove"
+              className="text-text-tertiary hover:text-danger transition-colors px-1 shrink-0"
+            >
+              &times;
+            </button>
+          </div>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={() => onChange([...dirs, ''])}
+        className="mt-2 text-sm text-action hover:text-action/80 transition-colors"
+      >
+        + Add directory
+      </button>
+      <p className="text-xs text-text-muted mt-1">
+        Directories to search for git repositories (searched up to 3 levels deep, results merged
+        across all of them). A red &ldquo;not found&rdquo; means that folder no longer exists at
+        this path — for example after a reorg — and needs updating.
+      </p>
+    </div>
+  )
+}
+
 function Toggle({ on, onChange }: { on: boolean; onChange: (value: boolean) => void }) {
   return (
     <button
@@ -96,8 +192,8 @@ function Toggle({ on, onChange }: { on: boolean; onChange: (value: boolean) => v
 }
 
 export default function GeneralSettings({
-  repoSearchDir,
-  onRepoSearchDirChange,
+  repoSearchDirs,
+  onRepoSearchDirsChange,
   gitGraphCommits,
   onGitGraphCommitsChange,
   defaultAgent,
@@ -158,19 +254,7 @@ export default function GeneralSettings({
       )}
 
       <div className="space-y-4">
-        <div>
-          <label className="block text-sm text-text-tertiary mb-1">
-            Repository Search Directory
-          </label>
-          <input
-            type="text"
-            value={repoSearchDir}
-            onChange={(e) => onRepoSearchDirChange(e.target.value)}
-            placeholder="e.g., ~/src or /home/user/projects"
-            className="w-full px-3 py-2 bg-input-bg text-text-primary rounded-[var(--radius-lg)] border border-input-border focus:outline-none focus:border-action/50 font-mono text-sm"
-          />
-          <p className="text-xs text-text-muted mt-1">Directory to search for git repositories</p>
-        </div>
+        <RepoSearchDirsEditor dirs={repoSearchDirs} onChange={onRepoSearchDirsChange} />
         <div>
           <label className="block text-sm text-text-tertiary mb-1">Git Graph Commits</label>
           <input

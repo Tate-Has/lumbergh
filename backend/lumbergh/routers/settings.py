@@ -9,6 +9,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from tinydb.operations import delete
 
 from lumbergh.db_utils import get_settings_db
 from lumbergh.providers import DEFAULT_PROVIDER, PROVIDERS
@@ -21,7 +22,7 @@ settings_table = settings_db.table("settings")
 
 
 def _get_defaults() -> dict:
-    """Get default settings, using LUMBERGH_LAUNCH_DIR for repoSearchDir if available."""
+    """Get default settings, using LUMBERGH_LAUNCH_DIR for repoSearchDirs if available."""
     launch_dir = os.environ.get("LUMBERGH_LAUNCH_DIR", "")
     if launch_dir and launch_dir != "/" and Path(launch_dir).exists():
         repo_search_dir = launch_dir
@@ -29,7 +30,7 @@ def _get_defaults() -> dict:
         repo_search_dir = str(Path.home())
 
     return {
-        "repoSearchDir": repo_search_dir,
+        "repoSearchDirs": [repo_search_dir],
         "gitGraphCommits": 100,
         "defaultAgent": DEFAULT_PROVIDER,
         "tabVisibility": {
@@ -94,7 +95,7 @@ class AISettings(BaseModel):
 
 
 class SettingsUpdate(BaseModel):
-    repoSearchDir: str | None = None  # noqa: N815 - API field name
+    repoSearchDirs: list[str] | None = None  # noqa: N815 - API field name
     gitGraphCommits: int | None = None  # noqa: N815 - API field name
     ai: AISettings | None = None
     defaultAgent: str | None = None  # noqa: N815 - API field name
@@ -145,9 +146,23 @@ def _ensure_installation_id() -> str:
     return installation_id
 
 
+def _migrate_repo_search_dir() -> None:
+    """One-time upgrade: fold the old single-string repoSearchDir into repoSearchDirs."""
+    all_settings = settings_table.all()
+    if not all_settings:
+        return
+    stored = all_settings[0]
+    old_value = stored.get("repoSearchDir")
+    if "repoSearchDirs" in stored or not old_value:
+        return
+    settings_table.update({"repoSearchDirs": [old_value]}, doc_ids=[stored.doc_id])
+    settings_table.update(delete("repoSearchDir"), doc_ids=[stored.doc_id])
+
+
 def get_settings() -> dict:
     """Get current settings, deep merged with defaults."""
     _ensure_installation_id()
+    _migrate_repo_search_dir()
     all_settings = settings_table.all()
     stored = all_settings[0] if all_settings else {}
     return deep_merge(_get_defaults(), stored)
@@ -195,13 +210,27 @@ async def read_settings():
 
 
 def _validate_repo_search_dir(raw: str) -> str:
-    """Validate and resolve a repository search directory path."""
+    """Validate and resolve a single repository search directory path."""
     path = Path(raw).expanduser().resolve()
     if not path.exists():
         raise HTTPException(status_code=400, detail=f"Directory does not exist: {raw}")
     if not path.is_dir():
         raise HTTPException(status_code=400, detail=f"Path is not a directory: {raw}")
     return str(path)
+
+
+def _validate_repo_search_dirs(raw_dirs: list[str]) -> list[str]:
+    """Validate each search directory and dedupe by resolved path, preserving order."""
+    resolved: list[str] = []
+    seen: set[str] = set()
+    for raw in raw_dirs:
+        if not raw.strip():
+            continue
+        path = _validate_repo_search_dir(raw)
+        if path not in seen:
+            seen.add(path)
+            resolved.append(path)
+    return resolved
 
 
 _OPTIONAL_FIELDS = (
@@ -229,8 +258,8 @@ def _validate_updates(updates: SettingsUpdate) -> dict[str, object]:
     """Validate and extract update data from a settings update request."""
     update_data: dict[str, object] = {}
 
-    if updates.repoSearchDir is not None:
-        update_data["repoSearchDir"] = _validate_repo_search_dir(updates.repoSearchDir)
+    if updates.repoSearchDirs is not None:
+        update_data["repoSearchDirs"] = _validate_repo_search_dirs(updates.repoSearchDirs)
 
     if updates.gitGraphCommits is not None:
         if updates.gitGraphCommits < 10 or updates.gitGraphCommits > 1000:

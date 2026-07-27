@@ -123,12 +123,12 @@ export default function CreateSessionModal({ onClose, onCreated }: Props) {
     shared: true,
   })
 
-  // Fetch settings (repoSearchDir + agent providers)
+  // Fetch settings (repoSearchDirs + agent providers)
   useEffect(() => {
     fetch(`${getApiBase()}/settings`)
       .then((res) => res.json())
       .then((data) => {
-        if (data.repoSearchDir) setParentDir(data.repoSearchDir)
+        if (data.repoSearchDirs?.[0]) setParentDir(data.repoSearchDirs[0])
         if (data.agentProviders) setAgentProviders(data.agentProviders)
         if (data.defaultAgent) setDefaultAgent(data.defaultAgent)
         if (data.tabVisibility) {
