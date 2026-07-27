@@ -62,7 +62,7 @@ function RepoPanel({
   const worktreesForRepo = worktreesByRepo[repo.id] || []
 
   return (
-    <div className="repo-lane bg-bg-elevated border border-border-subtle rounded-xl p-4 shadow-sm">
+    <div className="repo-lane bg-bg-surface border border-border-default rounded-xl p-4 shadow-card">
       <div
         className="repo-lane-header flex items-center justify-between gap-2 mb-3 cursor-pointer"
         onClick={toggleCollapsed}

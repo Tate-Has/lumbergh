@@ -21,17 +21,17 @@ export default function Toolbar({
 }: ToolbarProps) {
   return (
     <div className="board-toolbar flex items-center justify-between gap-3 flex-wrap mb-4">
-      <div className="board-toolbar-segment inline-flex items-center bg-bg-surface border border-border-subtle rounded-lg p-0.5 shrink-0">
+      <div className="board-toolbar-segment inline-flex items-center bg-bg-elevated border border-border-default rounded-lg p-0.5 shrink-0">
         <button
           type="button"
-          className={`text-[0.72rem] font-semibold px-3 py-1 rounded-md cursor-pointer transition-all duration-150 ease-in-out${groupByRepo ? ' bg-bg-elevated text-accent shadow-sm' : ' text-text-muted hover:text-text-secondary'}`}
+          className={`text-[0.72rem] font-semibold px-3 py-1 rounded-md cursor-pointer transition-all duration-150 ease-in-out${groupByRepo ? ' bg-bg-surface text-accent shadow-low' : ' text-text-muted hover:text-text-secondary'}`}
           onClick={() => onSetGroupByRepo(true)}
         >
           Repo lanes
         </button>
         <button
           type="button"
-          className={`text-[0.72rem] font-semibold px-3 py-1 rounded-md cursor-pointer transition-all duration-150 ease-in-out${!groupByRepo ? ' bg-bg-elevated text-accent shadow-sm' : ' text-text-muted hover:text-text-secondary'}`}
+          className={`text-[0.72rem] font-semibold px-3 py-1 rounded-md cursor-pointer transition-all duration-150 ease-in-out${!groupByRepo ? ' bg-bg-surface text-accent shadow-low' : ' text-text-muted hover:text-text-secondary'}`}
           onClick={() => onSetGroupByRepo(false)}
         >
           Flat board

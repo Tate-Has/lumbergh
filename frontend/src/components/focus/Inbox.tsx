@@ -111,7 +111,7 @@ export default function Inbox({
 
   return (
     <div
-      className={`inbox-strip bg-bg-elevated border border-border-subtle rounded-xl overflow-hidden transition-[max-height] duration-[250ms] ease-[ease] shrink-0${isOpen ? ' expanded max-h-[500px]' : ' collapsed max-h-[46px]'}`}
+      className={`inbox-strip bg-bg-elevated border border-border-default rounded-xl overflow-hidden transition-[max-height] duration-[250ms] ease-[ease] shrink-0${isOpen ? ' expanded max-h-[500px]' : ' collapsed max-h-[46px]'}`}
       id="inboxStrip"
     >
       <div
@@ -151,7 +151,7 @@ export default function Inbox({
           <input
             ref={inputRef}
             type="text"
-            className="inbox-input flex-1 bg-bg-surface border border-border-subtle rounded-md py-2.5 px-3.5 text-[0.82rem] text-text-primary outline-none transition-[border-color] duration-150 focus:border-accent placeholder:text-text-muted"
+            className="inbox-input flex-1 bg-bg-surface border border-border-default rounded-md py-2.5 px-3.5 text-[0.82rem] text-text-primary outline-none transition-[border-color] duration-150 focus:border-accent placeholder:text-text-muted"
             id="inboxInput"
             placeholder="Capture a task..."
             value={inputValue}
@@ -169,7 +169,7 @@ export default function Inbox({
             return (
               <div
                 key={task.id}
-                className="inbox-item flex items-center justify-between py-2 px-3 rounded-md bg-bg-surface transition-all duration-150 ease-[ease]"
+                className="inbox-item flex items-center justify-between py-2 px-3 rounded-md bg-bg-surface border border-border-subtle transition-all duration-150 ease-[ease]"
                 data-task-id={task.id}
                 draggable={dragHandlers.draggable}
                 onDragStart={dragHandlers.onDragStart}

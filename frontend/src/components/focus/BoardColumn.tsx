@@ -289,7 +289,7 @@ export default function BoardColumn({
   if (isCollapsed) {
     return (
       <div
-        className="board-col collapsed-col flex-1 min-w-[40px] max-w-[40px] bg-bg-surface rounded-[10px] px-1.5 py-2.5 cursor-pointer items-center transition-all duration-200 ease-in-out flex flex-col hover:bg-bg-elevated"
+        className="board-col collapsed-col flex-1 min-w-[40px] max-w-[40px] bg-bg-sunken border border-border-subtle rounded-[10px] px-1.5 py-2.5 cursor-pointer items-center transition-all duration-200 ease-in-out flex flex-col hover:bg-bg-elevated"
         data-status={status}
         onClick={onToggleCollapse}
         onDragOver={handleCollapsedDragOver}
@@ -311,7 +311,7 @@ export default function BoardColumn({
 
   return (
     <div
-      className={`board-col flex-1 min-w-[200px] max-w-[300px] bg-bg-surface rounded-xl p-3 flex flex-col${isWaiting ? ' waiting-col bg-waiting-col-bg' : ''}${isDone ? ' done-col' : ''}`}
+      className={`board-col flex-1 min-w-[200px] max-w-[300px] bg-bg-sunken border border-border-subtle rounded-xl p-3 flex flex-col${isWaiting ? ' waiting-col bg-waiting-col-bg' : ''}${isDone ? ' done-col' : ''}`}
       data-status={status}
     >
       <ColumnHeader

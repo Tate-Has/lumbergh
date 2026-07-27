@@ -125,7 +125,7 @@ export default function TaskModal({
           <input
             type="text"
             id="modalTaskTitle"
-            className="w-full bg-bg-surface border border-border-subtle rounded-md py-2.5 px-3 text-[0.82rem] text-text-primary outline-none transition-[border-color] duration-150 focus:border-accent"
+            className="w-full bg-bg-surface border border-border-default rounded-md py-2.5 px-3 text-[0.82rem] text-text-primary outline-none transition-[border-color] duration-150 focus:border-accent"
             placeholder="Task title..."
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -139,7 +139,7 @@ export default function TaskModal({
           <input
             type="text"
             id="modalTaskProject"
-            className="w-full bg-bg-surface border border-border-subtle rounded-md py-2.5 px-3 text-[0.82rem] text-text-primary outline-none transition-[border-color] duration-150 focus:border-accent"
+            className="w-full bg-bg-surface border border-border-default rounded-md py-2.5 px-3 text-[0.82rem] text-text-primary outline-none transition-[border-color] duration-150 focus:border-accent"
             placeholder="No repo"
             list="projectSuggestions"
             autoComplete="off"
@@ -157,7 +157,7 @@ export default function TaskModal({
           <label className="block text-xs font-semibold text-text-secondary mb-1">Priority</label>
           <select
             id="modalTaskPriority"
-            className="w-full bg-bg-surface border border-border-subtle rounded-md py-2.5 px-3 text-[0.82rem] text-text-primary outline-none transition-[border-color] duration-150 focus:border-accent"
+            className="w-full bg-bg-surface border border-border-default rounded-md py-2.5 px-3 text-[0.82rem] text-text-primary outline-none transition-[border-color] duration-150 focus:border-accent"
             value={priority}
             onChange={(e) => setPriority(e.target.value as 'high' | 'med' | 'low')}
           >
@@ -171,7 +171,7 @@ export default function TaskModal({
           <label className="block text-xs font-semibold text-text-secondary mb-1">Status</label>
           <select
             id="modalTaskStatus"
-            className="w-full bg-bg-surface border border-border-subtle rounded-md py-2.5 px-3 text-[0.82rem] text-text-primary outline-none transition-[border-color] duration-150 focus:border-accent"
+            className="w-full bg-bg-surface border border-border-default rounded-md py-2.5 px-3 text-[0.82rem] text-text-primary outline-none transition-[border-color] duration-150 focus:border-accent"
             value={status}
             onChange={(e) => setStatus(e.target.value)}
           >
@@ -191,7 +191,7 @@ export default function TaskModal({
           <input
             type="text"
             id="modalTaskBlocker"
-            className="w-full bg-bg-surface border border-border-subtle rounded-md py-2.5 px-3 text-[0.82rem] text-text-primary outline-none transition-[border-color] duration-150 focus:border-accent"
+            className="w-full bg-bg-surface border border-border-default rounded-md py-2.5 px-3 text-[0.82rem] text-text-primary outline-none transition-[border-color] duration-150 focus:border-accent"
             placeholder="Person or blocker description"
             value={blocker}
             onChange={(e) => setBlocker(e.target.value)}
@@ -205,7 +205,7 @@ export default function TaskModal({
           <input
             type="text"
             id="modalTaskCheckin"
-            className="w-full bg-bg-surface border border-border-subtle rounded-md py-2.5 px-3 text-[0.82rem] text-text-primary outline-none transition-[border-color] duration-150 focus:border-accent"
+            className="w-full bg-bg-surface border border-border-default rounded-md py-2.5 px-3 text-[0.82rem] text-text-primary outline-none transition-[border-color] duration-150 focus:border-accent"
             placeholder="Check-in note"
             value={checkin}
             onChange={(e) => setCheckin(e.target.value)}

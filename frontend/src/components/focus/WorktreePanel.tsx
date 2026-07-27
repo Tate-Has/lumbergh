@@ -209,7 +209,7 @@ export default function WorktreePanel({
 
   return (
     <div
-      className={`worktree-panel bg-bg-elevated border border-border-subtle rounded-xl overflow-hidden transition-[max-height] duration-[250ms] ease-[ease] shrink-0${isOpen ? ' max-h-[600px]' : ' collapsed max-h-[46px]'}`}
+      className={`worktree-panel bg-bg-elevated border border-border-default rounded-xl overflow-hidden transition-[max-height] duration-[250ms] ease-[ease] shrink-0${isOpen ? ' max-h-[600px]' : ' collapsed max-h-[46px]'}`}
       id="worktreePanel"
     >
       <div

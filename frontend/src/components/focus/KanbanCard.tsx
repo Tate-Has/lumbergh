@@ -98,7 +98,7 @@ const KanbanCard = memo(function KanbanCard({
 
   return (
     <div
-      className={`kanban-card group bg-bg-elevated border border-border-subtle rounded-lg px-3 py-2.5 transition-all duration-150 ease-in-out relative hover:border-accent hover:shadow-card-hover ${isWaiting ? ' waiting-card border-l-[3px] border-l-status-waiting' : ''}${isDone ? ' opacity-done' : ''}`}
+      className={`kanban-card group bg-bg-surface border border-border-default rounded-lg px-3 py-2.5 shadow-card transition-all duration-150 ease-in-out relative hover:border-accent hover:shadow-card-hover ${isWaiting ? ' waiting-card border-l-[3px] border-l-status-waiting' : ''}${isDone ? ' opacity-done' : ''}`}
       draggable={dragHandlers.draggable}
       onDragStart={dragHandlers.onDragStart}
       onDragEnd={dragHandlers.onDragEnd}
@@ -148,7 +148,7 @@ const KanbanCard = memo(function KanbanCard({
             {launchFormOpen ? (
               <div className="flex flex-col gap-1.5">
                 <select
-                  className="w-full text-[0.72rem] px-1.5 py-1 rounded-md border border-border-subtle bg-bg-surface text-text-primary outline-none focus:border-accent"
+                  className="w-full text-[0.72rem] px-1.5 py-1 rounded-md border border-border-default bg-bg-elevated text-text-primary outline-none focus:border-accent"
                   value={selectedWorktree}
                   onChange={(e) => setSelectedWorktree(e.target.value)}
                 >
@@ -166,7 +166,7 @@ const KanbanCard = memo(function KanbanCard({
                     placeholder="new-branch-name"
                     value={newBranch}
                     onChange={(e) => setNewBranch(e.target.value)}
-                    className="w-full text-[0.72rem] px-1.5 py-1 rounded-md border border-border-subtle bg-bg-surface text-text-primary outline-none focus:border-accent"
+                    className="w-full text-[0.72rem] px-1.5 py-1 rounded-md border border-border-default bg-bg-elevated text-text-primary outline-none focus:border-accent"
                   />
                 )}
                 <div className="flex gap-1.5">
@@ -177,7 +177,7 @@ const KanbanCard = memo(function KanbanCard({
                     Launch
                   </button>
                   <button
-                    className="text-[0.65rem] font-semibold px-2 py-1 rounded-md border border-border-subtle text-text-muted bg-bg-surface cursor-pointer transition-all duration-100 hover:border-accent hover:text-accent"
+                    className="text-[0.65rem] font-semibold px-2 py-1 rounded-md border border-border-default text-text-secondary bg-bg-elevated cursor-pointer transition-all duration-100 hover:border-accent hover:text-accent"
                     onClick={handleLaunchCancel}
                   >
                     Cancel

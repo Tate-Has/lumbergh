@@ -56,7 +56,7 @@ function AttentionCard({ task, status, branch, onEditTask }: AttentionCardProps)
 
   return (
     <button
-      className="attention-card shrink-0 w-[220px] text-left bg-bg-elevated border border-border-subtle rounded-lg px-3 py-2.5 cursor-pointer transition-all duration-150 hover:border-accent hover:shadow-card-hover"
+      className="attention-card shrink-0 w-[220px] text-left bg-bg-surface border border-border-default rounded-lg px-3 py-2.5 shadow-card cursor-pointer transition-all duration-150 hover:border-accent hover:shadow-card-hover"
       onClick={() => onEditTask(task)}
     >
       <AttentionStatusRow status={status} />
