@@ -51,37 +51,52 @@ export function useActivitySocket({ sessionName }: { sessionName: string }) {
   const wsRef = useRef<WebSocket | null>(null)
 
   useEffect(() => {
-    // Reset state when session changes; synchronous setState here avoids stale data
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setItems([])
-    setNoTranscript(false)
     let isActive = true
-    const url = `${getWsBase()}/session/${encodeURIComponent(sessionName)}/activity`
-    const ws = new WebSocket(url)
-    wsRef.current = ws
+    let attempts = 0
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined
 
-    ws.onopen = () => {
-      if (!isActive) return
-      setIsConnected(true)
-    }
-    ws.onclose = () => {
-      if (!isActive) return
-      setIsConnected(false)
-    }
-    ws.onmessage = (e) => {
-      if (!isActive) return
-      const event: ActivityEvent = JSON.parse(e.data)
-      if (event.type === 'no_transcript') {
-        setNoTranscript(true)
-        return
+    const connect = () => {
+      // Fresh state on every (re)connect; the server replays full history from
+      // offset 0, so clearing avoids duplicating events across a reconnect.
+      setItems([])
+      setNoTranscript(false)
+      const url = `${getWsBase()}/session/${encodeURIComponent(sessionName)}/activity`
+      const ws = new WebSocket(url)
+      wsRef.current = ws
+
+      ws.onopen = () => {
+        if (!isActive) return
+        setIsConnected(true)
+        attempts = 0
       }
-      setItems((prev) => mergeEvents(prev, event))
+      ws.onclose = () => {
+        if (!isActive) return
+        setIsConnected(false)
+        // Auto-reconnect after a transient drop (backend --reload, network blip)
+        // with capped exponential backoff, so the feed self-heals without a
+        // manual tab switch.
+        const delay = Math.min(1000 * 2 ** attempts, 5000)
+        attempts += 1
+        reconnectTimer = setTimeout(connect, delay)
+      }
+      ws.onmessage = (e) => {
+        if (!isActive) return
+        const event: ActivityEvent = JSON.parse(e.data)
+        if (event.type === 'no_transcript') {
+          setNoTranscript(true)
+          return
+        }
+        setItems((prev) => mergeEvents(prev, event))
+      }
     }
+
+    connect()
 
     return () => {
       isActive = false
+      if (reconnectTimer) clearTimeout(reconnectTimer)
+      wsRef.current?.close()
       wsRef.current = null
-      ws.close()
     }
   }, [sessionName])
 

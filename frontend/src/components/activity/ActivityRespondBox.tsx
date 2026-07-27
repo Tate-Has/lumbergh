@@ -22,9 +22,9 @@ export default function ActivityRespondBox({ sessionName }: { sessionName: strin
   }
 
   return (
-    <div className="flex gap-2 border-t border-neutral-800 bg-neutral-900 p-2">
+    <div className="flex gap-2 border-t border-border-default bg-bg-surface p-2">
       <textarea
-        className="flex-1 resize-none rounded bg-neutral-800 p-2 text-sm text-neutral-100"
+        className="flex-1 resize-none rounded bg-input-bg p-2 text-sm text-text-primary"
         rows={1}
         value={text}
         placeholder="Reply to the agent…"
@@ -37,7 +37,7 @@ export default function ActivityRespondBox({ sessionName }: { sessionName: strin
         }}
       />
       <button
-        className="rounded bg-blue-600 px-3 text-sm font-medium text-white disabled:opacity-50"
+        className="rounded bg-action px-3 text-sm font-medium text-white disabled:opacity-50"
         disabled={sending || !text.trim()}
         onClick={() => void send()}
       >

@@ -6,8 +6,51 @@ from pathlib import Path
 from lumbergh.activity.adapter import AgentAdapter
 from lumbergh.activity.events import ConversationEvent
 
-# user-text wrappers that are harness noise, not something the user typed
-_META_PREFIXES = ("<local-command-caveat>", "<command-name>", "<command-message>")
+# Harness-injected wrappers that get dropped from the feed entirely — they are
+# background context, not something the user typed or the agent said.
+_DROP_PREFIXES = (
+    "<local-command-caveat>",
+    "<local-command-stdout>",
+    "<command-message>",
+    "<command-args>",
+    "<system-reminder>",
+    "<task-notification>",
+    "[SYSTEM NOTIFICATION",
+)
+# Injected blocks stripped out of otherwise-real user text (e.g. a reminder or a
+# background-task event appended to something the user actually typed).
+_INJECTED_BLOCK_RE = re.compile(r"<(system-reminder|task-notification)>.*?</\1>", re.DOTALL)
+_COMMAND_NAME_RE = re.compile(r"<command-name>\s*(.*?)\s*</command-name>", re.DOTALL)
+_SKILL_BODY_RE = re.compile(r"^Base directory for this skill:\s*(\S+)")
+
+
+def _classify_user_text(text: str) -> tuple[str, str | None]:
+    """Sort a user text block into ('user', cleaned) | ('status', chip) | ('drop', None).
+
+    Claude Code injects harness content (skill bodies, slash-command wrappers,
+    system reminders) into the user turn. Rendering that raw makes the feed look
+    like the user pasted walls of XML, so recognized noise is dropped and useful
+    signals (a /command ran, a skill loaded) collapse to a one-line status chip.
+    """
+    stripped = text.strip()
+    if not stripped:
+        return ("drop", None)
+
+    command = _COMMAND_NAME_RE.search(stripped)
+    if command:
+        return ("status", f"↪ {command.group(1)}")
+
+    skill = _SKILL_BODY_RE.search(stripped)
+    if skill:
+        return ("status", f"loaded skill: {skill.group(1).rstrip('/').split('/')[-1]}")
+
+    if stripped.startswith(_DROP_PREFIXES):
+        return ("drop", None)
+
+    cleaned = _INJECTED_BLOCK_RE.sub("", stripped).strip()
+    if not cleaned:
+        return ("drop", None)
+    return ("user", cleaned)
 
 
 def _parse_ts(value) -> float | None:
@@ -49,8 +92,9 @@ def _stringify_content(content) -> str:
 
 
 class ClaudeCodeAdapter(AgentAdapter):
-    def __init__(self, transcript_path: Path):
+    def __init__(self, transcript_path: Path, root: Path | None = None):
         self.path = Path(transcript_path)
+        self.root = Path(root) if root else None
         self._offset = 0
 
     @classmethod
@@ -66,7 +110,48 @@ class ClaudeCodeAdapter(AgentAdapter):
         )
         if not candidates:
             return None
-        return cls(candidates[0])
+        return cls(candidates[0], root=cwd)
+
+    def _rel(self, text: str) -> str:
+        """Show project-relative paths for files under the session root, absolute otherwise.
+
+        Only whole-string absolute paths are rewritten, so command lines and search
+        patterns (which merely contain a path fragment) pass through untouched.
+        """
+        if not self.root or not text:
+            return text
+        candidate = Path(text)
+        if not candidate.is_absolute():
+            return text
+        try:
+            return str(candidate.relative_to(self.root))
+        except ValueError:
+            return text
+
+    def _clean_command(self, command: str) -> str:
+        """Tidy a leading `cd` in a Bash command.
+
+        `cd <project-root> &&|; rest` drops to just `rest` (pure navigation noise),
+        and `cd <root>/subdir &&|; rest` relativizes to `cd subdir && rest`. A cd to
+        somewhere outside the project keeps its full path.
+        """
+        if not self.root:
+            return command
+        match = re.match(r"^cd\s+('[^']*'|\"[^\"]*\"|\S+)\s*(&&|;)\s*(.*)$", command, re.DOTALL)
+        if not match:
+            return command
+        target, sep, rest = match.group(1).strip("'\""), match.group(2), match.group(3)
+        path = Path(target)
+        if not path.is_absolute():
+            return command
+        if path == self.root:
+            return rest
+        try:
+            rel = path.relative_to(self.root)
+        except ValueError:
+            return command
+        joiner = " && " if sep == "&&" else "; "
+        return f"cd {rel}{joiner}{rest}"
 
     def _source_signature(self) -> tuple[int, float]:
         try:
@@ -110,27 +195,28 @@ class ClaudeCodeAdapter(AgentAdapter):
             return self._assistant_events(message, ts)
         return []
 
+    def _user_text_event(self, text: str, ts) -> ConversationEvent | None:
+        kind, value = _classify_user_text(text)
+        if kind == "status":
+            return ConversationEvent(type="status", id=self._eid(), timestamp=ts, text=value)
+        if kind == "user":
+            return ConversationEvent(type="user_message", id=self._eid(), timestamp=ts, text=value)
+        return None
+
     def _user_events(self, message: dict, ts) -> list[ConversationEvent]:
         content = message.get("content")
         if isinstance(content, str):
-            text = content.strip()
-            if not text or text.startswith(_META_PREFIXES):
-                return []
-            return [ConversationEvent(type="user_message", id=self._eid(), timestamp=ts, text=text)]
+            event = self._user_text_event(content, ts)
+            return [event] if event else []
 
         events: list[ConversationEvent] = []
         for block in content or []:
             if not isinstance(block, dict):
                 continue
             if block.get("type") == "text":
-                events.append(
-                    ConversationEvent(
-                        type="user_message",
-                        id=self._eid(),
-                        timestamp=ts,
-                        text=block.get("text", ""),
-                    )
-                )
+                event = self._user_text_event(block.get("text", ""), ts)
+                if event:
+                    events.append(event)
             elif block.get("type") == "tool_result":
                 events.append(
                     ConversationEvent(
@@ -171,13 +257,15 @@ class ClaudeCodeAdapter(AgentAdapter):
             elif btype == "tool_use":
                 name = block.get("name", "")
                 tool_input = block.get("input") or {}
+                summary = _summarize_tool(name, tool_input)
+                summary = self._clean_command(summary) if name == "Bash" else self._rel(summary)
                 events.append(
                     ConversationEvent(
                         type="tool_call",
                         id=self._eid(),
                         timestamp=ts,
                         tool_name=name,
-                        tool_summary=_summarize_tool(name, tool_input),
+                        tool_summary=summary,
                         tool_detail=json.dumps(tool_input, indent=2),
                         tool_use_id=block.get("id"),
                     )

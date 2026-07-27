@@ -19,7 +19,7 @@ import ActivityFeed from '../components/activity/ActivityFeed'
 import SessionNavigatorDots from '../components/SessionNavigatorDots'
 import { useIsDesktop } from '../hooks/useMediaQuery'
 
-type RightPanel = 'git' | 'files' | 'todos' | 'prompts' | 'shared'
+type RightPanel = 'activity' | 'git' | 'files' | 'todos' | 'prompts' | 'shared'
 type MobileTab = 'terminal' | 'activity' | 'git' | 'files' | 'todos' | 'prompts' | 'shared'
 
 type DiffData = {
@@ -30,6 +30,7 @@ type DiffData = {
 type TabVisibility = Record<string, boolean>
 
 const ALL_TABS: { id: RightPanel; label: string }[] = [
+  { id: 'activity', label: 'Activity' },
   { id: 'git', label: 'Git' },
   { id: 'files', label: 'Files' },
   { id: 'todos', label: 'Todo' },
@@ -38,6 +39,7 @@ const ALL_TABS: { id: RightPanel; label: string }[] = [
 ]
 
 const DEFAULT_TAB_VISIBILITY: TabVisibility = {
+  activity: false,
   git: true,
   files: true,
   todos: true,
@@ -72,6 +74,7 @@ export default function SessionDetail() {
   const [rightPanel, setRightPanel] = useState<RightPanel>(() => {
     const saved = localStorage.getItem('lumbergh:rightPanel')
     if (
+      saved === 'activity' ||
       saved === 'git' ||
       saved === 'files' ||
       saved === 'todos' ||
@@ -176,12 +179,16 @@ export default function SessionDetail() {
     [effectiveTabVisibility]
   )
 
+  // Mobile always shows Terminal + Activity up front (Activity is mobile's headline
+  // view), regardless of the desktop-oriented activity visibility toggle.
   const visibleMobileTabs = useMemo(
     () =>
       [
         { id: 'terminal' as MobileTab, label: 'Terminal' },
         { id: 'activity' as MobileTab, label: 'Activity' },
-      ].concat(ALL_TABS.filter((t) => effectiveTabVisibility[t.id] !== false)),
+      ].concat(
+        ALL_TABS.filter((t) => t.id !== 'activity' && effectiveTabVisibility[t.id] !== false)
+      ),
     [effectiveTabVisibility]
   )
 
@@ -644,6 +651,7 @@ export default function SessionDetail() {
       </div>
       {/* Panel content */}
       <div className="flex-1 min-h-0 overflow-hidden">
+        {rightPanel === 'activity' && name && <ActivityFeed sessionName={name} />}
         {rightPanel === 'git' && (
           <GitTab
             key={name}
