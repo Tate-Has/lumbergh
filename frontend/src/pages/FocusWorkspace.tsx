@@ -124,7 +124,11 @@ function FocusWorkspaceInner() {
     }
   }, [])
 
-  const { worktreesByRepo, refetch: refetchWorktrees } = useWorktrees(repos, tasks, sessions)
+  const {
+    worktreesByRepo,
+    repoPathErrors,
+    refetch: refetchWorktrees,
+  } = useWorktrees(repos, tasks, sessions)
 
   // Session status polling
   const sessionNames = useMemo(
@@ -510,7 +514,12 @@ function FocusWorkspaceInner() {
           const repoWorktrees = task.project ? worktreesByRepo[task.project] || [] : []
           const mainWorktree = repoWorktrees.find((w) => w.is_main)
           if (!mainWorktree) {
-            showToast('Cannot resolve repo path — link an existing session in this repo first')
+            const pathError = task.project ? repoPathErrors[task.project] : undefined
+            showToast(
+              pathError
+                ? `Cannot resolve repo path: ${pathError}`
+                : 'Cannot resolve repo path — link an existing session in this repo first'
+            )
             return
           }
           body = {
@@ -544,7 +553,7 @@ function FocusWorkspaceInner() {
         showToast(err instanceof Error ? err.message : 'Failed to launch agent')
       }
     },
-    [tasks, worktreesByRepo, updateTask, showToast, refetchWorktrees]
+    [tasks, worktreesByRepo, repoPathErrors, updateTask, showToast, refetchWorktrees]
   )
 
   // -------------------------------------------------------------------------
