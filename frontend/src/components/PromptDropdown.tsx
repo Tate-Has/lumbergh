@@ -34,7 +34,7 @@ export default function PromptDropdown({
   return (
     <div
       ref={dropdownRef}
-      className="fixed z-50 bg-control-bg border border-border-subtle rounded shadow-lg max-h-48 overflow-y-auto min-w-[200px]"
+      className="fixed z-50 bg-bg-elevated border border-border-default rounded shadow-modal max-h-48 overflow-y-auto min-w-[200px]"
       style={{
         top: position.top,
         left: position.left,
