@@ -14,6 +14,9 @@ TMUX_CMD = "psmux" if sys.platform == "win32" else "tmux"
 CONFIG_DIR = Path(os.environ.get("LUMBERGH_DATA_DIR", Path.home() / ".config" / "lumbergh"))
 PROJECTS_DIR = CONFIG_DIR / "projects"
 SESSIONS_DATA_DIR = CONFIG_DIR / "session_data"
+SESSION_IDENTITY_DIR = CONFIG_DIR / "session_identity"
+SESSION_ATTENTION_FILE = CONFIG_DIR / "session_attention.json"
+AGENT_TOKEN_FILE = CONFIG_DIR / "agent-token"
 SHARED_DIR = CONFIG_DIR / "shared"
 SCRATCH_DIR = CONFIG_DIR / "scratch"
 

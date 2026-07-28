@@ -33,9 +33,19 @@ from lumbergh.git_utils import (
     stage_all_and_commit,
 )
 from lumbergh.models import CommitInput, RevertFileInput, SendInput, TmuxCommand
-from lumbergh.routers import ai, backup, cloud, notes, sessions, settings, shared, tmux
+from lumbergh.routers import agent, ai, backup, cloud, notes, sessions, settings, shared, tmux
 
 logger = logging.getLogger(__name__)
+
+
+def install_session_hook() -> None:
+    """Best-effort install of the Claude SessionStart identity hook."""
+    from lumbergh import hook_installer
+
+    try:
+        hook_installer.ensure_installed()
+    except Exception as exc:
+        logger.warning("Could not install SessionStart hook: %s", exc)
 
 
 @asynccontextmanager
@@ -75,6 +85,13 @@ async def lifespan(app: FastAPI):  # noqa: ARG001 - required by FastAPI
                         traceback.print_stack(frame, file=f)
 
     _lag_task = asyncio.create_task(_lag_watchdog())  # noqa: RUF006
+
+    install_session_hook()
+
+    from lumbergh import agent_token, session_attention
+
+    agent_token.ensure_token()
+    session_attention.load()
 
     # Start background services
     idle_monitor.start()
@@ -152,6 +169,7 @@ app.include_router(cloud.router)
 app.include_router(backup.router)
 app.include_router(shared.router)
 app.include_router(tmux.router)
+app.include_router(agent.router)
 
 # Project root (parent of backend/)
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -531,11 +549,13 @@ async def session_stream(
 async def session_activity(websocket: WebSocket, session_name: str):
     from fastapi import WebSocketDisconnect
 
-    from lumbergh.activity.claude_code import ClaudeCodeAdapter
+    from lumbergh.activity.resolve import resolve_adapter
+    from lumbergh.routers.sessions import get_stored_sessions
 
     await websocket.accept()
     cwd = await _session_cwd(session_name)
-    adapter = ClaudeCodeAdapter.for_cwd(cwd) if cwd else None
+    provider = get_stored_sessions().get(session_name, {}).get("agent_provider")
+    adapter = resolve_adapter(session_name, cwd, provider)
     if adapter is None:
         await websocket.send_json({"type": "no_transcript", "id": "none"})
         await websocket.close()

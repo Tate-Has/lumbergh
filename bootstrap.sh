@@ -57,6 +57,19 @@ tmux send-keys -t lumbergh:backend "cd $(pwd)/backend && ./start.sh" Enter
 tmux new-window -t lumbergh: -n frontend
 tmux send-keys -t lumbergh:frontend "cd $(pwd)/frontend && ./start.sh" Enter
 
+# Make `lb` (the agent control CLI) available to agent sessions when running from
+# source. A `uv tool install pylumbergh` already puts `lb` on PATH, so this is a
+# no-op in that case.
+if ! command -v lb &>/dev/null; then
+    mkdir -p "$HOME/.local/bin"
+    cat > "$HOME/.local/bin/lb" <<EOF
+#!/bin/bash
+exec "$(pwd)/backend/.venv/bin/python" -m lumbergh.agent_cli.main "\$@"
+EOF
+    chmod +x "$HOME/.local/bin/lb"
+    echo "Installed 'lb' agent CLI shim at ~/.local/bin/lb (ensure ~/.local/bin is on PATH)"
+fi
+
 # Ensure tmux mouse mode is on (required for xterm.js terminal interaction)
 if [ "$(tmux show-option -gv mouse 2>/dev/null)" != "on" ]; then
     tmux set -g mouse on

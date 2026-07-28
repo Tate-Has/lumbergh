@@ -20,6 +20,8 @@ from typing import Any
 from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel
 
+from lumbergh import agent_token
+
 # --- Configuration ---
 
 COOKIE_NAME = "lumbergh_session"
@@ -81,6 +83,16 @@ def _get_cookie_from_scope(scope: dict) -> str | None:
 # --- ASGI Middleware ---
 
 
+def _agent_token_authorized(scope, path: str) -> bool:
+    """True if this is an /api/agent request carrying a valid agent token."""
+    if not path.startswith("/api/agent"):
+        return False
+    for key, val in scope.get("headers", []):
+        if key == b"x-lumbergh-agent-token" and agent_token.verify(val.decode()):
+            return True
+    return False
+
+
 class AuthMiddleware:
     """Raw ASGI middleware — works for both HTTP and WebSocket."""
 
@@ -98,6 +110,10 @@ class AuthMiddleware:
 
         # Allow: auth endpoints, health check, non-API paths (frontend static)
         if path.startswith("/api/auth") or path == "/api/health" or not path.startswith("/api/"):
+            return await self.app(scope, receive, send)
+
+        # Local agent CLI: a valid agent token gates /api/agent (see agent_token).
+        if _agent_token_authorized(scope, path):
             return await self.app(scope, receive, send)
 
         # Allow cloud tunnel proxy requests (already authenticated at the cloud layer)

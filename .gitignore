@@ -54,3 +54,8 @@ data/
 # Lumbergh package build artifacts
 backend/lumbergh/frontend_dist/
 !backend/lumbergh/frontend_dist/.gitkeep
+
+# Installed agent skills (npx skills add) — local tooling, not committed
+.agents/
+.claude/skills/
+skills-lock.json
