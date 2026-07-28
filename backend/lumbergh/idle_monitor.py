@@ -25,7 +25,7 @@ from datetime import UTC, datetime
 
 import libtmux
 
-from lumbergh import session_attention, session_identity
+from lumbergh import question_detector, session_attention, session_identity
 from lumbergh.constants import TMUX_CMD
 from lumbergh.db_utils import (
     get_session_data_db,
@@ -33,7 +33,12 @@ from lumbergh.db_utils import (
     session_data_lock,
 )
 from lumbergh.idle_detector import SessionState, classify_overrides
-from lumbergh.tmux_pty import IS_WINDOWS, capture_pane_content, capture_pane_title
+from lumbergh.tmux_pty import (
+    IS_WINDOWS,
+    capture_pane_content,
+    capture_pane_text,
+    capture_pane_title,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +54,9 @@ class IdleMonitor:
     QUIET_THRESHOLD_SECONDS = 5.0
     STALL_THRESHOLD_SECONDS = 600
     FINGERPRINT_LINE_COUNT = 20
+    # How long a session must sit continuously IDLE before we spend a cheap-LLM
+    # call asking whether it is actually waiting on a human answer.
+    QUESTION_CHECK_DELAY_SECONDS = 10.0
 
     def __init__(self):
         self._fingerprints: dict[str, str] = {}
@@ -56,6 +64,12 @@ class IdleMonitor:
         self._states: dict[str, SessionState] = {}
         self._working_since: dict[str, float] = {}
         self._state_since: dict[str, float] = {}
+        # Soft "the agent asked something and is waiting" overlay (name -> reason),
+        # inferred by a cheap LLM once per idle episode; see question_detector.
+        self._needs_answer: dict[str, str] = {}
+        self._question_checked: set[str] = set()
+        self._question_inflight: set[str] = set()
+        self._question_tasks: set[asyncio.Task] = set()
         self._task: asyncio.Task | None = None
         self._running = False
 
@@ -82,6 +96,12 @@ class IdleMonitor:
     def state_since_seconds(self, session_name: str) -> float | None:
         started = self._state_since.get(session_name)
         return None if started is None else time.time() - started
+
+    def needs_answer(self, session_name: str) -> bool:
+        return session_name in self._needs_answer
+
+    def needs_answer_reason(self, session_name: str) -> str | None:
+        return self._needs_answer.get(session_name)
 
     @classmethod
     def _fingerprint(cls, content: str) -> str:
@@ -159,6 +179,9 @@ class IdleMonitor:
             self._states.pop(name, None)
             self._working_since.pop(name, None)
             self._state_since.pop(name, None)
+            self._needs_answer.pop(name, None)
+            self._question_checked.discard(name)
+            self._question_inflight.discard(name)
 
         session_identity.prune(set(sessions))
 
@@ -240,6 +263,74 @@ class IdleMonitor:
             else:
                 session_attention.clear_unseen(session_name)
             await session_attention.persist()
+
+        self._update_question_detection(session_name, state)
+
+    def _update_question_detection(self, session_name: str, state: SessionState) -> None:
+        """Schedule a cheap-LLM question check for a sustained-idle session.
+
+        Runs every poll (not just on transitions).  Fires at most once per idle
+        episode, after the session has been continuously IDLE for
+        ``QUESTION_CHECK_DELAY_SECONDS``.  Any non-idle state resets the episode
+        and drops a stale ``needs_answer`` flag.
+        """
+        if state != SessionState.IDLE:
+            self._needs_answer.pop(session_name, None)
+            self._question_checked.discard(session_name)
+            return
+        if session_name in self._question_checked or session_name in self._question_inflight:
+            return
+        since = self.state_since_seconds(session_name)
+        if since is None or since < self.QUESTION_CHECK_DELAY_SECONDS:
+            return
+        # Mark checked before the (settings-reading) enable gate so a disabled
+        # detector reads settings at most once per idle episode.
+        self._question_checked.add(session_name)
+        if not self._question_detection_enabled():
+            return
+        self._question_inflight.add(session_name)
+        task = asyncio.create_task(self._run_question_detection(session_name))
+        self._question_tasks.add(task)
+        task.add_done_callback(self._question_tasks.discard)
+
+    def _question_detection_enabled(self) -> bool:
+        from lumbergh.routers.settings import get_settings
+
+        return bool(get_settings().get("questionDetectionEnabled"))
+
+    def _question_provider(self):
+        from lumbergh.ai.providers import get_provider
+        from lumbergh.routers.settings import get_settings
+
+        settings = get_settings()
+        if not settings.get("questionDetectionEnabled"):
+            return None
+        try:
+            return get_provider(settings.get("ai", {}), settings)
+        except Exception:
+            return None
+
+    async def _run_question_detection(self, session_name: str) -> None:
+        try:
+            if self._states.get(session_name) != SessionState.IDLE:
+                return
+            provider = self._question_provider()
+            if provider is None:
+                return
+            loop = asyncio.get_event_loop()
+            text = await loop.run_in_executor(None, capture_pane_text, session_name)
+            if not text or not text.strip():
+                return
+            verdict = await question_detector.detect(text, provider)
+            if verdict.waiting and self._states.get(session_name) == SessionState.IDLE:
+                self._needs_answer[session_name] = verdict.reason
+                logger.info(
+                    f"Session {session_name} appears to be waiting on a human: {verdict.reason}"
+                )
+        except Exception as e:
+            logger.warning(f"Question detection failed for {session_name}: {e}")
+        finally:
+            self._question_inflight.discard(session_name)
 
     async def _persist_state(self, session_name: str, state: SessionState) -> None:
         loop = asyncio.get_event_loop()

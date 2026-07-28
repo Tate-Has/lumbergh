@@ -11,6 +11,7 @@ import {
   Cloud,
   Star,
   Hand,
+  MessageCircleQuestion,
 } from 'lucide-react'
 import SessionCardEditForm from './SessionCardEditForm'
 import SessionCardActions from './SessionCardActions'
@@ -51,6 +52,7 @@ function getSessionStatus(session: Session) {
   if (session.idleState === 'working') Icon = Play
   if (session.idleState === 'stalled') Icon = AlertTriangle
   if (session.idleState === 'blocked') Icon = Hand
+  if (session.needsAnswer && session.idleState === 'idle') Icon = MessageCircleQuestion
   return { ...base, Icon }
 }
 

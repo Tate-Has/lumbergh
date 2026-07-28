@@ -325,6 +325,8 @@ def get_stored_sessions() -> dict[str, dict]:
 
 def get_session_status(name: str) -> dict:
     """Get status info for a session from its data DB."""
+    from lumbergh.idle_monitor import idle_monitor
+
     result = {
         "status": None,
         "statusUpdatedAt": None,
@@ -332,6 +334,8 @@ def get_session_status(name: str) -> dict:
         "idleStateUpdatedAt": None,
         "unseen": session_attention.is_unseen(name),
         "attentionState": session_attention.get(name),
+        "needsAnswer": idle_monitor.needs_answer(name),
+        "needsAnswerReason": idle_monitor.needs_answer_reason(name),
     }
     try:
         session_db = get_session_data_db(name)
@@ -435,6 +439,8 @@ async def list_sessions():
                 "idleStateUpdatedAt": status_info.get("idleStateUpdatedAt"),
                 "unseen": status_info.get("unseen", False),
                 "attentionState": status_info.get("attentionState"),
+                "needsAnswer": status_info.get("needsAnswer", False),
+                "needsAnswerReason": status_info.get("needsAnswerReason"),
                 "type": meta.get("type", "direct"),
                 "worktreeParentRepo": meta.get("worktree_parent_repo"),
                 "worktreeBranch": meta.get("worktree_branch"),
@@ -467,6 +473,8 @@ async def list_sessions():
                     "idleStateUpdatedAt": status_info.get("idleStateUpdatedAt"),
                     "unseen": status_info.get("unseen", False),
                     "attentionState": status_info.get("attentionState"),
+                    "needsAnswer": status_info.get("needsAnswer", False),
+                    "needsAnswerReason": status_info.get("needsAnswerReason"),
                     "type": "direct",
                     "worktreeParentRepo": None,
                     "worktreeBranch": None,

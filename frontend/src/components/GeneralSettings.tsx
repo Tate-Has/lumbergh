@@ -13,6 +13,8 @@ interface Props {
   onTabVisibilityChange: (value: Record<string, boolean>) => void
   showSessionDots: boolean
   onShowSessionDotsChange: (value: boolean) => void
+  questionDetectionEnabled: boolean
+  onQuestionDetectionEnabledChange: (value: boolean) => void
   scratchMaxAgeDays: string
   onScratchMaxAgeDaysChange: (value: string) => void
   telemetryConsent: boolean
@@ -108,6 +110,8 @@ export default function GeneralSettings({
   onTabVisibilityChange,
   showSessionDots,
   onShowSessionDotsChange,
+  questionDetectionEnabled,
+  onQuestionDetectionEnabledChange,
   scratchMaxAgeDays,
   onScratchMaxAgeDaysChange,
   telemetryConsent,
@@ -263,6 +267,17 @@ export default function GeneralSettings({
             </p>
           </div>
           <Toggle on={showSessionDots} onChange={onShowSessionDotsChange} />
+        </div>
+        <div className="flex items-center justify-between">
+          <div>
+            <label className="block text-sm text-text-tertiary">Detect questions (local LLM)</label>
+            <p className="text-xs text-text-muted mt-0.5">
+              When a session sits idle, ask your configured AI provider whether the agent is waiting
+              on an answer, and flag it "Question — waiting on you". Best with a cheap local model
+              (Ollama). Runs at most once per idle period.
+            </p>
+          </div>
+          <Toggle on={questionDetectionEnabled} onChange={onQuestionDetectionEnabledChange} />
         </div>
         <div className="flex items-center justify-between">
           <div>

@@ -30,6 +30,7 @@ interface Settings {
   tabVisibility?: Record<string, boolean>
   showSessionDots?: boolean
   scratchMaxAgeDays?: number
+  questionDetectionEnabled?: boolean
 }
 
 type TabId = 'general' | 'ai' | 'cloud' | 'security'
@@ -56,6 +57,7 @@ export default function SettingsModal({ onClose }: Props) {
     shared: true,
   })
   const [showSessionDots, setShowSessionDots] = useState(true)
+  const [questionDetectionEnabled, setQuestionDetectionEnabled] = useState(false)
   const [scratchMaxAgeDays, setScratchMaxAgeDays] = useState('7')
   const [cloudUsername, setCloudUsername] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -93,6 +95,8 @@ export default function SettingsModal({ onClose }: Props) {
       if (data.agentProviders) setAgentProviders(data.agentProviders)
       if (data.tabVisibility) setTabVisibility(data.tabVisibility)
       if (data.showSessionDots != null) setShowSessionDots(data.showSessionDots)
+      if (data.questionDetectionEnabled != null)
+        setQuestionDetectionEnabled(data.questionDetectionEnabled)
       if (data.scratchMaxAgeDays != null) setScratchMaxAgeDays(String(data.scratchMaxAgeDays))
       if (data.ai) applyAiSettings(data.ai)
     } catch (err) {
@@ -129,6 +133,7 @@ export default function SettingsModal({ onClose }: Props) {
       payload.defaultAgent = defaultAgent
       payload.tabVisibility = tabVisibility
       payload.showSessionDots = showSessionDots
+      payload.questionDetectionEnabled = questionDetectionEnabled
       payload.scratchMaxAgeDays = Math.max(0, parseInt(scratchMaxAgeDays) || 7)
       payload.ai = {
         provider: aiProvider,
@@ -216,6 +221,8 @@ export default function SettingsModal({ onClose }: Props) {
                 onTabVisibilityChange={setTabVisibility}
                 showSessionDots={showSessionDots}
                 onShowSessionDotsChange={setShowSessionDots}
+                questionDetectionEnabled={questionDetectionEnabled}
+                onQuestionDetectionEnabledChange={setQuestionDetectionEnabled}
                 scratchMaxAgeDays={scratchMaxAgeDays}
                 onScratchMaxAgeDaysChange={setScratchMaxAgeDays}
                 telemetryConsent={telemetryConsent}

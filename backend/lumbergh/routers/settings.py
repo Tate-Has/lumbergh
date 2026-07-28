@@ -41,6 +41,7 @@ def _get_defaults() -> dict:
         },
         "showSessionDots": True,
         "scratchMaxAgeDays": 7,
+        "questionDetectionEnabled": False,
         "cloudUrl": "https://app.lumbergh.dev",
         "ai": {
             "provider": "ollama",
@@ -109,6 +110,7 @@ class SettingsUpdate(BaseModel):
     backupPassphrase: str | None = None  # noqa: N815 - API field name
     showSessionDots: bool | None = None  # noqa: N815 - API field name
     scratchMaxAgeDays: int | None = None  # noqa: N815 - API field name
+    questionDetectionEnabled: bool | None = None  # noqa: N815 - API field name
 
 
 def deep_merge(base: dict, override: dict) -> dict:
@@ -214,6 +216,7 @@ _OPTIONAL_FIELDS = (
     "backupIncludeApiKeys",
     "backupPassphrase",
     "showSessionDots",
+    "questionDetectionEnabled",
 )
 
 

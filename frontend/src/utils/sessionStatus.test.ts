@@ -83,3 +83,59 @@ describe('unseen "while you were away" overlay', () => {
     expect(sessionUrgencyRank({ theOne: true, idleState: 'idle', unseen: true })).toBe(0)
   })
 })
+
+describe('needs-answer (cheap-LLM question detection) overlay', () => {
+  it('labels an idle session with a detected question as waiting on you', () => {
+    const status = getSessionStatus({
+      name: 's',
+      alive: true,
+      idleState: 'idle',
+      needsAnswer: true,
+      displayName: null,
+    })
+    expect(status.color).toBe('purple')
+    expect(status.pulse).toBe(true)
+    expect(status.label).toBe('Question — waiting on you')
+  })
+
+  it('labels an unseen needs-answer session as a question-while-away', () => {
+    const status = getSessionStatus({
+      name: 's',
+      alive: true,
+      idleState: 'idle',
+      needsAnswer: true,
+      unseen: true,
+      displayName: null,
+    })
+    expect(status.label).toBe('Question — while you were away')
+  })
+
+  it('lets a structural blocked state win over an inferred question', () => {
+    const status = getSessionStatus({
+      name: 's',
+      alive: true,
+      idleState: 'blocked',
+      needsAnswer: true,
+      displayName: null,
+    })
+    expect(status.label).toBe('Blocked — waiting on you')
+  })
+
+  it('ignores a stale needs-answer flag once the session is working again', () => {
+    const status = getSessionStatus({
+      name: 's',
+      alive: true,
+      idleState: 'working',
+      needsAnswer: true,
+      displayName: null,
+    })
+    expect(status.label).toBe('Working')
+  })
+
+  it('ranks a needs-answer session level with blocked, above unseen', () => {
+    expect(sessionUrgencyRank({ idleState: 'idle', needsAnswer: true })).toBe(1)
+    expect(sessionUrgencyRank({ idleState: 'idle', needsAnswer: true })).toBeLessThan(
+      sessionUrgencyRank({ idleState: 'idle', unseen: true })
+    )
+  })
+})

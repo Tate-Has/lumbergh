@@ -4,6 +4,7 @@ export interface SessionBase {
   idleState?: 'unknown' | 'idle' | 'working' | 'blocked' | 'error' | 'stalled' | null
   unseen?: boolean
   attentionState?: 'idle' | 'blocked' | 'error' | null
+  needsAnswer?: boolean
   paused?: boolean
   displayName: string | null
   theOne?: boolean
@@ -18,14 +19,19 @@ export function getSessionStatus(session: SessionBase): {
     return { color: 'gray', pulse: false, label: 'Offline' }
   }
   if (session.unseen) {
-    switch (session.idleState) {
-      case 'blocked':
-        return { color: 'purple', pulse: true, label: 'Blocked — while you were away' }
-      case 'error':
-        return { color: 'red', pulse: true, label: 'Failed — while you were away' }
-      default:
-        return { color: 'yellow', pulse: true, label: 'Done — while you were away' }
+    if (session.idleState === 'blocked') {
+      return { color: 'purple', pulse: true, label: 'Blocked — while you were away' }
     }
+    if (session.idleState === 'error') {
+      return { color: 'red', pulse: true, label: 'Failed — while you were away' }
+    }
+    if (session.needsAnswer) {
+      return { color: 'purple', pulse: true, label: 'Question — while you were away' }
+    }
+    return { color: 'yellow', pulse: true, label: 'Done — while you were away' }
+  }
+  if (session.needsAnswer && session.idleState === 'idle') {
+    return { color: 'purple', pulse: true, label: 'Question — waiting on you' }
   }
   switch (session.idleState) {
     case 'idle':
@@ -55,10 +61,11 @@ export const statusColorClasses: Record<string, { dot: string; text: string }> =
 }
 
 export function sessionUrgencyRank(
-  session: Pick<SessionBase, 'theOne' | 'idleState' | 'unseen'>
+  session: Pick<SessionBase, 'theOne' | 'idleState' | 'unseen' | 'needsAnswer'>
 ): number {
   if (session.theOne) return 0
   if (session.idleState === 'blocked') return 1
+  if (session.needsAnswer) return 1
   if (session.unseen) return 2
   return 3
 }
