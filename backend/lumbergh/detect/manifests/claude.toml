@@ -1,0 +1,62 @@
+# Claude Code TUI family. The engine applies every manifest to every pane, so
+# these also cover Pi (which shares the same prompt UI); pi.toml adds only
+# pi-branded phrasing.
+id = "claude"
+aliases = ["claude-code"]
+
+# Veto: transient menus the *user* opened (model/theme picker, transcript view)
+# look like selectable forms but are not the agent blocking on a decision.
+[[rules]]
+id = "transient_menu"
+state = "none"
+priority = 900
+region = "recent"
+any = [
+  { contains = ["select model"] },
+  { contains = ["set as default"] },
+  { contains = ["select theme"] },
+  { contains = ["output style"] },
+  { contains = ["showing detailed transcript"] },
+]
+
+# Permission / plan approval: a "do you want to…/would you like to…" question
+# together with a numbered Yes/No option block.
+[[rules]]
+id = "permission_dialog"
+state = "blocked"
+priority = 800
+region = "recent"
+not_footer = true
+any = [
+  { contains = ["do you want to"] },
+  { contains = ["would you like to"] },
+]
+line_regex = "^\\s*❯?\\s*\\d+\\.\\s*(yes|no)\\b"
+
+# Interactive login / auth prompts.
+[[rules]]
+id = "interactive_login"
+state = "blocked"
+priority = 750
+region = "recent"
+not_footer = true
+any = [
+  { contains = ["do you want to allow this connection?"] },
+  { contains = ["paste the code"] },
+  { contains = ["paste your authorization code"] },
+  { contains = ["enter your authorization code"] },
+  { contains = ["waiting for authentication"] },
+]
+
+# Selectable form: "enter to select" plus a navigation hint.
+[[rules]]
+id = "selectable_form"
+state = "blocked"
+priority = 700
+region = "recent"
+not_footer = true
+contains = ["enter to select"]
+any = [
+  { contains = ["to navigate"] },
+  { contains = ["esc to cancel"] },
+]

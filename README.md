@@ -87,6 +87,10 @@ Run `./lint.sh` before submitting PRs -- it handles formatting and catches error
 - [Issues](https://github.com/voglster/lumbergh/issues)
 - [Changelog](https://github.com/voglster/lumbergh/releases)
 
+## Acknowledgements
+
+Agent-detection manifest *content* (`backend/lumbergh/detect/manifests/`) was adapted from [herdr](https://github.com/ogulcancelik/herdr) (Apache-2.0), reworked into Lumbergh's own manifest schema.
+
 ## License
 
 MIT

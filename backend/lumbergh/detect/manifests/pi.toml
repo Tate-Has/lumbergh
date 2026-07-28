@@ -1,0 +1,13 @@
+# Pi-specific phrasing. Its trust prompt is already caught by claude.toml's
+# permission_dialog; this rule adds the pi-branded signal explicitly.
+id = "pi"
+aliases = ["herdr:pi"]
+
+[[rules]]
+id = "pi_trust_prompt"
+state = "blocked"
+priority = 800
+region = "recent"
+not_footer = true
+contains = ["wants to run"]
+line_regex = "^\\s*❯?\\s*\\d+\\.\\s*(yes|no)\\b"

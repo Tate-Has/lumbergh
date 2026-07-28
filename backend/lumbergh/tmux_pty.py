@@ -196,6 +196,27 @@ def capture_pane_content(session_name: str) -> str:
         return ""
 
 
+def capture_pane_title(session_name: str) -> str:
+    """Return the active pane's OSC-set title (``#{pane_title}``), or "".
+
+    A single lightweight ``display-message`` call. Failures degrade to an empty
+    string, in which case ``osc_title`` detection rules simply do not match.
+    """
+    try:
+        result = subprocess.run(
+            [TMUX_CMD, "display-message", "-t", session_name, "-p", "#{pane_title}"],
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=2,
+        )
+        if result.returncode != 0:
+            return ""
+        return result.stdout.strip()
+    except Exception:
+        return ""
+
+
 def refresh_client(session_name: str) -> bool:
     """Force tmux to redraw every client attached to a session.
 
@@ -234,6 +255,43 @@ def refresh_client(session_name: str) -> bool:
             if result.returncode == 0:
                 refreshed = True
         return refreshed
+    except Exception:
+        return False
+
+
+def capture_pane_text(session_name: str, lines: int | None = None) -> str:
+    """Plain, newline-separated pane text (no ANSI) — for reading, not rendering."""
+    cmd = [TMUX_CMD, "capture-pane", "-t", session_name, "-p"]
+    if lines:
+        cmd += ["-S", str(-lines)]
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, encoding="utf-8", errors="replace", timeout=5
+        )
+        if result.returncode != 0:
+            return ""
+        return result.stdout.rstrip("\n")
+    except Exception:
+        return ""
+
+
+def send_text(session_name: str, text: str) -> bool:
+    """Type a line of input into the session's pane (literal text, then Enter)."""
+    try:
+        for args in (
+            ["send-keys", "-t", session_name, "-l", "--", text],
+            ["send-keys", "-t", session_name, "Enter"],
+        ):
+            r = subprocess.run(
+                [TMUX_CMD, *args],
+                capture_output=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=5,
+            )
+            if r.returncode != 0:
+                return False
+        return True
     except Exception:
         return False
 

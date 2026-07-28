@@ -1,0 +1,30 @@
+# Agent-agnostic overrides: API/connection errors and a bare shell prompt
+# (the agent exited and the user is back at their shell).
+id = "common"
+
+[[rules]]
+id = "api_error"
+state = "error"
+priority = 1000
+region = "recent"
+any = [
+  { regex = "rate limit|rate_limit" },
+  { regex = "\\b429\\b|too many requests" },
+  { regex = "overloaded" },
+  { regex = "APIError|API error|APIConnectionError" },
+  { regex = "unexpected error|Connection error" },
+]
+
+[[rules]]
+id = "shell_prompt"
+state = "error"
+priority = 200
+region = "recent"
+regex = "[$%#]\\s*\\Z"
+not = [
+  { contains = ["esc to interrupt"] },
+  { contains = ["esc to cancel"] },
+  { contains = ["shift+tab to cycle"] },
+  { contains = ["accept edits"] },
+  { contains = ["? for shortcuts"] },
+]

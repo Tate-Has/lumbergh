@@ -25,6 +25,7 @@ from datetime import UTC, datetime
 
 import libtmux
 
+from lumbergh import session_attention, session_identity
 from lumbergh.constants import TMUX_CMD
 from lumbergh.db_utils import (
     get_session_data_db,
@@ -32,7 +33,7 @@ from lumbergh.db_utils import (
     session_data_lock,
 )
 from lumbergh.idle_detector import SessionState, classify_overrides
-from lumbergh.tmux_pty import IS_WINDOWS, capture_pane_content
+from lumbergh.tmux_pty import IS_WINDOWS, capture_pane_content, capture_pane_title
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,7 @@ class IdleMonitor:
         self._last_change: dict[str, float] = {}
         self._states: dict[str, SessionState] = {}
         self._working_since: dict[str, float] = {}
+        self._state_since: dict[str, float] = {}
         self._task: asyncio.Task | None = None
         self._running = False
 
@@ -73,6 +75,14 @@ class IdleMonitor:
     def get_state(self, session_name: str) -> SessionState:
         return self._states.get(session_name, SessionState.UNKNOWN)
 
+    def _record_state_change(self, session_name: str, state: SessionState) -> None:
+        self._states[session_name] = state
+        self._state_since[session_name] = time.time()
+
+    def state_since_seconds(self, session_name: str) -> float | None:
+        started = self._state_since.get(session_name)
+        return None if started is None else time.time() - started
+
     @classmethod
     def _fingerprint(cls, content: str) -> str:
         """Hash the tail of pane content (ANSI stripped, whitespace trimmed)."""
@@ -82,19 +92,21 @@ class IdleMonitor:
         tail = lines[-cls.FINGERPRINT_LINE_COUNT :]
         return hashlib.sha1("\n".join(tail).encode("utf-8")).hexdigest()
 
-    def _classify_burst(self, session_name: str, captures: list[str], now: float) -> SessionState:
+    def _classify_burst(
+        self, session_name: str, captures: list[str], now: float, osc_title: str = ""
+    ) -> SessionState:
         """
         Classify a session's state from a burst of captures.
 
         Returns WORKING if the pane changed within the burst or since the
         last poll.  Returns IDLE once the pane has been stable for at least
-        ``QUIET_THRESHOLD_SECONDS``.  Pattern overrides (ERROR, shell
-        prompts) take precedence.
+        ``QUIET_THRESHOLD_SECONDS``.  Manifest overrides (ERROR, BLOCKED,
+        shell prompts) take precedence.
         """
         if not captures:
             return SessionState.UNKNOWN
 
-        override = classify_overrides(captures[-1])
+        override = classify_overrides(captures[-1], osc_title)
         if override is not None:
             return override
 
@@ -146,6 +158,9 @@ class IdleMonitor:
             self._last_change.pop(name, None)
             self._states.pop(name, None)
             self._working_since.pop(name, None)
+            self._state_since.pop(name, None)
+
+        session_identity.prune(set(sessions))
 
         await asyncio.gather(
             *(self._check_session(name) for name in sessions),
@@ -202,7 +217,10 @@ class IdleMonitor:
         if not any(captures):
             return
 
-        state = self._classify_burst(session_name, captures, time.time())
+        loop = asyncio.get_event_loop()
+        osc_title = await loop.run_in_executor(None, capture_pane_title, session_name)
+
+        state = self._classify_burst(session_name, captures, time.time(), osc_title)
 
         if state == SessionState.WORKING:
             if session_name not in self._working_since:
@@ -215,8 +233,13 @@ class IdleMonitor:
         old_state = self._states.get(session_name, SessionState.UNKNOWN)
         if state != old_state:
             logger.info(f"Session {session_name} state: {old_state.value} -> {state.value}")
-            self._states[session_name] = state
+            self._record_state_change(session_name, state)
             await self._persist_state(session_name, state)
+            if state in (SessionState.IDLE, SessionState.BLOCKED, SessionState.ERROR):
+                session_attention.mark_attention(session_name, state.value)
+            else:
+                session_attention.clear_unseen(session_name)
+            await session_attention.persist()
 
     async def _persist_state(self, session_name: str, state: SessionState) -> None:
         loop = asyncio.get_event_loop()
