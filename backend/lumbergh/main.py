@@ -33,7 +33,18 @@ from lumbergh.git_utils import (
     stage_all_and_commit,
 )
 from lumbergh.models import CommitInput, RevertFileInput, SendInput, TmuxCommand
-from lumbergh.routers import ai, backup, cloud, focus, notes, sessions, settings, shared, tmux
+from lumbergh.routers import (
+    activity,
+    ai,
+    backup,
+    cloud,
+    focus,
+    notes,
+    sessions,
+    settings,
+    shared,
+    tmux,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +164,7 @@ app.include_router(backup.router)
 app.include_router(shared.router)
 app.include_router(tmux.router)
 app.include_router(focus.router)
+app.include_router(activity.router)
 
 # Project root (parent of backend/)
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -395,20 +407,16 @@ async def send_to_session(session_name: str, body: SendInput):
     await _exit_copy_mode(session_name)
     text = body.text.rstrip("\n")
 
-    if len(text) > 128:
-        # For large text, use load-buffer + paste-buffer (much faster than send-keys
-        # which processes each character individually through tmux's key pipeline).
-        # Include trailing newline in the buffer itself so the Enter is delivered
-        # atomically with the text — a separate send-keys Enter can race.
-        buf = text + "\n" if body.send_enter else text
-        await _run_tmux("load-buffer", "-", input_data=buf)
+    if body.send_enter:
+        # Always deliver text+Enter atomically via load-buffer + paste-buffer,
+        # regardless of length. A separate send-keys "Enter" call after
+        # send-keys -l can race with the target app's own input handling
+        # (e.g. paste-detection debounce) and get dropped, leaving the text
+        # typed but unsubmitted in the pane.
+        await _run_tmux("load-buffer", "-", input_data=text + "\n")
         await _run_tmux("paste-buffer", "-t", session_name, "-d", "-p")
     else:
-        # For short text, send-keys -l is fine
         await _run_tmux("send-keys", "-t", session_name, "-l", text)
-        # Send Enter key separately (without -l so it's interpreted as a key)
-        if body.send_enter:
-            await _run_tmux("send-keys", "-t", session_name, "Enter")
 
     # Buffer the message for AI commit context
     if body.send_enter:

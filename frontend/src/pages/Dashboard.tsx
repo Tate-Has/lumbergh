@@ -19,6 +19,7 @@ import CreateSessionModal from '../components/CreateSessionModal'
 import SettingsModal from '../components/SettingsModal'
 import Button from '../components/ui/Button'
 import Banner from '../components/ui/Banner'
+import TopNav from '../components/TopNav'
 import { useTheme } from '../hooks/useTheme'
 
 import type { SessionBase } from '../utils/sessionStatus'
@@ -649,30 +650,7 @@ export default function Dashboard() {
       >
         <div className="flex items-center gap-3">
           <h1 className="text-xl font-semibold text-text-secondary">Lumbergh</h1>
-          <nav className="hidden sm:flex items-center gap-0.5 rounded-full p-0.5 border border-border-default">
-            <button
-              className="px-3 py-1 text-xs font-semibold rounded-full bg-action text-white"
-              aria-current="page"
-            >
-              Sessions
-            </button>
-            <button
-              onClick={() => navigate('/focus')}
-              className="px-3 py-1 text-xs font-semibold rounded-full text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
-            >
-              Workspace
-            </button>
-          </nav>
-          {planInfo && planInfo.limit > 0 && (
-            <span
-              className={`text-xs font-medium ${planInfo.used >= planInfo.limit ? 'text-warning' : 'text-text-muted'}`}
-            >
-              Cloud: {planInfo.used}/{planInfo.limit}
-            </span>
-          )}
-          {planInfo && planInfo.limit === 0 && (
-            <span className="text-xs font-medium text-text-muted">Cloud: Pro</span>
-          )}
+          <TopNav active="sessions" planInfo={planInfo} />
         </div>
         <div className="flex items-center gap-2">
           {/* GitHub docs */}
@@ -741,7 +719,7 @@ export default function Dashboard() {
       />
 
       {/* Main content */}
-      <main className="flex-1 overflow-y-auto p-4">
+      <main className="flex-1 overflow-y-auto p-4 pb-20 sm:pb-4">
         <div className="max-w-6xl mx-auto">
           <DashboardContent
             loading={loading}

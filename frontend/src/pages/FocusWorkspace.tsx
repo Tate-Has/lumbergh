@@ -43,6 +43,7 @@ import Toast from '../components/focus/Toast'
 import MobileActionBar from '../components/focus/MobileActionBar'
 import ConfirmDialog from '../components/focus/ConfirmDialog'
 import SessionPicker from '../components/focus/SessionPicker'
+import TopNav from '../components/TopNav'
 
 // Grace period after sending a "close out" prompt during which we ignore idle
 // state reads — the backend's own idle detector has hysteresis but we still
@@ -755,20 +756,7 @@ function FocusWorkspaceInner() {
       >
         <div className="flex items-center gap-3">
           <h1 className="text-xl font-semibold text-text-secondary">Lumbergh</h1>
-          <nav className="hidden sm:flex items-center gap-0.5 rounded-full p-0.5 border border-border-default">
-            <button
-              onClick={() => navigate('/')}
-              className="px-3 py-1 text-xs font-semibold rounded-full text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
-            >
-              Sessions
-            </button>
-            <button
-              className="px-3 py-1 text-xs font-semibold rounded-full bg-action text-white"
-              aria-current="page"
-            >
-              Workspace
-            </button>
-          </nav>
+          <TopNav active="workspace" />
         </div>
         <div className="flex items-center gap-2">
           <button

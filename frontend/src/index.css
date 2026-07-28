@@ -132,6 +132,26 @@
   --status-error-bg: rgba(255, 69, 58, 0.15);
   --waiting-col-bg: rgba(255, 159, 10, 0.06);
   --done-opacity: 0.4;
+
+  /* Session tag palette (Desktop Activity feed) — deterministic hash → hue,
+     independent from the semantic success/danger/warning tokens so a tag
+     never reads as a status indicator. 8 hues, bg+fg pair each. */
+  --session-tag-1-bg: rgba(64, 156, 255, 0.16);
+  --session-tag-1-fg: #7cc0ff;
+  --session-tag-2-bg: rgba(191, 90, 242, 0.16);
+  --session-tag-2-fg: #dba7f5;
+  --session-tag-3-bg: rgba(60, 200, 190, 0.16);
+  --session-tag-3-fg: #6fe0d4;
+  --session-tag-4-bg: rgba(94, 92, 230, 0.18);
+  --session-tag-4-fg: #b3b1ff;
+  --session-tag-5-bg: rgba(255, 45, 146, 0.16);
+  --session-tag-5-fg: #ff8dc0;
+  --session-tag-6-bg: rgba(100, 210, 255, 0.16);
+  --session-tag-6-fg: #8fdfff;
+  --session-tag-7-bg: rgba(255, 100, 130, 0.16);
+  --session-tag-7-fg: #ff9fae;
+  --session-tag-8-bg: rgba(175, 151, 245, 0.18);
+  --session-tag-8-fg: #c9b8ff;
 }
 
 /* ── Light theme ── */
@@ -203,6 +223,25 @@
   --status-error-bg: rgba(198, 45, 34, 0.12);
   --waiting-col-bg: rgba(160, 90, 0, 0.06);
   --done-opacity: 0.45;
+
+  /* Session tag palette (Desktop Activity feed) — same 8 hues as dark theme,
+     darkened/saturated for contrast on light surfaces. */
+  --session-tag-1-bg: rgba(0, 104, 214, 0.1);
+  --session-tag-1-fg: #0058b3;
+  --session-tag-2-bg: rgba(147, 39, 207, 0.1);
+  --session-tag-2-fg: #7d1fae;
+  --session-tag-3-bg: rgba(16, 138, 128, 0.12);
+  --session-tag-3-fg: #0c7268;
+  --session-tag-4-bg: rgba(74, 72, 200, 0.12);
+  --session-tag-4-fg: #4341a8;
+  --session-tag-5-bg: rgba(212, 24, 118, 0.1);
+  --session-tag-5-fg: #b0125c;
+  --session-tag-6-bg: rgba(0, 130, 176, 0.12);
+  --session-tag-6-fg: #036e93;
+  --session-tag-7-bg: rgba(200, 55, 84, 0.1);
+  --session-tag-7-fg: #a52f4d;
+  --session-tag-8-bg: rgba(120, 90, 210, 0.12);
+  --session-tag-8-fg: #5c3fab;
 }
 
 html,
@@ -548,7 +587,10 @@ body {
   .focus-view .main-content {
     padding: 14px 12px !important;
     gap: 12px !important;
-    padding-bottom: 70px !important;
+    /* Clears both stacked fixed mobile bars: the app-wide TopNav tab bar
+       (bottom:0, 54px + safe-area) and this page's own MobileActionBar
+       (stacked directly above it, see .focus-view .mobile-action-bar below). */
+    padding-bottom: calc(54px + env(safe-area-inset-bottom) + 70px) !important;
   }
   .focus-view .top-split {
     grid-template-columns: 1fr;
@@ -575,7 +617,9 @@ body {
   .focus-view .mobile-action-bar {
     display: flex;
     position: fixed;
-    bottom: 0;
+    /* Stack above the app-wide TopNav mobile tab bar (bottom:0, height
+       54px + safe-area) instead of overlapping it. */
+    bottom: calc(54px + env(safe-area-inset-bottom));
     left: 0;
     right: 0;
     background: var(--bg-elevated);
@@ -583,7 +627,6 @@ body {
     padding: 8px 12px;
     gap: 8px;
     z-index: 90;
-    padding-bottom: max(8px, env(safe-area-inset-bottom));
   }
   .focus-view .mobile-action-btn {
     flex: 1;
