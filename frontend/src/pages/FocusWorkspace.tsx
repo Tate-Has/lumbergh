@@ -18,11 +18,12 @@ import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
 import { useClickOutside } from '../hooks/useClickOutside'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { useSessionStatus } from '../hooks/useSessionStatus'
-import { useWorktrees, type RawSession } from '../hooks/useWorktrees'
+import { useWorktrees, type RawSession, type Worktree } from '../hooks/useWorktrees'
 import { useAttentionItems } from '../hooks/useAttentionItems'
+import { useAvailableRepos } from '../hooks/useAvailableRepos'
 
 // Utils
-import { deriveRepos } from '../utils/repos'
+import { deriveRepos, type Repo } from '../utils/repos'
 import { resolveBoardStatus } from '../utils/statusMigration'
 
 // Components
@@ -63,6 +64,23 @@ function toSlug(text: string): string {
   )
 }
 
+/**
+ * The repo path to branch a new worktree from: prefer an already-known main
+ * worktree (from a linked session), falling back to the repo's own path when
+ * it was matched against a configured search directory — so launching works
+ * even for a repo with no sessions linked yet.
+ */
+function resolveParentRepoPath(
+  task: Task,
+  repos: Repo[],
+  worktreesByRepo: Record<string, Worktree[]>
+): string | undefined {
+  const repoWorktrees = task.project ? worktreesByRepo[task.project] || [] : []
+  const mainWorktree = repoWorktrees.find((w) => w.is_main)
+  const repo = task.project ? repos.find((r) => r.id === task.project) : undefined
+  return mainWorktree?.path || repo?.path
+}
+
 // ---------------------------------------------------------------------------
 // Inner component (needs to be inside TaskProvider)
 // ---------------------------------------------------------------------------
@@ -100,8 +118,10 @@ function FocusWorkspaceInner() {
   const { archiveData, loading: archiveLoading, openArchive, archiveDoneTasks } = useArchive()
   const { getDragHandlers, getDropZoneHandlers } = useDragDrop()
 
-  // Repos derived from tasks' project field
-  const repos = useMemo(() => deriveRepos(tasks), [tasks])
+  // Repos derived from tasks' project field, merged with the actual repos found
+  // under the configured search directories (same source as the create-session picker).
+  const availableRepos = useAvailableRepos()
+  const repos = useMemo(() => deriveRepos(tasks, availableRepos), [tasks, availableRepos])
 
   // Raw sessions (fetched once, polled) — feeds useWorktrees + WorktreePanel
   const [sessions, setSessions] = useState<RawSession[]>([])
@@ -512,9 +532,8 @@ function FocusWorkspaceInner() {
             workdir: choice.worktreePath,
           }
         } else if (choice.newBranch) {
-          const repoWorktrees = task.project ? worktreesByRepo[task.project] || [] : []
-          const mainWorktree = repoWorktrees.find((w) => w.is_main)
-          if (!mainWorktree) {
+          const parentRepoPath = resolveParentRepoPath(task, repos, worktreesByRepo)
+          if (!parentRepoPath) {
             const pathError = task.project ? repoPathErrors[task.project] : undefined
             showToast(
               pathError
@@ -528,7 +547,7 @@ function FocusWorkspaceInner() {
             description: task.title,
             mode: 'worktree',
             worktree: {
-              parent_repo: mainWorktree.path,
+              parent_repo: parentRepoPath,
               branch: choice.newBranch,
               create_branch: true,
             },
@@ -554,7 +573,7 @@ function FocusWorkspaceInner() {
         showToast(err instanceof Error ? err.message : 'Failed to launch agent')
       }
     },
-    [tasks, worktreesByRepo, repoPathErrors, updateTask, showToast, refetchWorktrees]
+    [tasks, worktreesByRepo, repoPathErrors, repos, updateTask, showToast, refetchWorktrees]
   )
 
   // -------------------------------------------------------------------------

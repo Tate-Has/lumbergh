@@ -10,7 +10,7 @@ export interface TaskModalProps {
   defaultStatus: string
   /** Pre-fills the Repo field for a new task (e.g. launched from a specific RepoLane's "+ Task"). */
   defaultProject?: string
-  /** Repos derived via deriveRepos(allTasks); used to populate the Repo datalist. */
+  /** Repos derived via deriveRepos(allTasks, availableRepos); used to populate the Repo select. */
   repos: Repo[]
   /**
    * Worktree branch/name for the task's active session, if any. The parent page owns
@@ -136,21 +136,23 @@ export default function TaskModal({
 
         <div className="modal-field mb-3">
           <label className="block text-xs font-semibold text-text-secondary mb-1">Repo</label>
-          <input
-            type="text"
+          <select
             id="modalTaskProject"
             className="w-full bg-bg-surface border border-border-default rounded-md py-2.5 px-3 text-[0.82rem] text-text-primary outline-none transition-[border-color] duration-150 focus:border-accent"
-            placeholder="No repo"
-            list="projectSuggestions"
-            autoComplete="off"
             value={project}
             onChange={(e) => setProject(e.target.value)}
-          />
-          <datalist id="projectSuggestions">
+          >
+            <option value="">No repo</option>
             {repos.map((repo) => (
-              <option key={repo.id} value={repo.name} />
+              <option key={repo.id} value={repo.name}>
+                {repo.name}
+              </option>
             ))}
-          </datalist>
+            {/* Preserve a legacy value that no longer matches any known repo, rather than silently discarding it. */}
+            {project && !repos.some((repo) => repo.name === project) && (
+              <option value={project}>{project}</option>
+            )}
+          </select>
         </div>
 
         <div className="modal-field mb-3">

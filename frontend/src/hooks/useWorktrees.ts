@@ -36,8 +36,15 @@ export interface UseWorktreesResult {
  * session at. Deliberately not just the first match — if the repo's folder
  * moved, whichever session happens to be found first may still carry the
  * stale pre-move path while a later-linked session has the current one.
+ *
+ * If the repo was matched against a configured search directory (repo.path
+ * set by deriveRepos), that's the authoritative path — no need to go hunting
+ * through linked sessions at all, and it works even for a repo with no
+ * sessions linked yet.
  */
 function resolveRepoPaths(repo: Repo, tasks: Task[], sessions: RawSession[]): string[] {
+  if (repo.path) return [repo.path]
+
   const paths = new Set<string>()
   for (const task of tasks) {
     if (task.project !== repo.id || !task.session_name) continue
