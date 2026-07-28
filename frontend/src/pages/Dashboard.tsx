@@ -22,6 +22,7 @@ import Banner from '../components/ui/Banner'
 import { useTheme } from '../hooks/useTheme'
 
 import type { SessionBase } from '../utils/sessionStatus'
+import { sessionUrgencyRank } from '../utils/sessionStatus'
 
 interface Session extends SessionBase {
   workdir: string | null
@@ -73,8 +74,8 @@ function SessionGrid({
   onReset: (name: string) => void
 }) {
   const sortSessions = (a: Session, b: Session) => {
-    if (a.theOne && !b.theOne) return -1
-    if (!a.theOne && b.theOne) return 1
+    const rank = sessionUrgencyRank(a) - sessionUrgencyRank(b)
+    if (rank !== 0) return rank
     return (b.lastUsedAt || '').localeCompare(a.lastUsedAt || '')
   }
   const alive = sessions.filter((s) => s.alive && !s.paused).sort(sortSessions)
@@ -645,6 +646,11 @@ export default function Dashboard() {
       <header className="glass flex items-center justify-between p-4 border-b border-border-default">
         <div className="flex items-center gap-3">
           <h1 className="text-xl font-semibold text-text-secondary">Lumbergh</h1>
+          {sessions.filter((s) => s.unseen).length > 0 && (
+            <span className="text-xs font-medium text-warning">
+              {sessions.filter((s) => s.unseen).length} while you were away
+            </span>
+          )}
           {planInfo && planInfo.limit > 0 && (
             <span
               className={`text-xs font-medium ${planInfo.used >= planInfo.limit ? 'text-warning' : 'text-text-muted'}`}

@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
+from lumbergh import session_attention
 from lumbergh.constants import TMUX_CMD
 from lumbergh.tmux_pty import (
     IS_WINDOWS,
@@ -239,6 +240,7 @@ class SessionManager:
                 managed = self._sessions[session_name]
 
             managed.clients.add(websocket)
+            session_attention.set_viewing(session_name, True)
             logger.info(f"Session {session_name}: {len(managed.clients)} client(s) connected")
 
         # For a fresh PTY, ``tmux attach-session`` will stream a full redraw
@@ -265,6 +267,7 @@ class SessionManager:
                 except Exception as e:
                     logger.warning(f"Failed to replay pane state for {session_name}: {e}")
 
+        await session_attention.persist()
         return managed
 
     async def _send_initial_repaint(self, session_name: str, websocket: TerminalClient) -> None:
@@ -311,6 +314,7 @@ class SessionManager:
 
             if not managed.clients:
                 # Last client disconnected, cleanup
+                session_attention.set_viewing(session_name, False)
                 logger.info(f"Closing PTY for session: {session_name}")
 
                 if managed.read_task:
@@ -329,6 +333,8 @@ class SessionManager:
         # block other register/unregister calls).
         if still_connected:
             await self._apply_active_size(session_name)
+
+        await session_attention.persist()
 
     async def _check_eof(
         self, session_name: str, managed: ManagedSession, consecutive_eof: int

@@ -92,6 +92,8 @@ export default defineConfig({
       },
       workbox: {
         disableDevLogs: true,
+        // Add the notificationclick handler to the generated SW (tap → open session)
+        importScripts: ['notification-click.js'],
         // Allow larger bundles (xterm.js is big)
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         // Skip caching for frequently-polled endpoints (causes terminal lag)

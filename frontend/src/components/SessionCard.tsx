@@ -1,7 +1,17 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getApiBase } from '../config'
-import { Minus, Pause, Play, AlertCircle, AlertTriangle, Circle, Cloud, Star } from 'lucide-react'
+import {
+  Minus,
+  Pause,
+  Play,
+  AlertCircle,
+  AlertTriangle,
+  Circle,
+  Cloud,
+  Star,
+  Hand,
+} from 'lucide-react'
 import SessionCardEditForm from './SessionCardEditForm'
 import SessionCardActions from './SessionCardActions'
 import SessionCardBadges from './SessionCardBadges'
@@ -40,6 +50,7 @@ function getSessionStatus(session: Session) {
   // Refine icons for specific states
   if (session.idleState === 'working') Icon = Play
   if (session.idleState === 'stalled') Icon = AlertTriangle
+  if (session.idleState === 'blocked') Icon = Hand
   return { ...base, Icon }
 }
 

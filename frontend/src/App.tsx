@@ -5,6 +5,7 @@ import LoginPage from './pages/LoginPage'
 import SessionDetail from './pages/SessionDetail'
 import TerminalWindow from './pages/TerminalWindow'
 import PWAUpdatePrompt from './components/PWAUpdatePrompt'
+import AttentionNotifier from './components/AttentionNotifier'
 
 function App() {
   const { loading, authenticated } = useAuth()
@@ -20,6 +21,7 @@ function App() {
         <Route path="/session/:name/term" element={<TerminalWindow />} />
       </Routes>
       <PWAUpdatePrompt />
+      <AttentionNotifier />
     </>
   )
 }

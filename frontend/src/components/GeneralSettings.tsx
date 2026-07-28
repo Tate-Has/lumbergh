@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { isNotifyEnabled, setNotifyEnabled } from '../utils/attentionNotifications'
 
 interface Props {
   repoSearchDir: string
@@ -117,6 +118,27 @@ export default function GeneralSettings({
     speaker: string
     isMilton: boolean
   } | null>(null)
+
+  const notifySupported = typeof window !== 'undefined' && 'Notification' in window
+  const [notifyOn, setNotifyOn] = useState<boolean>(() => isNotifyEnabled())
+  const [notifyDenied, setNotifyDenied] = useState<boolean>(
+    notifySupported && Notification.permission === 'denied'
+  )
+
+  const handleNotifyToggle = async (next: boolean) => {
+    if (next && notifySupported && Notification.permission !== 'granted') {
+      const perm = await Notification.requestPermission()
+      if (perm !== 'granted') {
+        setNotifyDenied(perm === 'denied')
+        setNotifyEnabled(false)
+        setNotifyOn(false)
+        return
+      }
+    }
+    setNotifyDenied(false)
+    setNotifyEnabled(next)
+    setNotifyOn(next)
+  }
 
   return (
     <>
@@ -241,6 +263,21 @@ export default function GeneralSettings({
             </p>
           </div>
           <Toggle on={showSessionDots} onChange={onShowSessionDotsChange} />
+        </div>
+        <div className="flex items-center justify-between">
+          <div>
+            <label className="block text-sm text-text-tertiary">Notify while away</label>
+            <p className="text-xs text-text-muted mt-0.5">
+              System notification when a session needs attention. Fires only while the app is open
+              in the background — not when it is fully closed.
+            </p>
+            {notifyDenied && (
+              <p className="text-xs text-warning mt-0.5">
+                Notifications are blocked in your browser settings for this site.
+              </p>
+            )}
+          </div>
+          <Toggle on={notifyOn} onChange={(v) => void handleNotifyToggle(v)} />
         </div>
         <div>
           <label className="block text-sm text-text-tertiary">Scratch Session Max Age (days)</label>

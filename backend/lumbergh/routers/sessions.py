@@ -6,6 +6,7 @@ Stores metadata in ~/.config/lumbergh/sessions.json
 import asyncio
 import logging
 import re
+import shlex
 import shutil
 import subprocess
 import time
@@ -20,6 +21,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from tinydb import Query
 
+from lumbergh import session_attention
 from lumbergh.constants import IGNORE_DIRS, REPO_SEARCH_SKIP_DIRS, SCRATCH_DIR, TMUX_CMD
 from lumbergh.db_utils import (
     get_project_db,
@@ -194,6 +196,21 @@ def create_tmux_session(
     if result.returncode != 0:
         raise RuntimeError(f"Failed to create session: {result.stderr}")
 
+    # Correlate this pane to its Lumbergh session for the SessionStart hook.
+    subprocess.run(
+        [
+            TMUX_CMD,
+            "send-keys",
+            "-t",
+            name,
+            f"export LUMBERGH_SESSION={shlex.quote(name)}",
+            "Enter",
+        ],
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+
     # Activate venv if found
     venv_activate = find_venv_activate(workdir)
     if venv_activate:
@@ -313,6 +330,8 @@ def get_session_status(name: str) -> dict:
         "statusUpdatedAt": None,
         "idleState": None,
         "idleStateUpdatedAt": None,
+        "unseen": session_attention.is_unseen(name),
+        "attentionState": session_attention.get(name),
     }
     try:
         session_db = get_session_data_db(name)
@@ -414,6 +433,8 @@ async def list_sessions():
                 "statusUpdatedAt": status_info.get("statusUpdatedAt"),
                 "idleState": status_info.get("idleState"),
                 "idleStateUpdatedAt": status_info.get("idleStateUpdatedAt"),
+                "unseen": status_info.get("unseen", False),
+                "attentionState": status_info.get("attentionState"),
                 "type": meta.get("type", "direct"),
                 "worktreeParentRepo": meta.get("worktree_parent_repo"),
                 "worktreeBranch": meta.get("worktree_branch"),
@@ -444,6 +465,8 @@ async def list_sessions():
                     "statusUpdatedAt": status_info.get("statusUpdatedAt"),
                     "idleState": status_info.get("idleState"),
                     "idleStateUpdatedAt": status_info.get("idleStateUpdatedAt"),
+                    "unseen": status_info.get("unseen", False),
+                    "attentionState": status_info.get("attentionState"),
                     "type": "direct",
                     "worktreeParentRepo": None,
                     "worktreeBranch": None,

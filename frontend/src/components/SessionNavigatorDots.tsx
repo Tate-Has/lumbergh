@@ -10,6 +10,7 @@ const statusRingClasses: Record<string, string> = {
   yellow: 'ring-yellow-400/60',
   green: 'ring-green-500/60',
   red: 'ring-red-500/60',
+  purple: 'ring-purple-500/60',
 }
 
 interface Props {
