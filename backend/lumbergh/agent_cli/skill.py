@@ -46,6 +46,9 @@ whether it finished while unseen. Start here.
 - `lb wait --session <name> --until idle|working|blocked|error|rest [--timeout <s>]` —
   block until a session reaches a state. Use this to supervise: wait `--until blocked`,
   then step in.
+- `lb wait-output --session <name> --match "<text>" [--regex <re>] [--timeout <s>]` —
+  block until the session's terminal shows some text (substring) or matches a regex. The
+  current screen is checked first, so output that already appeared still matches.
 - `lb prompt --session <name> "<text>" [--wait]` — send a line of input to a peer session.
   This drives another agent, so use it deliberately; `--wait` blocks until its state changes.
 

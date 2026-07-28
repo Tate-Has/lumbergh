@@ -6,6 +6,7 @@ the activity adapters, and pane/send via tmux. Auth is enforced by AuthMiddlewar
 """
 
 import asyncio
+import re
 import time
 from pathlib import Path
 
@@ -138,6 +139,46 @@ async def wait(name: str, until: str, timeout: float = 300.0):
                 "waited": round(time.monotonic() - start, 1),
                 "reached": False,
             }
+        await asyncio.sleep(0.25)
+
+
+def _output_matches(text: str, match: str | None, pattern: re.Pattern | None) -> bool:
+    if match and match in text:
+        return True
+    return bool(pattern and pattern.search(text))
+
+
+@router.get("/sessions/{name}/wait-output")
+async def wait_output(
+    name: str,
+    match: str | None = None,
+    regex: str | None = None,
+    timeout: float = 300.0,
+    lines: int = 200,
+):
+    """Block until the pane content contains ``match`` or matches ``regex``.
+
+    The current snapshot is checked *before* the first sleep, so output that has
+    already arrived still matches — no lost-wakeup race.
+    """
+    _require(name)
+    if not match and not regex:
+        raise HTTPException(status_code=400, detail={"error": "provide match or regex"})
+    pattern = None
+    if regex:
+        try:
+            pattern = re.compile(regex)
+        except re.error as e:
+            raise HTTPException(status_code=400, detail={"error": f"invalid regex: {e}"})
+
+    deadline = time.monotonic() + timeout
+    start = time.monotonic()
+    while True:
+        text = capture_pane_text(name, lines=lines)
+        if _output_matches(text, match, pattern):
+            return {"session": name, "matched": True, "waited": round(time.monotonic() - start, 1)}
+        if time.monotonic() >= deadline:
+            return {"session": name, "matched": False, "waited": round(time.monotonic() - start, 1)}
         await asyncio.sleep(0.25)
 
 

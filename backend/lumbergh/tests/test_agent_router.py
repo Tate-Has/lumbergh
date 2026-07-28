@@ -57,3 +57,42 @@ def test_prompt_sends(client, monkeypatch):
     r = client.post("/api/agent/sessions/s1/prompt", json={"text": "go"}).json()
     assert r["sent"] == "go"
     assert sent["s1"] == "go"
+
+
+def test_wait_output_matches_existing_snapshot(client, monkeypatch):
+    monkeypatch.setattr(agent, "capture_pane_text", lambda _n, lines=None: "BUILD DONE\n$ ")  # noqa: ARG005
+    r = client.get("/api/agent/sessions/s1/wait-output?match=BUILD%20DONE&timeout=1").json()
+    assert r["matched"] is True
+    assert r["waited"] == 0.0
+
+
+def test_wait_output_regex(client, monkeypatch):
+    monkeypatch.setattr(agent, "capture_pane_text", lambda _n, lines=None: "exit code: 0")  # noqa: ARG005
+    r = client.get("/api/agent/sessions/s1/wait-output?regex=exit%20code:%20%5Cd&timeout=1").json()
+    assert r["matched"] is True
+
+
+def test_wait_output_timeout(client, monkeypatch):
+    monkeypatch.setattr(agent, "capture_pane_text", lambda _n, lines=None: "nothing here")  # noqa: ARG005
+    r = client.get("/api/agent/sessions/s1/wait-output?match=absent&timeout=0").json()
+    assert r["matched"] is False
+
+
+def test_wait_output_requires_match_or_regex(client):
+    r = client.get("/api/agent/sessions/s1/wait-output?timeout=1")
+    assert r.status_code == 400
+
+
+def test_wait_output_invalid_regex(client):
+    r = client.get("/api/agent/sessions/s1/wait-output?regex=%5B&timeout=1")
+    assert r.status_code == 400
+
+
+def test_output_matches_helper():
+    import re
+
+    assert agent._output_matches("hello world", "world", None) is True
+    assert agent._output_matches("hello world", "absent", None) is False
+    assert agent._output_matches("code 42", None, re.compile(r"code \d+")) is True
+    assert agent._output_matches("no digits", None, re.compile(r"\d+")) is False
+    assert agent._output_matches("anything", None, None) is False

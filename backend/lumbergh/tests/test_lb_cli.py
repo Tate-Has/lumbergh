@@ -60,3 +60,29 @@ def test_wait_timeout_exit_1(monkeypatch):
     )
     assert code == 1
     assert "timed out" in out
+
+
+def test_wait_output_requires_match_or_regex(monkeypatch):
+    code, out = _run(monkeypatch, ["wait-output", "--session", "s"], lambda *_a, **_k: _Resp({}))
+    assert code == 2
+    assert "--match or --regex is required" in out
+
+
+def test_wait_output_success(monkeypatch):
+    code, out = _run(
+        monkeypatch,
+        ["wait-output", "--session", "s", "--match", "DONE"],
+        lambda *_a, **_k: _Resp({"session": "s", "matched": True, "waited": 0.0}),
+    )
+    assert code == 0
+    assert "matched" in out
+
+
+def test_wait_output_timeout_exit_1(monkeypatch):
+    code, out = _run(
+        monkeypatch,
+        ["wait-output", "--session", "s", "--match", "DONE", "--timeout", "5"],
+        lambda *_a, **_k: _Resp({"session": "s", "matched": False, "waited": 5.0}),
+    )
+    assert code == 1
+    assert "timed out" in out

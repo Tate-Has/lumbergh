@@ -22,6 +22,7 @@ FLAGS = {
     "read": {"--session", "--source", "--last", "--full"},
     "state": {"--session"},
     "wait": {"--session", "--until", "--timeout"},
+    "wait-output": {"--session", "--match", "--regex", "--timeout", "--lines"},
     "prompt": {"--session", "--wait"},
     "skill": {"--dir", "--check"},
 }
@@ -104,6 +105,8 @@ def main(argv=None) -> int:
             return _cmd_read(_target(flags), flags)
         if command == "wait":
             return _cmd_wait(_target(flags), flags)
+        if command == "wait-output":
+            return _cmd_wait_output(_target(flags), flags)
         if command == "prompt":
             return _cmd_prompt(_target(flags), positional, flags)
         if command == "skill":
@@ -233,6 +236,40 @@ def _cmd_wait(session, flags) -> int:
     _emit(
         render_object([("session", session), ("state", d["state"]), ("waited", f"{d['waited']}s")])
     )
+    return 0
+
+
+def _cmd_wait_output(session, flags) -> int:
+    if (e := _need_session(session)) is not None:
+        return e
+    match = flags.get("--match")
+    regex = flags.get("--regex")
+    if not match and not regex:
+        return _err(
+            "--match or --regex is required",
+            'lb wait-output --match "<text>" [--regex <re>] [--timeout <s>] [--lines <n>]',
+            2,
+        )
+    timeout = flags.get("--timeout", "300")
+    params = {"timeout": timeout, "lines": flags.get("--lines", "200")}
+    if match:
+        params["match"] = match
+    if regex:
+        params["regex"] = regex
+    resp = _request("GET", f"/api/agent/sessions/{session}/wait-output", params=params)
+    if resp.status_code == 404:
+        return _session_404(resp)
+    if resp.status_code == 400:
+        return _err(resp.json().get("detail", {}).get("error", "bad request"), None, 2)
+    d = resp.json()
+    if not d["matched"]:
+        needle = match or regex
+        return _err(
+            f"timed out after {timeout}s waiting for `{needle}` in {session}",
+            f"raise --timeout or check `lb read --session {session}`",
+            1,
+        )
+    _emit(render_object([("session", session), ("matched", "true"), ("waited", f"{d['waited']}s")]))
     return 0
 
 
