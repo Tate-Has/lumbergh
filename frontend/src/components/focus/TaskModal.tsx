@@ -116,16 +116,16 @@ export default function TaskModal({
       onClick={handleOverlayClick}
     >
       <div className="modal bg-bg-elevated border border-border-default rounded-xl p-6 w-[420px] max-w-[90vw] shadow-modal">
-        <h3 className="text-[0.95rem] font-bold text-text-primary mb-4" id="modalTitle">
+        <h3 className="text-[1.05rem] font-bold text-text-primary mb-4" id="modalTitle">
           {isEditMode ? 'Edit Task' : 'New Task'}
         </h3>
 
         <div className="modal-field mb-3">
-          <label className="block text-xs font-semibold text-text-secondary mb-1">Title</label>
+          <label className="block text-sm font-semibold text-text-secondary mb-1">Title</label>
           <input
             type="text"
             id="modalTaskTitle"
-            className="w-full bg-bg-surface border border-border-default rounded-md py-2.5 px-3 text-[0.82rem] text-text-primary outline-none transition-[border-color] duration-150 focus:border-accent"
+            className="w-full bg-bg-surface border border-border-default rounded-md py-2.5 px-3 text-[0.95rem] text-text-primary outline-none transition-[border-color] duration-150 focus:border-accent"
             placeholder="Task title..."
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -135,10 +135,10 @@ export default function TaskModal({
         </div>
 
         <div className="modal-field mb-3">
-          <label className="block text-xs font-semibold text-text-secondary mb-1">Repo</label>
+          <label className="block text-sm font-semibold text-text-secondary mb-1">Repo</label>
           <select
             id="modalTaskProject"
-            className="w-full bg-bg-surface border border-border-default rounded-md py-2.5 px-3 text-[0.82rem] text-text-primary outline-none transition-[border-color] duration-150 focus:border-accent"
+            className="w-full bg-bg-surface border border-border-default rounded-md py-2.5 px-3 text-[0.95rem] text-text-primary outline-none transition-[border-color] duration-150 focus:border-accent"
             value={project}
             onChange={(e) => setProject(e.target.value)}
           >
@@ -156,10 +156,10 @@ export default function TaskModal({
         </div>
 
         <div className="modal-field mb-3">
-          <label className="block text-xs font-semibold text-text-secondary mb-1">Priority</label>
+          <label className="block text-sm font-semibold text-text-secondary mb-1">Priority</label>
           <select
             id="modalTaskPriority"
-            className="w-full bg-bg-surface border border-border-default rounded-md py-2.5 px-3 text-[0.82rem] text-text-primary outline-none transition-[border-color] duration-150 focus:border-accent"
+            className="w-full bg-bg-surface border border-border-default rounded-md py-2.5 px-3 text-[0.95rem] text-text-primary outline-none transition-[border-color] duration-150 focus:border-accent"
             value={priority}
             onChange={(e) => setPriority(e.target.value as 'high' | 'med' | 'low')}
           >
@@ -170,10 +170,10 @@ export default function TaskModal({
         </div>
 
         <div className="modal-field mb-3">
-          <label className="block text-xs font-semibold text-text-secondary mb-1">Status</label>
+          <label className="block text-sm font-semibold text-text-secondary mb-1">Status</label>
           <select
             id="modalTaskStatus"
-            className="w-full bg-bg-surface border border-border-default rounded-md py-2.5 px-3 text-[0.82rem] text-text-primary outline-none transition-[border-color] duration-150 focus:border-accent"
+            className="w-full bg-bg-surface border border-border-default rounded-md py-2.5 px-3 text-[0.95rem] text-text-primary outline-none transition-[border-color] duration-150 focus:border-accent"
             value={status}
             onChange={(e) => setStatus(e.target.value)}
           >
@@ -187,13 +187,13 @@ export default function TaskModal({
         </div>
 
         <div className={`modal-field mb-2.5${showBlocker ? '' : ' hidden'}`} id="blockerField">
-          <label className="block text-xs font-semibold text-text-secondary mb-1">
+          <label className="block text-sm font-semibold text-text-secondary mb-1">
             Blocker / Waiting On
           </label>
           <input
             type="text"
             id="modalTaskBlocker"
-            className="w-full bg-bg-surface border border-border-default rounded-md py-2.5 px-3 text-[0.82rem] text-text-primary outline-none transition-[border-color] duration-150 focus:border-accent"
+            className="w-full bg-bg-surface border border-border-default rounded-md py-2.5 px-3 text-[0.95rem] text-text-primary outline-none transition-[border-color] duration-150 focus:border-accent"
             placeholder="Person or blocker description"
             value={blocker}
             onChange={(e) => setBlocker(e.target.value)}
@@ -201,13 +201,13 @@ export default function TaskModal({
         </div>
 
         <div className={`modal-field mb-2.5${showCheckin ? '' : ' hidden'}`} id="checkinField">
-          <label className="block text-xs font-semibold text-text-secondary mb-1">
+          <label className="block text-sm font-semibold text-text-secondary mb-1">
             Check-in Note
           </label>
           <input
             type="text"
             id="modalTaskCheckin"
-            className="w-full bg-bg-surface border border-border-default rounded-md py-2.5 px-3 text-[0.82rem] text-text-primary outline-none transition-[border-color] duration-150 focus:border-accent"
+            className="w-full bg-bg-surface border border-border-default rounded-md py-2.5 px-3 text-[0.95rem] text-text-primary outline-none transition-[border-color] duration-150 focus:border-accent"
             placeholder="Check-in note"
             value={checkin}
             onChange={(e) => setCheckin(e.target.value)}
@@ -216,8 +216,8 @@ export default function TaskModal({
 
         {task?.session_name && (
           <div className="modal-field mb-3" id="worktreeField">
-            <label className="block text-xs font-semibold text-text-secondary mb-1">Worktree</label>
-            <div className="text-[0.82rem] text-text-secondary py-1">
+            <label className="block text-sm font-semibold text-text-secondary mb-1">Worktree</label>
+            <div className="text-[0.95rem] text-text-secondary py-1">
               {worktreeBranch ? `Worktree: ${worktreeBranch}` : 'No worktree'}
             </div>
           </div>
@@ -227,7 +227,7 @@ export default function TaskModal({
 
         <div className="modal-actions flex justify-end gap-2.5 mt-5">
           <button
-            className={`modal-btn delete py-[7px] px-4 rounded-md text-[0.8rem] font-semibold cursor-pointer border border-border-default transition-all duration-150 ease-[ease] bg-transparent hover:bg-priority-high-bg mr-auto text-priority-high border-priority-high${isEditMode ? '' : ' hidden'}`}
+            className={`modal-btn delete py-[7px] px-4 rounded-md text-[0.92rem] font-semibold cursor-pointer border border-border-default transition-all duration-150 ease-[ease] bg-transparent hover:bg-priority-high-bg mr-auto text-priority-high border-priority-high${isEditMode ? '' : ' hidden'}`}
             id="modalDelete"
             type="button"
             onClick={onDelete}
@@ -235,7 +235,7 @@ export default function TaskModal({
             Delete
           </button>
           <button
-            className="modal-btn cancel py-[7px] px-4 rounded-md text-[0.8rem] font-semibold cursor-pointer border border-border-default transition-all duration-150 ease-[ease] bg-transparent text-text-secondary hover:bg-bg-surface"
+            className="modal-btn cancel py-[7px] px-4 rounded-md text-[0.92rem] font-semibold cursor-pointer border border-border-default transition-all duration-150 ease-[ease] bg-transparent text-text-secondary hover:bg-bg-surface"
             id="modalCancel"
             type="button"
             onClick={onClose}
@@ -243,7 +243,7 @@ export default function TaskModal({
             Cancel
           </button>
           <button
-            className="modal-btn primary py-[7px] px-4 rounded-md text-[0.8rem] font-semibold cursor-pointer border border-accent transition-all duration-150 ease-[ease] bg-accent text-white hover:bg-accent-hover"
+            className="modal-btn primary py-[7px] px-4 rounded-md text-[0.92rem] font-semibold cursor-pointer border border-accent transition-all duration-150 ease-[ease] bg-accent text-white hover:bg-accent-hover"
             id="modalSave"
             type="button"
             onClick={handleSave}

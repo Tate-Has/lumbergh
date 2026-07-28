@@ -161,7 +161,7 @@ export default function ArchiveModal({ isOpen, data, loading, onClose }: Archive
   function renderBody() {
     if (loading) {
       return (
-        <div className="archive-empty text-center text-text-muted text-[0.82rem] py-10">
+        <div className="archive-empty text-center text-text-muted text-[0.95rem] py-10">
           Loading archive...
         </div>
       )
@@ -169,7 +169,7 @@ export default function ArchiveModal({ isOpen, data, loading, onClose }: Archive
 
     if (!data) {
       return (
-        <div className="archive-empty text-center text-text-muted text-[0.82rem] py-10">
+        <div className="archive-empty text-center text-text-muted text-[0.95rem] py-10">
           Could not load archive.
         </div>
       )
@@ -177,7 +177,7 @@ export default function ArchiveModal({ isOpen, data, loading, onClose }: Archive
 
     if (sections.length === 0) {
       return (
-        <div className="archive-empty text-center text-text-muted text-[0.82rem] py-10">
+        <div className="archive-empty text-center text-text-muted text-[0.95rem] py-10">
           No archived items.
         </div>
       )
@@ -185,7 +185,7 @@ export default function ArchiveModal({ isOpen, data, loading, onClose }: Archive
 
     if (filteredSections.length === 0) {
       return (
-        <div className="archive-empty text-center text-text-muted text-[0.82rem] py-10">
+        <div className="archive-empty text-center text-text-muted text-[0.95rem] py-10">
           No matches found.
         </div>
       )
@@ -203,14 +203,14 @@ export default function ArchiveModal({ isOpen, data, loading, onClose }: Archive
             onClick={() => toggleSection(section.key)}
           >
             <span
-              className={`chevron text-[0.7rem] text-text-muted transition-transform duration-150 ease-[ease] ${isCollapsed ? ' collapsed -rotate-90' : ''}`}
+              className={`chevron text-[0.82rem] text-text-muted transition-transform duration-150 ease-[ease] ${isCollapsed ? ' collapsed -rotate-90' : ''}`}
             >
               &#x25BC;
             </span>
-            <span className="archive-date-label text-[0.82rem] font-bold text-text-primary">
+            <span className="archive-date-label text-[0.95rem] font-bold text-text-primary">
               {displayDate}
             </span>
-            <span className="archive-date-count text-[0.7rem] text-text-muted font-medium">
+            <span className="archive-date-count text-[0.82rem] text-text-muted font-medium">
               {section.filteredTasks.length} item
               {section.filteredTasks.length !== 1 ? 's' : ''}
             </span>
@@ -231,12 +231,12 @@ export default function ArchiveModal({ isOpen, data, loading, onClose }: Archive
 
               return (
                 <div
-                  className="archive-task flex items-baseline gap-2 py-1 px-2 text-[0.78rem] text-text-secondary rounded hover:bg-bg-base"
+                  className="archive-task flex items-baseline gap-2 py-1 px-2 text-[0.9rem] text-text-secondary rounded hover:bg-bg-base"
                   key={`${section.key}-${i}`}
                 >
                   {projHtml && (
                     <span
-                      className="project-tag text-[0.68rem] font-semibold text-accent whitespace-nowrap"
+                      className="project-tag text-[0.8rem] font-semibold text-accent whitespace-nowrap"
                       dangerouslySetInnerHTML={{
                         __html: `[${projHtml}]`,
                       }}
@@ -248,7 +248,7 @@ export default function ArchiveModal({ isOpen, data, loading, onClose }: Archive
                   />
                   {t.priority && t.priority !== 'med' && (
                     <span
-                      className={`priority-tag text-[0.65rem] font-semibold py-px px-[5px] rounded-[3px] ${t.priority === 'high' ? ' bg-priority-high-bg text-priority-high' : t.priority === 'low' ? ' bg-priority-low-bg text-priority-low' : ''}`}
+                      className={`priority-tag text-[0.76rem] font-semibold py-px px-[5px] rounded-[3px] ${t.priority === 'high' ? ' bg-priority-high-bg text-priority-high' : t.priority === 'low' ? ' bg-priority-low-bg text-priority-low' : ''}`}
                     >
                       {t.priority}
                     </span>
@@ -270,12 +270,12 @@ export default function ArchiveModal({ isOpen, data, loading, onClose }: Archive
     >
       <div className="archive-modal bg-bg-elevated border border-border-default rounded-xl w-[680px] max-w-[90vw] max-h-[85vh] flex flex-col shadow-modal">
         <div className="archive-header flex items-center justify-between pt-5 px-6 pb-4 border-b border-border-default shrink-0">
-          <h3 className="text-[0.95rem] font-bold text-text-primary m-0">Archive</h3>
+          <h3 className="text-[1.05rem] font-bold text-text-primary m-0">Archive</h3>
           <div className="archive-search-wrap flex-[0_0_220px]">
             <input
               type="text"
               id="archiveSearch"
-              className="archive-search w-full py-1.5 px-3 text-[0.78rem] border border-border-default rounded-md bg-bg-base text-text-primary outline-none focus:border-accent"
+              className="archive-search w-full py-1.5 px-3 text-[0.9rem] border border-border-default rounded-md bg-bg-base text-text-primary outline-none focus:border-accent"
               placeholder="Search archive..."
               autoComplete="off"
               value={searchQuery}
@@ -288,11 +288,11 @@ export default function ArchiveModal({ isOpen, data, loading, onClose }: Archive
           {renderBody()}
         </div>
         <div className="archive-footer flex items-center justify-between py-4 px-6 border-t border-border-default shrink-0">
-          <span className="archive-stats text-[0.72rem] text-text-muted" id="archiveStats">
+          <span className="archive-stats text-[0.85rem] text-text-muted" id="archiveStats">
             {data && !loading ? statsText : ''}
           </span>
           <button
-            className="modal-btn cancel archive-close-btn py-[7px] px-4 rounded-md text-[0.8rem] font-semibold cursor-pointer border border-border-default transition-all duration-150 ease-[ease] bg-transparent text-text-secondary hover:bg-bg-surface"
+            className="modal-btn cancel archive-close-btn py-[7px] px-4 rounded-md text-[0.92rem] font-semibold cursor-pointer border border-border-default transition-all duration-150 ease-[ease] bg-transparent text-text-secondary hover:bg-bg-surface"
             id="archiveClose"
             type="button"
             onClick={onClose}

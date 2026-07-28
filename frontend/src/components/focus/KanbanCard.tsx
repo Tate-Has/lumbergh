@@ -105,28 +105,28 @@ const KanbanCard = memo(function KanbanCard({
       data-task-id={task.id}
       onClick={handleClick}
     >
-      <div className="kanban-card-title text-[0.8rem] font-semibold text-text-primary mb-1.5 pr-6">
+      <div className="kanban-card-title text-[0.92rem] font-semibold text-text-primary mb-1.5 pr-6">
         {task.title}
       </div>
       <div className="kanban-card-bottom flex items-center gap-2 flex-wrap">
         {task.project && (
-          <span className="kanban-card-project text-[0.7rem] font-medium text-accent">
+          <span className="kanban-card-project text-[0.82rem] font-medium text-accent">
             {task.project}
           </span>
         )}
         <span
-          className={`priority-badge text-[0.65rem] font-bold px-1.5 py-px rounded-lg uppercase tracking-[0.03em] ${task.priority === 'high' ? ' bg-priority-high-bg text-priority-high' : task.priority === 'med' ? ' bg-priority-med-bg text-priority-med' : ' bg-priority-low-bg text-priority-low'}`}
+          className={`priority-badge text-[0.76rem] font-bold px-1.5 py-px rounded-lg uppercase tracking-[0.03em] ${task.priority === 'high' ? ' bg-priority-high-bg text-priority-high' : task.priority === 'med' ? ' bg-priority-med-bg text-priority-med' : ' bg-priority-low-bg text-priority-low'}`}
         >
           {task.priority}
         </span>
         {worktreeBranch && (
-          <span className="kanban-card-worktree text-[0.65rem] font-mono text-purple bg-purple/10 border border-purple/20 rounded px-1.5 py-px truncate max-w-[9rem]">
+          <span className="kanban-card-worktree text-[0.76rem] font-mono text-purple bg-purple/10 border border-purple/20 rounded px-1.5 py-px truncate max-w-[9rem]">
             {worktreeBranch}
           </span>
         )}
       </div>
       {task.blocker && (
-        <div className="kanban-card-blocker text-[0.72rem] text-status-waiting mt-1 font-medium">
+        <div className="kanban-card-blocker text-[0.85rem] text-status-waiting mt-1 font-medium">
           &#x23F3; {task.blocker}
         </div>
       )}
@@ -134,7 +134,7 @@ const KanbanCard = memo(function KanbanCard({
 
       {sessionStatus ? (
         <div
-          className={`session-status ${statusClassForColor(sessionStatus.color)} flex items-center gap-1.5 mt-1.5 text-[0.7rem]`}
+          className={`session-status ${statusClassForColor(sessionStatus.color)} flex items-center gap-1.5 mt-1.5 text-[0.82rem]`}
         >
           <span className="session-dot w-2 h-2 rounded-full shrink-0" />
           <span className="font-semibold shrink-0">{sessionStatus.label}</span>
@@ -148,7 +148,7 @@ const KanbanCard = memo(function KanbanCard({
             {launchFormOpen ? (
               <div className="flex flex-col gap-1.5">
                 <select
-                  className="w-full text-[0.72rem] px-1.5 py-1 rounded-md border border-border-default bg-bg-elevated text-text-primary outline-none focus:border-accent"
+                  className="w-full text-[0.85rem] px-1.5 py-1 rounded-md border border-border-default bg-bg-elevated text-text-primary outline-none focus:border-accent"
                   value={selectedWorktree}
                   onChange={(e) => setSelectedWorktree(e.target.value)}
                 >
@@ -166,18 +166,18 @@ const KanbanCard = memo(function KanbanCard({
                     placeholder="new-branch-name"
                     value={newBranch}
                     onChange={(e) => setNewBranch(e.target.value)}
-                    className="w-full text-[0.72rem] px-1.5 py-1 rounded-md border border-border-default bg-bg-elevated text-text-primary outline-none focus:border-accent"
+                    className="w-full text-[0.85rem] px-1.5 py-1 rounded-md border border-border-default bg-bg-elevated text-text-primary outline-none focus:border-accent"
                   />
                 )}
                 <div className="flex gap-1.5">
                   <button
-                    className="flex-1 text-[0.65rem] font-semibold px-2 py-1 rounded-md border border-status-running text-status-running bg-status-running-bg cursor-pointer transition-all duration-100 hover:opacity-80"
+                    className="flex-1 text-[0.76rem] font-semibold px-2 py-1 rounded-md border border-status-running text-status-running bg-status-running-bg cursor-pointer transition-all duration-100 hover:opacity-80"
                     onClick={handleLaunchSubmit}
                   >
                     Launch
                   </button>
                   <button
-                    className="text-[0.65rem] font-semibold px-2 py-1 rounded-md border border-border-default text-text-secondary bg-bg-elevated cursor-pointer transition-all duration-100 hover:border-accent hover:text-accent"
+                    className="text-[0.76rem] font-semibold px-2 py-1 rounded-md border border-border-default text-text-secondary bg-bg-elevated cursor-pointer transition-all duration-100 hover:border-accent hover:text-accent"
                     onClick={handleLaunchCancel}
                   >
                     Cancel
@@ -187,13 +187,13 @@ const KanbanCard = memo(function KanbanCard({
             ) : (
               <div className="flex items-center gap-2">
                 <button
-                  className="kanban-launch-btn text-[0.68rem] font-semibold px-2 py-0.5 rounded-md border border-status-running text-status-running bg-transparent cursor-pointer transition-all duration-150 ease-in-out hover:bg-status-running-bg"
+                  className="kanban-launch-btn text-[0.8rem] font-semibold px-2 py-0.5 rounded-md border border-status-running text-status-running bg-transparent cursor-pointer transition-all duration-150 ease-in-out hover:bg-status-running-bg"
                   onClick={handleLaunchClick}
                 >
                   &#9654; Launch agent
                 </button>
                 <button
-                  className="kanban-session-picker-btn text-[0.68rem] text-text-muted cursor-pointer transition-colors duration-150 hover:text-accent"
+                  className="kanban-session-picker-btn text-[0.8rem] text-text-muted cursor-pointer transition-colors duration-150 hover:text-accent"
                   title="Link existing session"
                   onClick={handleOpenSessionPickerClick}
                 >

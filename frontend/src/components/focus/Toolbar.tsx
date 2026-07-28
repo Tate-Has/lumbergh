@@ -24,14 +24,14 @@ export default function Toolbar({
       <div className="board-toolbar-segment inline-flex items-center bg-bg-elevated border border-border-default rounded-lg p-0.5 shrink-0">
         <button
           type="button"
-          className={`text-[0.72rem] font-semibold px-3 py-1 rounded-md cursor-pointer transition-all duration-150 ease-in-out${groupByRepo ? ' bg-bg-surface text-accent shadow-low' : ' text-text-muted hover:text-text-secondary'}`}
+          className={`text-[0.85rem] font-semibold px-3 py-1 rounded-md cursor-pointer transition-all duration-150 ease-in-out${groupByRepo ? ' bg-bg-surface text-accent shadow-low' : ' text-text-muted hover:text-text-secondary'}`}
           onClick={() => onSetGroupByRepo(true)}
         >
           Repo lanes
         </button>
         <button
           type="button"
-          className={`text-[0.72rem] font-semibold px-3 py-1 rounded-md cursor-pointer transition-all duration-150 ease-in-out${!groupByRepo ? ' bg-bg-surface text-accent shadow-low' : ' text-text-muted hover:text-text-secondary'}`}
+          className={`text-[0.85rem] font-semibold px-3 py-1 rounded-md cursor-pointer transition-all duration-150 ease-in-out${!groupByRepo ? ' bg-bg-surface text-accent shadow-low' : ' text-text-muted hover:text-text-secondary'}`}
           onClick={() => onSetGroupByRepo(false)}
         >
           Flat board
@@ -52,7 +52,7 @@ export default function Toolbar({
         </button>
         <button
           type="button"
-          className="text-[0.72rem] font-semibold text-white bg-accent border border-accent rounded-md px-3 py-1 cursor-pointer transition-all duration-150 ease-in-out hover:bg-accent-hover"
+          className="text-[0.85rem] font-semibold text-white bg-accent border border-accent rounded-md px-3 py-1 cursor-pointer transition-all duration-150 ease-in-out hover:bg-accent-hover"
           onClick={onAddTask}
         >
           + New task

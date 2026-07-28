@@ -17,18 +17,18 @@ export default function NotesBar({ content, onChange, isOpen, onToggleOpen }: No
         onClick={onToggleOpen}
       >
         <div className="notes-header-left flex items-center gap-2">
-          <span className="section-title text-[0.85rem] font-semibold text-text-secondary uppercase tracking-[0.04em] m-0">
+          <span className="section-title text-[0.98rem] font-semibold text-text-secondary uppercase tracking-[0.04em] m-0">
             Notes
           </span>
         </div>
         <span
-          className={`notes-chevron text-xs text-text-muted transition-transform duration-200 ease-[ease] ${isOpen ? ' rotate-180' : ''}`}
+          className={`notes-chevron text-sm text-text-muted transition-transform duration-200 ease-[ease] ${isOpen ? ' rotate-180' : ''}`}
         >
           &#9660;
         </span>
       </div>
       <textarea
-        className="notes-textarea w-full h-[200px] px-4 pb-4 pt-2 bg-transparent border-none text-[0.82rem] text-text-primary resize-none outline-none leading-[1.6] placeholder:text-text-muted"
+        className="notes-textarea w-full h-[200px] px-4 pb-4 pt-2 bg-transparent border-none text-[0.95rem] text-text-primary resize-none outline-none leading-[1.6] placeholder:text-text-muted"
         id="notesTextarea"
         placeholder="Quick notes..."
         value={content}

@@ -119,11 +119,11 @@ export default function Inbox({
         onClick={onToggleOpen}
       >
         <div className="inbox-header-left flex items-center gap-2">
-          <span className="section-title text-[0.85rem] font-semibold text-text-secondary uppercase tracking-[0.04em]">
+          <span className="section-title text-[0.98rem] font-semibold text-text-secondary uppercase tracking-[0.04em]">
             Inbox
           </span>
           <span
-            className="section-count text-xs font-semibold text-text-muted bg-bg-surface rounded-[10px] px-2.5 py-0.5 ml-2.5"
+            className="section-count text-sm font-semibold text-text-muted bg-bg-surface rounded-[10px] px-2.5 py-0.5 ml-2.5"
             id="inboxCount"
           >
             {inboxTasks.length}
@@ -131,7 +131,7 @@ export default function Inbox({
         </div>
         <div className="flex items-center gap-2">
           <button
-            className="inbox-add-btn bg-transparent border border-border-default rounded-md w-[26px] h-[26px] flex items-center justify-center text-base font-medium text-text-muted cursor-pointer transition-all duration-150 ease-[ease] hover:border-accent hover:text-accent hover:bg-orange-subtle"
+            className="inbox-add-btn bg-transparent border border-border-default rounded-md w-[26px] h-[26px] flex items-center justify-center text-lg font-medium text-text-muted cursor-pointer transition-all duration-150 ease-[ease] hover:border-accent hover:text-accent hover:bg-orange-subtle"
             id="inboxAddBtn"
             title="Quick capture"
             onClick={handleAddBtnClick}
@@ -139,7 +139,7 @@ export default function Inbox({
             +
           </button>
           <span
-            className={`inbox-chevron text-xs text-text-muted transition-transform duration-200 ease-[ease] cursor-pointer${isOpen ? ' rotate-180' : ''}`}
+            className={`inbox-chevron text-sm text-text-muted transition-transform duration-200 ease-[ease] cursor-pointer${isOpen ? ' rotate-180' : ''}`}
             id="inboxChevron"
           >
             &#9660;
@@ -151,7 +151,7 @@ export default function Inbox({
           <input
             ref={inputRef}
             type="text"
-            className="inbox-input flex-1 bg-bg-surface border border-border-default rounded-md py-2.5 px-3.5 text-[0.82rem] text-text-primary outline-none transition-[border-color] duration-150 focus:border-accent placeholder:text-text-muted"
+            className="inbox-input flex-1 bg-bg-surface border border-border-default rounded-md py-2.5 px-3.5 text-[0.95rem] text-text-primary outline-none transition-[border-color] duration-150 focus:border-accent placeholder:text-text-muted"
             id="inboxInput"
             placeholder="Capture a task..."
             value={inputValue}
@@ -181,7 +181,7 @@ export default function Inbox({
                 {editingId === task.id ? (
                   <input
                     ref={editInputRef}
-                    className="inbox-item-title-input flex-1 bg-bg-surface border border-border-subtle rounded py-1 px-1.5 text-[0.82rem] text-text-primary outline-none"
+                    className="inbox-item-title-input flex-1 bg-bg-surface border border-border-subtle rounded py-1 px-1.5 text-[0.95rem] text-text-primary outline-none"
                     value={editValue}
                     onChange={(e) => setEditValue(e.target.value)}
                     onBlur={commitEdit}
@@ -189,7 +189,7 @@ export default function Inbox({
                   />
                 ) : (
                   <span
-                    className="inbox-item-title text-[0.82rem] font-medium text-text-primary cursor-text flex-1"
+                    className="inbox-item-title text-[0.95rem] font-medium text-text-primary cursor-text flex-1"
                     data-task-id={task.id}
                     onClick={() => startEditing(task)}
                   >
@@ -197,7 +197,7 @@ export default function Inbox({
                   </span>
                 )}
                 <select
-                  className="inbox-repo-select bg-bg-elevated border border-border-subtle rounded-[5px] py-0.5 px-1.5 text-[0.7rem] text-text-secondary cursor-pointer outline-none max-w-[110px]"
+                  className="inbox-repo-select bg-bg-elevated border border-border-subtle rounded-[5px] py-0.5 px-1.5 text-[0.82rem] text-text-secondary cursor-pointer outline-none max-w-[110px]"
                   data-task-id={task.id}
                   title="Select repo"
                   value={selectedRepo[task.id] ?? ''}
@@ -215,7 +215,7 @@ export default function Inbox({
                   ))}
                 </select>
                 <button
-                  className="promote-to-backlog-btn bg-transparent border border-border-default rounded-[5px] py-0.5 px-2 text-[0.7rem] font-semibold text-accent cursor-pointer transition-all duration-150 ease-[ease] whitespace-nowrap hover:bg-orange-subtle hover:border-accent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:border-border-default"
+                  className="promote-to-backlog-btn bg-transparent border border-border-default rounded-[5px] py-0.5 px-2 text-[0.82rem] font-semibold text-accent cursor-pointer transition-all duration-150 ease-[ease] whitespace-nowrap hover:bg-orange-subtle hover:border-accent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:border-border-default"
                   data-task-id={task.id}
                   title="Promote to backlog"
                   disabled={!selectedRepo[task.id]}
@@ -228,7 +228,7 @@ export default function Inbox({
                   &rarr; Backlog
                 </button>
                 <button
-                  className="promote-btn bg-transparent border border-border-default rounded-[5px] py-0.5 px-2 text-[0.7rem] font-semibold text-accent cursor-pointer transition-all duration-150 ease-[ease] whitespace-nowrap hover:bg-orange-subtle hover:border-accent"
+                  className="promote-btn bg-transparent border border-border-default rounded-[5px] py-0.5 px-2 text-[0.82rem] font-semibold text-accent cursor-pointer transition-all duration-150 ease-[ease] whitespace-nowrap hover:bg-orange-subtle hover:border-accent"
                   data-task-id={task.id}
                   title="Add details"
                   onClick={(e) => {

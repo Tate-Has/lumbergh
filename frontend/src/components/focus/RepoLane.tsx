@@ -69,7 +69,7 @@ function RepoPanel({
       >
         <div className="flex items-center gap-2 min-w-0">
           <span
-            className={`repo-lane-chevron text-xs text-text-muted transition-transform duration-200 ease-in-out${collapsed ? '' : ' rotate-90'}`}
+            className={`repo-lane-chevron text-sm text-text-muted transition-transform duration-200 ease-in-out${collapsed ? '' : ' rotate-90'}`}
           >
             &#x25B6;
           </span>
@@ -77,17 +77,17 @@ function RepoPanel({
             className="repo-lane-dot w-2.5 h-2.5 rounded-full shrink-0"
             style={{ background: repo.color }}
           />
-          <span className="repo-lane-name text-sm font-semibold text-text-primary truncate">
+          <span className="repo-lane-name text-base font-semibold text-text-primary truncate">
             {repo.name}
           </span>
           {activeCount > 0 && (
-            <span className="repo-lane-active-count text-[0.68rem] font-semibold text-status-running bg-status-running-bg rounded-lg px-2 py-px shrink-0">
+            <span className="repo-lane-active-count text-[0.8rem] font-semibold text-status-running bg-status-running-bg rounded-lg px-2 py-px shrink-0">
               {activeCount} active
             </span>
           )}
         </div>
         <button
-          className="repo-lane-add-btn shrink-0 text-[0.72rem] font-semibold text-accent bg-orange-subtle border border-transparent rounded-md px-2.5 py-1 cursor-pointer transition-all duration-150 ease-in-out hover:border-accent"
+          className="repo-lane-add-btn shrink-0 text-[0.85rem] font-semibold text-accent bg-orange-subtle border border-transparent rounded-md px-2.5 py-1 cursor-pointer transition-all duration-150 ease-in-out hover:border-accent"
           onClick={(e) => {
             e.stopPropagation()
             onAddTask(repo.id)

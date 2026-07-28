@@ -42,7 +42,7 @@ export default function SubtaskEditor({ subtasks, onChange }: SubtaskEditorProps
 
   return (
     <div className="modal-field" id="subtasksField">
-      <label className="block text-xs font-semibold text-text-secondary mb-1">Subtasks</label>
+      <label className="block text-sm font-semibold text-text-secondary mb-1">Subtasks</label>
       <div
         id="modalSubtaskList"
         className="subtask-list flex flex-col gap-1.5 max-h-[200px] overflow-y-auto mb-2"
@@ -57,12 +57,12 @@ export default function SubtaskEditor({ subtasks, onChange }: SubtaskEditorProps
             />
             <input
               type="text"
-              className="subtask-text flex-1 py-1 px-1.5 text-[0.85rem] border border-border-default rounded bg-bg-base text-text-primary"
+              className="subtask-text flex-1 py-1 px-1.5 text-[0.98rem] border border-border-default rounded bg-bg-base text-text-primary"
               value={st.text}
               onChange={(e) => updateText(i, e.target.value)}
             />
             <button
-              className="subtask-delete bg-transparent border-none text-text-secondary cursor-pointer text-base px-1 leading-none hover:text-priority-high"
+              className="subtask-delete bg-transparent border-none text-text-secondary cursor-pointer text-lg px-1 leading-none hover:text-priority-high"
               title="Remove"
               type="button"
               onClick={() => removeSubtask(i)}
@@ -76,13 +76,13 @@ export default function SubtaskEditor({ subtasks, onChange }: SubtaskEditorProps
         <input
           type="text"
           id="modalNewSubtask"
-          className="flex-1 py-1 px-1.5 text-[0.85rem] border border-border-default rounded bg-bg-base text-text-primary"
+          className="flex-1 py-1 px-1.5 text-[0.98rem] border border-border-default rounded bg-bg-base text-text-primary"
           placeholder="Add subtask..."
           ref={inputRef}
           onKeyDown={handleKeyDown}
         />
         <button
-          className="modal-btn py-1 px-2.5 text-[0.85rem]"
+          className="modal-btn py-1 px-2.5 text-[0.98rem]"
           id="modalAddSubtask"
           type="button"
           onClick={addSubtask}

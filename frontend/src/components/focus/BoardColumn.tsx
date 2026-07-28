@@ -36,9 +36,9 @@ function BacklogCompactRow({
       <span
         className={`shrink-0 w-1.5 h-1.5 rounded-full ${task.priority === 'high' ? 'bg-priority-high' : task.priority === 'med' ? 'bg-priority-med' : 'bg-priority-low'}`}
       />
-      <span className="flex-1 min-w-0 truncate text-[0.72rem] text-text-primary">{task.title}</span>
+      <span className="flex-1 min-w-0 truncate text-[0.85rem] text-text-primary">{task.title}</span>
       {worktreeBranch && (
-        <span className="shrink-0 text-[0.6rem] font-mono text-purple truncate max-w-[4rem]">
+        <span className="shrink-0 text-[0.72rem] font-mono text-purple truncate max-w-[4rem]">
           {worktreeBranch}
         </span>
       )}
@@ -81,31 +81,31 @@ function ColumnHeader({
       <div className="flex items-center gap-1.5">
         {isBacklog && (
           <span
-            className={`backlog-chevron text-[0.65rem] text-text-muted transition-transform duration-200 ease-in-out${backlogCollapsed ? '' : ' rotate-90'}`}
+            className={`backlog-chevron text-[0.76rem] text-text-muted transition-transform duration-200 ease-in-out${backlogCollapsed ? '' : ' rotate-90'}`}
           >
             &#x25B6;
           </span>
         )}
-        <span className="col-title text-xs font-semibold text-text-muted uppercase tracking-[0.04em]">
+        <span className="col-title text-sm font-semibold text-text-muted uppercase tracking-[0.04em]">
           {KANBAN_LABELS[status]}
         </span>
       </div>
       <div className="flex items-center gap-1.5">
         <span
-          className={`col-count text-[0.7rem] font-semibold text-text-muted bg-bg-elevated rounded-lg px-[7px] py-px${isOverWip ? ' wip-over !bg-status-error-bg !text-status-error' : ''}`}
+          className={`col-count text-[0.82rem] font-semibold text-text-muted bg-bg-elevated rounded-lg px-[7px] py-px${isOverWip ? ' wip-over !bg-status-error-bg !text-status-error' : ''}`}
         >
           {taskCount}
           {wipLimit != null ? `/${wipLimit}` : ''}
         </span>
         {isBacklog && (
-          <button className="topbar-btn !px-1.5 !py-0.5 !text-[0.7rem]" onClick={onCollapseClick}>
+          <button className="topbar-btn !px-1.5 !py-0.5 !text-[0.82rem]" onClick={onCollapseClick}>
             &#x25C0;
           </button>
         )}
         {isDone && (
           <>
             <button
-              className="topbar-btn !px-1.5 !py-0.5 !text-[0.7rem]"
+              className="topbar-btn !px-1.5 !py-0.5 !text-[0.82rem]"
               id="collapseDone"
               onClick={onCollapseClick}
             >
@@ -113,7 +113,7 @@ function ColumnHeader({
             </button>
             {showArchiveButton && (
               <button
-                className="archive-done-btn bg-transparent border border-border-default text-[0.65rem] font-semibold text-text-muted cursor-pointer px-2 py-0.5 rounded transition-all duration-150 ease-in-out hover:text-accent hover:bg-orange-subtle hover:border-accent"
+                className="archive-done-btn bg-transparent border border-border-default text-[0.76rem] font-semibold text-text-muted cursor-pointer px-2 py-0.5 rounded transition-all duration-150 ease-in-out hover:text-accent hover:bg-orange-subtle hover:border-accent"
                 id="archiveDoneBtn"
                 title="Archive all done tasks"
                 onClick={onArchiveClick}
@@ -295,10 +295,10 @@ export default function BoardColumn({
         onDragOver={handleCollapsedDragOver}
         onDrop={handleCollapsedDrop}
       >
-        <span className="collapsed-col-label [writing-mode:vertical-rl] [text-orientation:mixed] text-xs font-semibold text-text-muted uppercase tracking-[0.04em] whitespace-nowrap">
+        <span className="collapsed-col-label [writing-mode:vertical-rl] [text-orientation:mixed] text-sm font-semibold text-text-muted uppercase tracking-[0.04em] whitespace-nowrap">
           {KANBAN_LABELS[status]}
         </span>
-        <span className="collapsed-col-count text-[0.7rem] font-semibold text-text-muted bg-bg-elevated rounded-lg px-1.5 py-0.5 mt-2">
+        <span className="collapsed-col-count text-[0.82rem] font-semibold text-text-muted bg-bg-elevated rounded-lg px-1.5 py-0.5 mt-2">
           {tasks.length}
         </span>
       </div>
@@ -386,7 +386,7 @@ export default function BoardColumn({
 
       {!isDone && (
         <button
-          className="col-add-btn bg-transparent border border-dashed border-border-default rounded-md py-2 px-3 text-xs text-text-muted cursor-pointer transition-all duration-150 ease-in-out mt-2 text-center hover:border-accent hover:text-accent hover:bg-orange-subtle"
+          className="col-add-btn bg-transparent border border-dashed border-border-default rounded-md py-2 px-3 text-sm text-text-muted cursor-pointer transition-all duration-150 ease-in-out mt-2 text-center hover:border-accent hover:text-accent hover:bg-orange-subtle"
           data-status={status}
           onClick={onAddTask}
         >

@@ -54,7 +54,7 @@ export function LaunchAgentForm({
       onClick={(e) => e.stopPropagation()}
     >
       <select
-        className="w-full text-[0.72rem] px-1.5 py-1 rounded-md border border-border-default bg-bg-elevated text-text-primary outline-none focus:border-accent"
+        className="w-full text-[0.85rem] px-1.5 py-1 rounded-md border border-border-default bg-bg-elevated text-text-primary outline-none focus:border-accent"
         value={selectedWorktree}
         onChange={(e) => setSelectedWorktree(e.target.value)}
       >
@@ -72,19 +72,19 @@ export function LaunchAgentForm({
           placeholder="new-branch-name"
           value={newBranch}
           onChange={(e) => setNewBranch(e.target.value)}
-          className="w-full text-[0.72rem] px-1.5 py-1 rounded-md border border-border-default bg-bg-elevated text-text-primary outline-none focus:border-accent"
+          className="w-full text-[0.85rem] px-1.5 py-1 rounded-md border border-border-default bg-bg-elevated text-text-primary outline-none focus:border-accent"
         />
       )}
       <div className="flex gap-1.5">
         <button
-          className="flex-1 text-[0.65rem] font-semibold px-2 py-1 rounded-md border border-status-running text-status-running bg-status-running-bg cursor-pointer transition-all duration-100 hover:opacity-80 disabled:opacity-40 disabled:cursor-default"
+          className="flex-1 text-[0.76rem] font-semibold px-2 py-1 rounded-md border border-status-running text-status-running bg-status-running-bg cursor-pointer transition-all duration-100 hover:opacity-80 disabled:opacity-40 disabled:cursor-default"
           disabled={!canSubmit}
           onClick={handleSubmit}
         >
           Launch
         </button>
         <button
-          className="text-[0.65rem] font-semibold px-2 py-1 rounded-md border border-border-default text-text-secondary bg-bg-elevated cursor-pointer transition-all duration-100 hover:border-accent hover:text-accent"
+          className="text-[0.76rem] font-semibold px-2 py-1 rounded-md border border-border-default text-text-secondary bg-bg-elevated cursor-pointer transition-all duration-100 hover:border-accent hover:text-accent"
           onClick={handleCancel}
         >
           Cancel

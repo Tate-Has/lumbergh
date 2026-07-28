@@ -233,7 +233,7 @@ export default function CreateSessionModal({ isOpen, task, onClose, onSessionCre
     >
       <div className="modal bg-bg-elevated border border-border-default rounded-xl w-full max-w-md shadow-modal">
         <div className="flex items-center justify-between p-4 border-b border-border-default">
-          <h2 className="text-lg font-semibold text-text-primary">New Session</h2>
+          <h2 className="text-xl font-semibold text-text-primary">New Session</h2>
           <button
             onClick={onClose}
             className="text-text-tertiary hover:text-text-primary transition-colors"
@@ -243,7 +243,7 @@ export default function CreateSessionModal({ isOpen, task, onClose, onSessionCre
         </div>
 
         {task && (
-          <div className="session-task-name text-[0.85rem] font-semibold text-text-primary mx-4 mt-4 py-2 px-2.5 bg-bg-surface rounded-md border border-border-subtle">
+          <div className="session-task-name text-[0.98rem] font-semibold text-text-primary mx-4 mt-4 py-2 px-2.5 bg-bg-surface rounded-md border border-border-subtle">
             {task.title}
           </div>
         )}
@@ -253,7 +253,7 @@ export default function CreateSessionModal({ isOpen, task, onClose, onSessionCre
 
           {mode !== 'new' && (
             <div>
-              <label className="block text-sm text-text-tertiary mb-1">
+              <label className="block text-base text-text-tertiary mb-1">
                 Session Name <span className="text-text-muted font-normal">(optional)</span>
               </label>
               <input
@@ -269,7 +269,7 @@ export default function CreateSessionModal({ isOpen, task, onClose, onSessionCre
                 className="w-full px-3 py-2 bg-input-bg text-text-primary rounded border border-input-border focus:outline-none focus:border-blue-500"
               />
               {slug && (
-                <p className="text-xs text-text-muted mt-1">
+                <p className="text-sm text-text-muted mt-1">
                   Session ID: <span className="text-text-tertiary font-mono">{slug}</span>
                 </p>
               )}
@@ -309,7 +309,9 @@ export default function CreateSessionModal({ isOpen, task, onClose, onSessionCre
           )}
 
           <div>
-            <label className="block text-sm text-text-tertiary mb-1">Description (optional)</label>
+            <label className="block text-base text-text-tertiary mb-1">
+              Description (optional)
+            </label>
             <input
               type="text"
               value={description}
@@ -328,7 +330,7 @@ export default function CreateSessionModal({ isOpen, task, onClose, onSessionCre
           />
 
           <div>
-            <label className="flex items-center gap-2 text-sm text-text-tertiary">
+            <label className="flex items-center gap-2 text-base text-text-tertiary">
               <input
                 type="checkbox"
                 checked={customizeTabs}
@@ -342,7 +344,7 @@ export default function CreateSessionModal({ isOpen, task, onClose, onSessionCre
             </label>
             {customizeTabs && (
               <div className="mt-2 ml-6 space-y-2">
-                <label className="flex items-center gap-1.5 text-sm">
+                <label className="flex items-center gap-1.5 text-base">
                   <input
                     type="checkbox"
                     checked={Object.values(tabVisibility).every((v) => !v)}
@@ -372,7 +374,7 @@ export default function CreateSessionModal({ isOpen, task, onClose, onSessionCre
                   ).map(([key, label]) => {
                     const isEnabled = tabVisibility[key] !== false
                     return (
-                      <label key={key} className="flex items-center gap-1.5 text-sm">
+                      <label key={key} className="flex items-center gap-1.5 text-base">
                         <input
                           type="checkbox"
                           checked={isEnabled}
@@ -390,7 +392,7 @@ export default function CreateSessionModal({ isOpen, task, onClose, onSessionCre
             )}
           </div>
 
-          {error && <div className="text-red-400 text-sm">{error}</div>}
+          {error && <div className="text-red-400 text-base">{error}</div>}
 
           <div className="flex justify-end gap-3 pt-2">
             <button

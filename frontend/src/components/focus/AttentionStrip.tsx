@@ -32,7 +32,7 @@ function AttentionStatusRow({ status }: { status: SessionStatusInfo | undefined 
   return (
     <div className="attention-card-status flex items-center gap-[5px] mb-1.5">
       <span className={`session-dot w-2 h-2 rounded-full shrink-0 ${dotClass} ${pulseClass}`} />
-      <span className={`text-[0.65rem] font-semibold uppercase tracking-[0.03em] ${textClass}`}>
+      <span className={`text-[0.76rem] font-semibold uppercase tracking-[0.03em] ${textClass}`}>
         {status?.label || 'Unknown'}
       </span>
     </div>
@@ -43,7 +43,7 @@ function AttentionMeta({ project, branch }: { project: string; branch: string | 
   const separator = project && branch ? ' · ' : ''
 
   return (
-    <div className="attention-card-meta text-[0.7rem] font-medium text-text-muted mb-1 truncate">
+    <div className="attention-card-meta text-[0.82rem] font-medium text-text-muted mb-1 truncate">
       {project}
       {separator}
       {branch && <span className="font-mono">{branch}</span>}
@@ -60,12 +60,12 @@ function AttentionCard({ task, status, branch, onEditTask }: AttentionCardProps)
       onClick={() => onEditTask(task)}
     >
       <AttentionStatusRow status={status} />
-      <div className="attention-card-title text-[0.8rem] font-semibold text-text-primary mb-1 truncate">
+      <div className="attention-card-title text-[0.92rem] font-semibold text-text-primary mb-1 truncate">
         {task.title}
       </div>
       {showMeta && <AttentionMeta project={task.project} branch={branch} />}
       {status?.label && (
-        <div className="attention-card-reason text-[0.72rem] text-text-secondary truncate">
+        <div className="attention-card-reason text-[0.85rem] text-text-secondary truncate">
           {status.label}
         </div>
       )}
@@ -94,15 +94,15 @@ export default function AttentionStrip({
         onClick={() => setIsOpen((v) => !v)}
       >
         <div className="attention-header-left flex items-center gap-2">
-          <span className="section-title text-[0.85rem] font-semibold text-status-waiting uppercase tracking-[0.04em] m-0">
+          <span className="section-title text-[0.98rem] font-semibold text-status-waiting uppercase tracking-[0.04em] m-0">
             Needs Your Attention
           </span>
-          <span className="section-count text-xs font-semibold text-status-waiting bg-bg-surface rounded-[10px] px-2.5 py-0.5">
+          <span className="section-count text-sm font-semibold text-status-waiting bg-bg-surface rounded-[10px] px-2.5 py-0.5">
             {attentionItems.length}
           </span>
         </div>
         <span
-          className={`attention-chevron text-xs text-status-waiting transition-transform duration-200 ease-[ease] ${isOpen ? ' rotate-180' : ''}`}
+          className={`attention-chevron text-sm text-status-waiting transition-transform duration-200 ease-[ease] ${isOpen ? ' rotate-180' : ''}`}
         >
           &#9660;
         </span>

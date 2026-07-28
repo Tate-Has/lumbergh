@@ -38,7 +38,7 @@ export default function FilterDropdown({
   return (
     <div className="filter-dropdown relative" id={id}>
       <button
-        className={`filter-btn bg-transparent border border-border-default rounded-md py-1 px-3 text-[0.72rem] font-semibold text-text-secondary cursor-pointer transition-all duration-150 ease-[ease] hover:border-accent hover:text-accent${hasFilter ? ' has-filter bg-orange-subtle border-accent text-accent' : ''}`}
+        className={`filter-btn bg-transparent border border-border-default rounded-md py-1 px-3 text-[0.85rem] font-semibold text-text-secondary cursor-pointer transition-all duration-150 ease-[ease] hover:border-accent hover:text-accent${hasFilter ? ' has-filter bg-orange-subtle border-accent text-accent' : ''}`}
         id={buttonId}
         type="button"
         onClick={onToggleOpen}
@@ -52,7 +52,7 @@ export default function FilterDropdown({
         {onClearAll && (
           <>
             <div
-              className="filter-menu-item clear-item flex items-center gap-2 py-1.5 px-3 text-[0.72rem] font-medium text-text-muted cursor-pointer transition-[background] duration-100 hover:bg-bg-surface"
+              className="filter-menu-item clear-item flex items-center gap-2 py-1.5 px-3 text-[0.85rem] font-medium text-text-muted cursor-pointer transition-[background] duration-100 hover:bg-bg-surface"
               onClick={onClearAll}
             >
               Show all
@@ -62,7 +62,7 @@ export default function FilterDropdown({
         )}
         {items.map((item) => (
           <div
-            className={`filter-menu-item flex items-center gap-2.5 py-2 px-3.5 text-[0.78rem] font-medium text-text-primary cursor-pointer transition-[background] duration-100 hover:bg-bg-surface${item.selected ? ' selected' : ''}`}
+            className={`filter-menu-item flex items-center gap-2.5 py-2 px-3.5 text-[0.9rem] font-medium text-text-primary cursor-pointer transition-[background] duration-100 hover:bg-bg-surface${item.selected ? ' selected' : ''}`}
             key={item.key}
             onClick={() => onToggleItem(item.key)}
           >

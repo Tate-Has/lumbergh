@@ -89,33 +89,33 @@ function WorktreeRow({
   return (
     <div className="worktree-row border-b border-border-subtle last:border-b-0 py-2.5">
       <div className="worktree-row-main flex items-center gap-3">
-        <span className="worktree-branch font-mono text-[0.78rem] font-semibold text-purple shrink-0">
+        <span className="worktree-branch font-mono text-[0.9rem] font-semibold text-purple shrink-0">
           {worktree.branch}
         </span>
-        <span className="worktree-path font-mono text-[0.72rem] text-text-muted truncate flex-1 min-w-0">
+        <span className="worktree-path font-mono text-[0.85rem] text-text-muted truncate flex-1 min-w-0">
           {worktree.path}
         </span>
-        <span className="worktree-activity text-[0.68rem] text-text-tertiary shrink-0">
+        <span className="worktree-activity text-[0.8rem] text-text-tertiary shrink-0">
           {formatRelativeTime(worktree.last_activity)}
         </span>
         {worktree.stale && (
-          <span className="worktree-stale-badge text-[0.6rem] font-bold uppercase tracking-[0.03em] text-status-error bg-status-error-bg rounded-[10px] px-2 py-0.5 shrink-0">
+          <span className="worktree-stale-badge text-[0.72rem] font-bold uppercase tracking-[0.03em] text-status-error bg-status-error-bg rounded-[10px] px-2 py-0.5 shrink-0">
             Stale
           </span>
         )}
         <div className="worktree-row-actions flex items-center gap-1.5 shrink-0">
           {isClosing ? (
-            <span className="worktree-merging flex items-center gap-1.5 text-[0.72rem] text-status-running">
+            <span className="worktree-merging flex items-center gap-1.5 text-[0.85rem] text-status-running">
               <span className="session-dot w-2 h-2 rounded-full shrink-0 bg-status-running animate-pulse" />
               Merging&hellip;
             </span>
           ) : isMerged ? (
             <>
-              <span className="worktree-merged text-[0.72rem] font-semibold text-status-running">
+              <span className="worktree-merged text-[0.85rem] font-semibold text-status-running">
                 Merged &#10003;
               </span>
               <button
-                className="text-[0.68rem] font-semibold px-2 py-1 rounded-md border border-border-subtle bg-bg-surface text-text-secondary cursor-pointer transition-all duration-100 hover:border-accent hover:text-accent"
+                className="text-[0.8rem] font-semibold px-2 py-1 rounded-md border border-border-subtle bg-bg-surface text-text-secondary cursor-pointer transition-all duration-100 hover:border-accent hover:text-accent"
                 onClick={() => onCleanupWorktree(repoPath, worktree.path)}
               >
                 Remove worktree
@@ -124,13 +124,13 @@ function WorktreeRow({
           ) : isLinked ? (
             <>
               <button
-                className="text-[0.68rem] font-semibold px-2 py-1 rounded-md border border-status-running bg-transparent text-status-running cursor-pointer transition-all duration-100 hover:bg-status-running-bg"
+                className="text-[0.8rem] font-semibold px-2 py-1 rounded-md border border-status-running bg-transparent text-status-running cursor-pointer transition-all duration-100 hover:bg-status-running-bg"
                 onClick={() => setWrapupOpen((v) => !v)}
               >
                 Close out
               </button>
               <button
-                className="text-[0.68rem] font-semibold px-2 py-1 rounded-md border border-border-subtle bg-bg-surface text-text-secondary cursor-pointer transition-all duration-100 hover:border-accent hover:text-accent"
+                className="text-[0.8rem] font-semibold px-2 py-1 rounded-md border border-border-subtle bg-bg-surface text-text-secondary cursor-pointer transition-all duration-100 hover:border-accent hover:text-accent"
                 onClick={() => linkedTask && onViewTask(linkedTask)}
               >
                 View task
@@ -138,7 +138,7 @@ function WorktreeRow({
             </>
           ) : (
             <button
-              className="text-[0.68rem] font-semibold px-2 py-1 rounded-md border border-border-subtle bg-bg-surface text-text-secondary cursor-pointer transition-all duration-100 hover:border-status-error hover:text-status-error"
+              className="text-[0.8rem] font-semibold px-2 py-1 rounded-md border border-border-subtle bg-bg-surface text-text-secondary cursor-pointer transition-all duration-100 hover:border-status-error hover:text-status-error"
               onClick={() => onCleanupWorktree(repoPath, worktree.path)}
             >
               Clean up
@@ -149,19 +149,19 @@ function WorktreeRow({
       {wrapupOpen && isLinked && !isClosing && !isMerged && (
         <div className="worktree-wrapup-panel mt-2 bg-bg-surface border border-border-subtle rounded-lg p-3">
           <textarea
-            className="w-full h-[90px] text-[0.75rem] text-text-primary bg-bg-elevated border border-border-subtle rounded-md p-2 resize-none outline-none focus:border-accent"
+            className="w-full h-[90px] text-[0.88rem] text-text-primary bg-bg-elevated border border-border-subtle rounded-md p-2 resize-none outline-none focus:border-accent"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
           />
           <div className="flex justify-end gap-1.5 mt-2">
             <button
-              className="text-[0.68rem] font-semibold px-2.5 py-1 rounded-md border border-border-subtle bg-transparent text-text-secondary cursor-pointer hover:border-accent hover:text-accent"
+              className="text-[0.8rem] font-semibold px-2.5 py-1 rounded-md border border-border-subtle bg-transparent text-text-secondary cursor-pointer hover:border-accent hover:text-accent"
               onClick={() => setWrapupOpen(false)}
             >
               Cancel
             </button>
             <button
-              className="text-[0.68rem] font-semibold px-2.5 py-1 rounded-md border border-status-running-strong bg-status-running-strong text-white cursor-pointer hover:opacity-90"
+              className="text-[0.8rem] font-semibold px-2.5 py-1 rounded-md border border-status-running-strong bg-status-running-strong text-white cursor-pointer hover:opacity-90"
               onClick={() => {
                 if (!linkedSessionName) return
                 onSendWrapup(linkedSessionName, draft, worktree.path)
@@ -217,15 +217,15 @@ export default function WorktreePanel({
         onClick={onToggleOpen}
       >
         <div className="flex items-center gap-2">
-          <span className="section-title text-[0.85rem] font-semibold text-text-secondary uppercase tracking-[0.04em] m-0">
+          <span className="section-title text-[0.98rem] font-semibold text-text-secondary uppercase tracking-[0.04em] m-0">
             Worktrees
           </span>
-          <span className="section-count text-xs font-semibold text-text-muted bg-bg-surface rounded-[10px] px-2.5 py-0.5">
+          <span className="section-count text-sm font-semibold text-text-muted bg-bg-surface rounded-[10px] px-2.5 py-0.5">
             {totalWorktrees}
           </span>
         </div>
         <span
-          className={`worktree-panel-chevron text-xs text-text-muted transition-transform duration-200 ease-[ease] ${isOpen ? ' rotate-180' : ''}`}
+          className={`worktree-panel-chevron text-sm text-text-muted transition-transform duration-200 ease-[ease] ${isOpen ? ' rotate-180' : ''}`}
         >
           &#9660;
         </span>
@@ -237,7 +237,7 @@ export default function WorktreePanel({
           return (
             <div key={repo.id} className="worktree-repo-group mb-3 last:mb-0">
               <div
-                className="worktree-repo-name text-[0.7rem] font-semibold uppercase tracking-[0.04em] mb-1"
+                className="worktree-repo-name text-[0.82rem] font-semibold uppercase tracking-[0.04em] mb-1"
                 style={{ color: repo.color }}
               >
                 {repo.name}
@@ -263,7 +263,7 @@ export default function WorktreePanel({
           )
         })}
         {totalWorktrees === 0 && (
-          <div className="empty-state text-[0.8rem] text-text-muted text-center p-5 italic">
+          <div className="empty-state text-[0.92rem] text-text-muted text-center p-5 italic">
             No worktrees found.
           </div>
         )}
