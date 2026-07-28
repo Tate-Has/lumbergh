@@ -23,6 +23,8 @@ interface KanbanCardProps {
   worktreesForRepo?: Worktree[]
   onLaunchAgent?: (taskId: string, choice: LaunchAgentChoice) => void
   onOpenSessionPicker?: (task: Task) => void
+  /** Navigate to the task's linked session terminal, when it has a live session. */
+  onViewSession?: (task: Task) => void
 }
 
 /**
@@ -43,6 +45,10 @@ function statusClassForColor(color: string): string {
   }
 }
 
+function isLiveSession(sessionStatus: SessionStatusInfo | undefined): boolean {
+  return !!sessionStatus && sessionStatus.color !== 'gray' && sessionStatus.color !== 'red'
+}
+
 const KanbanCard = memo(function KanbanCard({
   task,
   isWaiting,
@@ -54,6 +60,7 @@ const KanbanCard = memo(function KanbanCard({
   worktreesForRepo,
   onLaunchAgent,
   onOpenSessionPicker,
+  onViewSession,
 }: KanbanCardProps) {
   const [launchFormOpen, setLaunchFormOpen] = useState(false)
   const [selectedWorktree, setSelectedWorktree] = useState('')
@@ -63,6 +70,10 @@ const KanbanCard = memo(function KanbanCard({
 
   const handleClick = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('.kanban-card-actions')) return
+    if (isLiveSession(sessionStatus) && onViewSession) {
+      onViewSession(task)
+      return
+    }
     onEdit()
   }
 

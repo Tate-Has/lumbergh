@@ -25,6 +25,7 @@ interface TaskBoardProps {
   sessionStatusByTaskId?: Record<string, SessionStatusInfo | undefined>
   onLaunchAgent?: (taskId: string, choice: LaunchAgentChoice) => void
   onOpenSessionPicker?: (task: Task) => void
+  onViewSession?: (task: Task) => void
   boardRef?: React.RefObject<HTMLDivElement | null>
 }
 
@@ -56,6 +57,7 @@ export default function TaskBoard({
   sessionStatusByTaskId,
   onLaunchAgent,
   onOpenSessionPicker,
+  onViewSession,
   boardRef,
 }: TaskBoardProps) {
   const renderColumns = () =>
@@ -93,6 +95,7 @@ export default function TaskBoard({
           sessionStatusByTaskId={sessionStatusByTaskId}
           onLaunchAgent={onLaunchAgent}
           onOpenSessionPicker={onOpenSessionPicker}
+          onViewSession={onViewSession}
         />
       )
     })

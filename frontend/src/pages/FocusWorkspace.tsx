@@ -171,6 +171,17 @@ function FocusWorkspaceInner() {
     return map
   }, [tasks, sessions])
 
+  // sessionStatusMap is keyed by session name; re-key by task.id for board/lane components
+  const sessionStatusByTaskId = useMemo(() => {
+    const map: typeof sessionStatusMap = {}
+    for (const task of tasks) {
+      if (task.session_name && sessionStatusMap[task.session_name]) {
+        map[task.id] = sessionStatusMap[task.session_name]
+      }
+    }
+    return map
+  }, [tasks, sessionStatusMap])
+
   // -------------------------------------------------------------------------
   // UI state
   // -------------------------------------------------------------------------
@@ -313,6 +324,13 @@ function FocusWorkspaceInner() {
     setNewTaskStatus(null)
     setNewTaskProject(undefined)
   }, [])
+
+  const handleViewSession = useCallback(
+    (task: Task) => {
+      if (task.session_name) navigate('/session/' + task.session_name)
+    },
+    [navigate]
+  )
 
   const handleAddTask = useCallback((status: string) => {
     setEditingTask(null)
@@ -793,7 +811,7 @@ function FocusWorkspaceInner() {
           attentionItems={attentionItems}
           sessionStatusMap={sessionStatusMap}
           worktreeBranches={worktreeBranchByTaskId as Record<string, string>}
-          onEditTask={handleEditTask}
+          onViewSession={handleViewSession}
         />
 
         <Inbox
@@ -857,7 +875,7 @@ function FocusWorkspaceInner() {
             tasks={tasks}
             worktreesByRepo={worktreesByRepo}
             worktreeBranchByTaskId={worktreeBranchByTaskId}
-            sessionStatusByTaskId={sessionStatusMap}
+            sessionStatusByTaskId={sessionStatusByTaskId}
             onEditTask={handleEditTask}
             onAddTask={handleAddTaskForRepo}
             onArchiveDone={handleArchiveDone}
@@ -865,6 +883,7 @@ function FocusWorkspaceInner() {
             getDragHandlers={getDragHandlers}
             onLaunchAgent={handleLaunchAgent}
             onOpenSessionPicker={handleOpenSessionPicker}
+            onViewSession={handleViewSession}
             taskMatchesFilters={filters.taskMatchesFilters}
           />
         ) : (
@@ -881,9 +900,10 @@ function FocusWorkspaceInner() {
             getDragHandlers={getDragHandlers}
             taskMatchesFilters={filters.taskMatchesFilters}
             worktreeBranchByTaskId={worktreeBranchByTaskId}
-            sessionStatusByTaskId={sessionStatusMap}
+            sessionStatusByTaskId={sessionStatusByTaskId}
             onLaunchAgent={handleLaunchAgent}
             onOpenSessionPicker={handleOpenSessionPicker}
+            onViewSession={handleViewSession}
             boardRef={boardSectionRef}
           />
         )}

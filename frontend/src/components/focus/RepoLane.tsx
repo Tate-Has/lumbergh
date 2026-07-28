@@ -25,6 +25,7 @@ interface RepoLaneProps {
   }
   onLaunchAgent: (taskId: string, choice: LaunchAgentChoice) => void
   onOpenSessionPicker: (task: Task) => void
+  onViewSession: (task: Task) => void
   taskMatchesFilters?: (task: Task) => boolean
 }
 
@@ -48,6 +49,7 @@ function RepoPanel({
   getDragHandlers,
   onLaunchAgent,
   onOpenSessionPicker,
+  onViewSession,
   taskMatchesFilters,
 }: RepoLaneProps & { repo: Repo; tasks: Task[] }) {
   const [collapsed, setCollapsed] = useState(false)
@@ -133,6 +135,7 @@ function RepoPanel({
                 worktreesForRepo={worktreesForRepo}
                 onLaunchAgent={onLaunchAgent}
                 onOpenSessionPicker={onOpenSessionPicker}
+                onViewSession={onViewSession}
               />
             )
           })}

@@ -154,6 +154,7 @@ interface BoardColumnProps {
   worktreesForRepo?: Worktree[]
   onLaunchAgent?: (taskId: string, choice: LaunchAgentChoice) => void
   onOpenSessionPicker?: (task: Task) => void
+  onViewSession?: (task: Task) => void
 }
 
 export default function BoardColumn({
@@ -177,6 +178,7 @@ export default function BoardColumn({
   worktreesForRepo,
   onLaunchAgent,
   onOpenSessionPicker,
+  onViewSession,
 }: BoardColumnProps) {
   const cardsRef = useRef<HTMLDivElement>(null)
   const [activeBeforeTaskId, setActiveBeforeTaskId] = useState<string | null>(null)
@@ -373,6 +375,7 @@ export default function BoardColumn({
                 worktreesForRepo={worktreesForRepo}
                 onLaunchAgent={onLaunchAgent}
                 onOpenSessionPicker={onOpenSessionPicker}
+                onViewSession={onViewSession}
               />
             </div>
           ))}

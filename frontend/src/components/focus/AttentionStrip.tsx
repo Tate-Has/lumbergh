@@ -13,14 +13,15 @@ export interface AttentionStripProps {
    * task.session_name (whichever the caller has handy — both keys are tried).
    */
   worktreeBranches?: Record<string, string>
-  onEditTask: (task: Task) => void
+  /** Navigate to the task's linked session terminal. */
+  onViewSession: (task: Task) => void
 }
 
 interface AttentionCardProps {
   task: Task
   status: SessionStatusInfo | undefined
   branch: string | undefined
-  onEditTask: (task: Task) => void
+  onViewSession: (task: Task) => void
 }
 
 function AttentionStatusRow({ status }: { status: SessionStatusInfo | undefined }) {
@@ -51,13 +52,13 @@ function AttentionMeta({ project, branch }: { project: string; branch: string | 
   )
 }
 
-function AttentionCard({ task, status, branch, onEditTask }: AttentionCardProps) {
+function AttentionCard({ task, status, branch, onViewSession }: AttentionCardProps) {
   const showMeta = !!task.project || !!branch
 
   return (
     <button
       className="attention-card shrink-0 w-[220px] text-left bg-bg-surface border border-border-default rounded-lg px-3 py-2.5 shadow-card cursor-pointer transition-all duration-150 hover:border-accent hover:shadow-card-hover"
-      onClick={() => onEditTask(task)}
+      onClick={() => onViewSession(task)}
     >
       <AttentionStatusRow status={status} />
       <div className="attention-card-title text-[0.92rem] font-semibold text-text-primary mb-1 truncate">
@@ -77,7 +78,7 @@ export default function AttentionStrip({
   attentionItems,
   sessionStatusMap,
   worktreeBranches,
-  onEditTask,
+  onViewSession,
 }: AttentionStripProps) {
   const [isOpen, setIsOpen] = useState(true)
 
@@ -120,7 +121,7 @@ export default function AttentionStrip({
               task={task}
               status={status}
               branch={branch}
-              onEditTask={onEditTask}
+              onViewSession={onViewSession}
             />
           )
         })}
