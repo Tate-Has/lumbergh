@@ -5,6 +5,7 @@ from pathlib import Path
 
 from lumbergh.activity.adapter import AgentAdapter
 from lumbergh.activity.events import ConversationEvent
+from lumbergh.session_identity import read as read_identity
 
 # Harness-injected wrappers that get dropped from the feed entirely — they are
 # background context, not something the user typed or the agent said.
@@ -111,6 +112,17 @@ class ClaudeCodeAdapter(AgentAdapter):
         if not candidates:
             return None
         return cls(candidates[0], root=cwd)
+
+    @classmethod
+    def resolve(cls, session_name: str, cwd: Path | None) -> "ClaudeCodeAdapter | None":
+        """Locate the transcript authoritatively (hook identity), else guess by cwd."""
+        ident = read_identity(session_name)
+        if ident and ident.transcript_path and Path(ident.transcript_path).exists():
+            root = Path(ident.cwd) if ident.cwd else cwd
+            return cls(Path(ident.transcript_path), root=root)
+        if cwd is not None:
+            return cls.for_cwd(cwd)
+        return None
 
     def _rel(self, text: str) -> str:
         """Show project-relative paths for files under the session root, absolute otherwise.
