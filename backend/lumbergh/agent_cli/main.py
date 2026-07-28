@@ -15,7 +15,6 @@ from lumbergh import agent_token
 from lumbergh.agent_cli.toon import render_block, render_collection, render_object
 
 BASE = os.environ.get("LUMBERGH_URL", "http://127.0.0.1:8420")
-DESCRIPTION = "Observe and coordinate Lumbergh agent sessions from the shell"
 
 FLAGS = {
     "": set(),
@@ -48,10 +47,6 @@ def _request(method: str, path: str, **kwargs):
     headers = {"X-Lumbergh-Agent-Token": agent_token.read_token() or ""}
     timeout = kwargs.pop("timeout", 320)
     return httpx.request(method, f"{BASE}{path}", headers=headers, timeout=timeout, **kwargs)
-
-
-def _bin() -> str:
-    return str(Path(sys.argv[0]).resolve()).replace(str(Path.home()), "~")
 
 
 def _parse(argv):
@@ -134,15 +129,6 @@ def _session_404(resp) -> int:
 
 def _cmd_home() -> int:
     data = _request("GET", "/api/agent/sessions").json()
-    _emit(
-        render_object(
-            [
-                ("bin", _bin()),
-                ("description", DESCRIPTION),
-                ("count", f"{data['total']} of {data['total']} total"),
-            ]
-        )
-    )
     if data["total"] == 0:
         _emit("sessions: 0 live sessions")
         return 0

@@ -91,7 +91,7 @@ def read(name: str, source: str = "transcript", last: int = 10, full: bool = Fal
         if adapter is not None:
             events = adapter.read_new()
             recent = events[-last:]
-            limit = None if full else 500
+            limit = None if full else 300
             return {
                 "source": "transcript",
                 "total": len(events),

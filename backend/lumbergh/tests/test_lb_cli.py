@@ -31,8 +31,10 @@ def test_home_lists_sessions(monkeypatch):
     )
     assert code == 0
     assert "sessions[1]{name,state,unseen}:" in out
-    assert "bin:" in out
-    assert "description:" in out
+    assert "  a,idle,false" in out
+    # Header chrome (bin/description/count) is dropped to keep the polled home view lean.
+    assert "bin:" not in out
+    assert "description:" not in out
 
 
 def test_unknown_flag_exit_2(monkeypatch):
