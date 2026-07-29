@@ -29,8 +29,11 @@ Run `lb <command> --help` when unsure; the binary is the authority on syntax.
   finished-unseen). This is how you supervise. It costs nothing while it waits. It reports
   the same rows, `OUTCOME` and paths included.
 - `lb spawn --repo <path> --branch <b> --kind ship|scout --brief <file> --name <slug> [--new]
-  [--intent "..."]` — creates the worker's isolated copy, starts it, and hands it the brief.
-  `--brief` may be relative (it is read relative to this directory).
+  [--agent <provider>] [--intent "..."]` — creates the worker's isolated copy, starts it, and
+  hands it the brief. `--brief` may be relative (it is read relative to this directory).
+  **`--agent` sets the coding agent** (e.g. `pi`, `claude`). If the user named an agent, pass
+  it — omitting it silently falls back to the global default, which is how you end up running
+  the wrong one. When they didn't say, omit it and the default applies.
 - `lb read --session <name> [--last N] [--source pane]` — what a worker actually did.
   The default reads its transcript; `--source pane` shows the raw terminal, which is
   how you tell a worker that is *stuck* on a prompt (a trust dialog, a permission
@@ -38,6 +41,12 @@ Run `lb <command> --help` when unsure; the binary is the authority on syntax.
 - `lb state --session <name>` — a worker's current state (working / idle / blocked /
   error) at a glance, without reading the whole thing.
 - `lb prompt --session <name> "<text>"` — send a worker one short instruction.
+- `lb worktree create --repo <path> --branch <b> [--new] [--base <b>]
+  [--agent <provider> [--session <name>]]` — the hand-off tool (see "Decide the shape").
+  Bare, it makes an isolated worktree and **nothing else**. With `--agent`, it also starts
+  an interactive session running that agent in the worktree for the user to drive — still
+  no brief, no autonomous worker, and nothing for you to supervise. Use `--agent` with the
+  agent the user named (`pi`, `claude`, …) when they want a live session, not just a folder.
 - `lb worktree reap <path>` — clean up after the user has landed the work. Pass the `PATH`
   from that task's `lb fleet` row. It refuses if work would be lost; that refusal is
   information, not an obstacle.
@@ -51,20 +60,36 @@ project's path, or use one recorded in `preferences.md`. Do not guess one.
 2. **Resolve the project.** Use what the user said, `preferences.md`, and the repos that already
    appear in `lb fleet`. Proceed on one confident match and name it. If several or none fit, ask
    one short question. Once matched, take its `REPO_PATH` from the `lb fleet` row.
-3. **Decide the shape.**
-   - **ship** — you can describe the change and how to tell it worked. This is the default.
-   - **scout** — you cannot. The worker's deliverable is a report, no code. Read it, tell the user
-     what it found, then dispatch ship tasks from it. A report recommends; it never authorizes.
+3. **Decide the shape.** Three shapes, and picking the wrong one is the fastest way to do the
+   wrong thing well. Match the user's verb before you reach for a tool.
+   - **ship** — you can describe the change and how to tell it worked. This is the default for
+     *"do this"*. Spawn an autonomous worker with a brief.
+   - **scout** — you cannot describe the change yet. The worker's deliverable is a report, no
+     code. Read it, tell the user what it found, then dispatch ship tasks from it. A report
+     recommends; it never authorizes.
+   - **hand-off** — the user is doing the work, not delegating it. *"Make me a worktree",
+     "launch a session I'll drive", "set me up a branch to poke at"* — anything where **they**
+     hold the keyboard. Run `lb worktree create`: bare for just a worktree, or with
+     `--agent <provider>` to also start a live session in it (use the agent they named). Report
+     the path/session and stop. Do **not** spawn a worker, write a brief, or supervise it —
+     there is no autonomous task here to watch, and a hand-off never appears in your
+     supervision wait. Shoehorning a hand-off into a `scout` (inventing a brief they never
+     asked for) spawns a worker that then traps you in supervision — the exact wrong move.
    You do not know these codebases. When you catch yourself guessing at file names or design,
-   that is the signal to scout instead of ship.
+   that is the signal to scout instead of ship — never to invent a brief and hope.
 4. **Pick a slug** for the task: lowercase letters, digits, and hyphens only, no slashes
    (e.g. `flaky-login`). It becomes the `TASK` you see in `lb fleet`, so pick one you'll recognize.
    **Write the brief** to `briefs/<slug>.md`, then `lb spawn --name <slug> --brief briefs/<slug>.md`
    (plus `--repo`, `--branch`, `--kind`, and the rest).
-5. **Supervise:** `lb fleet --wait`. On a wake:
+5. **Supervise:** `lb fleet --wait`. It watches only your own spawned crew — a hand-off the
+   user drives never wakes you. On a wake:
    - `blocked` → `lb read` it. Answer from `preferences.md` if the answer is there; otherwise ask
      the user. Then `lb prompt` the worker.
-   - `error` or `dead` → read it, then tell the user what happened. Do not silently retry.
+   - `error` → read it, then tell the user what happened. Do not silently retry.
+   - `dead` → the worker's session is gone (it was closed, it crashed, or the user took it over).
+     There is nothing running to `lb prompt`, and `reap` is the user's call. Report it once if it
+     is unexpected, then move on — it will not wake you again. Never force-reap to silence it:
+     that destroys whatever uncommitted work is in the worktree.
    - finished → the `OUTCOME` column already holds `DELIVERED:` or `FAILED:`; read the task
      only if you need detail beyond it. Then report.
    Re-arm the wait immediately after handling a wake. Never sit idle while tasks are live.
@@ -73,6 +98,21 @@ project's path, or use one recorded in `preferences.md`. Do not guess one.
    states, or file names unless they need them to act.
 7. After the user lands the work, `lb worktree reap <PATH from its lb fleet row>` and say what
    is still in flight.
+
+## Spend as few turns as you can
+
+Every command you run is a turn the user waits through. Be economical:
+
+- **Act on one confident reading.** Resolve the project and the shape, then move. Don't re-run
+  `lb fleet` to re-confirm what a row just told you, and don't narrate a plan before doing it.
+- **Trust the row.** `lb fleet` already carries `STATE`, `OUTCOME`, and both paths. Only `lb read`
+  a worker when you need detail the row can't give you — not to double-check it.
+- **Batch the setup.** Writing a brief and spawning is one move, not a checked sequence with a
+  status check between each step.
+- **A wake you can't act on is one report, then re-arm.** If a wake is something the user owns (a
+  dead task they killed, a session they drive), say so once and go back to waiting — never loop
+  trying to reap, prompt, or "fix" it. That thrash is the failure mode this whole file guards.
+- **Don't touch what the user is driving.** Never `lb prompt` a session the user has taken over.
 
 ## Delivery
 

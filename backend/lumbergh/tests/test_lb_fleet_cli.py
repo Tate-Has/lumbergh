@@ -91,6 +91,44 @@ def test_wait_hits_the_wait_endpoint_and_reports_the_wake(monkeypatch, capsys):
     assert "blocked" in out
 
 
+def test_wait_defaults_to_supervising_bills_own_crew(monkeypatch):
+    # Supervision is scoped to Bill's own spawns: a hand-off the user drives (a
+    # non-`bill` origin) must never wake him. The listing (`lb fleet`) stays unscoped.
+    captured = {}
+
+    def fake_request(_method, _path, **kw):
+        captured["params"] = kw.get("params")
+        return _Resp({"woke": False, "waited": 0.1, "total": 0, "tasks": []})
+
+    monkeypatch.setattr(fleet_cli, "_request", fake_request)
+    fleet_cli.run({"--wait": True})
+    assert captured["params"]["origin"] == "bill"
+
+
+def test_wait_origin_all_supervises_every_task(monkeypatch):
+    captured = {}
+
+    def fake_request(_method, _path, **kw):
+        captured["params"] = kw.get("params")
+        return _Resp({"woke": False, "waited": 0.1, "total": 0, "tasks": []})
+
+    monkeypatch.setattr(fleet_cli, "_request", fake_request)
+    fleet_cli.run({"--wait": True, "--origin": "all"})
+    assert "origin" not in captured["params"]
+
+
+def test_plain_fleet_listing_is_not_scoped_by_default(monkeypatch):
+    captured = {}
+
+    def fake_request(_method, _path, **kw):
+        captured["params"] = kw.get("params")
+        return _Resp({"total": 0, "tasks": []})
+
+    monkeypatch.setattr(fleet_cli, "_request", fake_request)
+    fleet_cli.run({})
+    assert "origin" not in captured["params"]
+
+
 def test_wait_timeout_is_not_an_error(monkeypatch, capsys):
     monkeypatch.setattr(
         fleet_cli,

@@ -33,8 +33,15 @@ def run(flags: dict) -> int:
 
     waiting = "--wait" in flags
     params = {}
-    if flags.get("--origin"):
-        params["origin"] = flags["--origin"]
+    origin = flags.get("--origin")
+    # Supervision watches only Bill's own crew by default: a hand-off the user drives
+    # (a non-`bill` origin) must never wake him. `--origin all` widens it back to every
+    # task; an explicit `--origin <name>` narrows to that one. The plain listing stays
+    # unscoped so `lb fleet` still shows the whole board.
+    if waiting and origin is None:
+        origin = "bill"
+    if origin and origin != "all":
+        params["origin"] = origin
     if waiting:
         params["timeout"] = timeout_flag or "300"
         path = "/api/bill/fleet/wait"

@@ -29,6 +29,7 @@ FLAGS = {
         "--branch",
         "--base",
         "--session",
+        "--agent",
         "--intent",
         "--new",
         "--force",
@@ -68,7 +69,8 @@ _COMMAND_HELP = {
     "skill": "lb skill [install] [--dir <path>] [--check]",
     "worktree": (
         "lb worktree ls --repo <path> [--json] | create --repo <path> --branch <b> [--new] "
-        "[--base <b>] [--session <name>] [--intent '...'] | reap <path> [--force] [--rm-branch] "
+        "[--base <b>] [--agent <provider> [--session <name>]] [--intent '...'] "
+        "| reap <path> [--force] [--rm-branch] "
         "| adopt <path> [--session <name>] | link <path> | unlink <path>"
     ),
     "fleet": "lb fleet [--wait] [--timeout <s>] [--origin bill] [--json]",
