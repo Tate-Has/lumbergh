@@ -2,7 +2,19 @@ import importlib
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from lumbergh import worktrees
+
+
+@pytest.fixture
+def registry(tmp_path, monkeypatch):
+    from tinydb import TinyDB
+
+    db = TinyDB(tmp_path / "worktrees.json")
+    monkeypatch.setattr(worktrees, "get_worktrees_db", lambda: db)
+    yield db
+    db.close()
 
 
 def _write(p: Path, text: str) -> None:
@@ -304,3 +316,27 @@ def test_session_created_worktree_is_registered(tmp_path, monkeypatch):
     workdir, _parent, _branch = sessions._resolve_worktree_workdir(body)
     assert (Path(workdir) / ".venv").is_symlink()
     assert worktrees.get_entry(Path(workdir)) is not None
+
+
+@pytest.mark.usefixtures("registry")
+def test_record_worktree_persists_kind_and_origin(tmp_path):
+    row = worktrees.record_worktree(
+        tmp_path / "wt",
+        tmp_path / "repo",
+        "feat/x",
+        "2026-07-28T00:00:00+00:00",
+        kind="scout",
+        origin="bill",
+    )
+    assert row["kind"] == "scout"
+    assert row["origin"] == "bill"
+    assert worktrees.get_entry(tmp_path / "wt")["kind"] == "scout"
+
+
+@pytest.mark.usefixtures("registry")
+def test_record_worktree_defaults_kind_and_origin_to_none(tmp_path):
+    row = worktrees.record_worktree(
+        tmp_path / "wt", tmp_path / "repo", "feat/x", "2026-07-28T00:00:00+00:00"
+    )
+    assert row["kind"] is None
+    assert row["origin"] is None

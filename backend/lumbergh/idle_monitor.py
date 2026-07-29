@@ -57,6 +57,10 @@ class IdleMonitor:
     # How long a session must sit continuously IDLE before we spend a cheap-LLM
     # call asking whether it is actually waiting on a human answer.
     QUESTION_CHECK_DELAY_SECONDS = 10.0
+    # How often to sweep the fleet for a stalled Bill. This sweep shells out to git
+    # per repo, so it runs on its own throttle rather than every 2s poll; fifteen
+    # seconds is still well within "human-scale noticeable" for a stalled orchestrator.
+    BILL_NUDGE_CHECK_INTERVAL_SECONDS = 15.0
 
     def __init__(self):
         self._fingerprints: dict[str, str] = {}
@@ -72,6 +76,8 @@ class IdleMonitor:
         self._question_tasks: set[asyncio.Task] = set()
         self._task: asyncio.Task | None = None
         self._running = False
+        self._bill_nudged = False
+        self._bill_nudge_checked_at = 0.0
 
     def start(self) -> None:
         if self._task is None or self._task.done():
@@ -189,6 +195,48 @@ class IdleMonitor:
             *(self._check_session(name) for name in sessions),
             return_exceptions=True,
         )
+
+        try:
+            await self._maybe_nudge_bill(loop)
+        except Exception:
+            logger.debug("bill nudge skipped", exc_info=True)
+
+    async def _maybe_nudge_bill(self, loop: asyncio.AbstractEventLoop) -> None:
+        """Wake Bill if he's idle with live work, off the event loop and throttled.
+
+        ``_fleet_rows`` shells out to tmux and git per repo, so it never runs on the
+        loop directly, and it only runs on ``BILL_NUDGE_CHECK_INTERVAL_SECONDS`` — not
+        every ~2s poll — since a stalled Bill is a human-scale problem, not one that
+        needs sub-second detection.
+        """
+        from lumbergh import bill_nudge
+
+        state = self.get_state(bill_nudge.BILL_SESSION).value
+        if state != "idle":
+            self._bill_nudged = False
+            return
+        if self._bill_nudged:
+            return
+
+        now = time.time()
+        if now - self._bill_nudge_checked_at < self.BILL_NUDGE_CHECK_INTERVAL_SECONDS:
+            return
+        self._bill_nudge_checked_at = now
+
+        from lumbergh.routers.bill import BILL_ORIGIN, _fleet_rows
+
+        # BILL_ORIGIN, not BILL_SESSION: this argument is the registry `origin` filter,
+        # and the two only happen to share a value today. Passing the session name here
+        # would turn the whole backstop into a silent no-op the day Bill is renamed.
+        rows = await loop.run_in_executor(None, _fleet_rows, BILL_ORIGIN)
+        if not bill_nudge.should_nudge(state, rows):
+            return
+
+        # Latch from the send's own result. Setting it unconditionally meant a failed
+        # tmux send disarmed the backstop permanently: nothing retries, and Bill never
+        # leaves `idle` because he was never actually woken. `nudge` shells out to tmux
+        # twice, so it goes to the executor like the sweep above.
+        self._bill_nudged = await loop.run_in_executor(None, bill_nudge.nudge)
 
     def _get_live_session_names(self) -> list[str]:
         try:

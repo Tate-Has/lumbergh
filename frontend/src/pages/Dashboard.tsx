@@ -12,6 +12,7 @@ import {
   Star,
   FolderOpen,
   Zap,
+  UserRoundCog,
 } from 'lucide-react'
 import { getApiBase } from '../config'
 import SessionCard from '../components/SessionCard'
@@ -333,6 +334,18 @@ function DashboardBanners({
   )
 }
 
+function describeErrorDetail(detail: unknown): string | undefined {
+  if (typeof detail === 'string') return detail
+  if (detail && typeof detail === 'object') {
+    const { error, help } = detail as { error?: unknown; help?: unknown }
+    const parts = [error, help].filter(
+      (part): part is string => typeof part === 'string' && part.length > 0
+    )
+    if (parts.length > 0) return parts.join(' — ')
+  }
+  return undefined
+}
+
 export default function Dashboard() {
   const navigate = useNavigate()
   const [sessions, setSessions] = useState<Session[]>([])
@@ -341,6 +354,7 @@ export default function Dashboard() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showSettingsModal, setShowSettingsModal] = useState(false)
   const [creatingScratch, setCreatingScratch] = useState(false)
+  const [summoningBill, setSummoningBill] = useState(false)
   const [isFirstRun, setIsFirstRun] = useState<boolean | null>(null)
   const [defaultRepoDir, setDefaultRepoDir] = useState('')
   const [lbSharedInstalled, setLbSharedInstalled] = useState<boolean | null>(null)
@@ -639,6 +653,24 @@ export default function Dashboard() {
     }
   }
 
+  const handleSummonBill = async () => {
+    if (summoningBill) return
+    setSummoningBill(true)
+    try {
+      const res = await fetch(`${getApiBase()}/bill/summon`, { method: 'POST' })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(describeErrorDetail(data.detail) || 'Failed to summon Bill')
+      }
+      const data = await res.json()
+      navigate(`/session/${data.session}`)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to summon Bill')
+    } finally {
+      setSummoningBill(false)
+    }
+  }
+
   const cloudAtLimit = planInfo ? planInfo.limit > 0 && planInfo.used >= planInfo.limit : false
 
   return (
@@ -691,6 +723,16 @@ export default function Dashboard() {
             <Settings size={20} />
           </button>
           <div className="w-px h-5 bg-border-default mx-1" />
+          <Button
+            onClick={handleSummonBill}
+            disabled={summoningBill}
+            title="Summon Bill, your manager"
+            data-testid="summon-bill-btn"
+            variant="secondary"
+            size="sm"
+          >
+            <UserRoundCog size={16} />
+          </Button>
           <Button
             onClick={handleCreateScratch}
             disabled={creatingScratch}

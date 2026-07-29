@@ -296,6 +296,21 @@ def send_text(session_name: str, text: str) -> bool:
         return False
 
 
+def kill_tmux_session(session_name: str) -> bool:
+    """Kill a tmux session outright, e.g. to unwind a session that never got its brief."""
+    try:
+        r = subprocess.run(
+            [TMUX_CMD, "kill-session", "-t", session_name],
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=5,
+        )
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
 def capture_scrollback(session_name: str, max_lines: int = 500) -> str:
     """Capture scrollback history from the active pane (plain text, no ANSI).
 

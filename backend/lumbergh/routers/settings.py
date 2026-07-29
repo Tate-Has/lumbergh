@@ -32,6 +32,7 @@ def _get_defaults() -> dict:
         "repoSearchDir": repo_search_dir,
         "gitGraphCommits": 100,
         "defaultAgent": DEFAULT_PROVIDER,
+        "bill": {"personality": "professional"},
         "tabVisibility": {
             "git": True,
             "files": True,

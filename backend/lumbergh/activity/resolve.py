@@ -7,6 +7,17 @@ from lumbergh.activity.claude_code import ClaudeCodeAdapter
 from lumbergh.activity.pi import PiAdapter
 
 
+def session_meta(name: str) -> dict:
+    """Stored session metadata (workdir, agent_provider, ...) used to resolve an adapter.
+
+    Shared by every caller of ``resolve_adapter`` (the agent router's ``read`` endpoint
+    and Bill's fleet outcome enrichment) so the lookup lives in one place.
+    """
+    from lumbergh.routers.sessions import get_stored_sessions
+
+    return get_stored_sessions().get(name, {})
+
+
 def resolve_adapter(
     session_name: str, cwd: Path | None, provider: str | None
 ) -> AgentAdapter | None:

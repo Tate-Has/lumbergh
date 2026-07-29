@@ -1,0 +1,1071 @@
+import asyncio
+import time
+from pathlib import Path
+
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from lumbergh.routers import bill
+
+
+@pytest.fixture
+def client():
+    app = FastAPI()
+    app.include_router(bill.router)
+    return TestClient(app)
+
+
+def test_fleet_returns_rows(client, monkeypatch):
+    monkeypatch.setattr(
+        bill,
+        "_fleet_rows",
+        lambda origin, with_outcome=False: [  # noqa: ARG005
+            {
+                "task": "w-a",
+                "repo": "app",
+                "branch": "feat/a",
+                "session": "w-a",
+                "kind": "ship",
+                "state": "working",
+                "since": 5,
+                "unseen": False,
+                "path": "/w/app-worktrees/feat-a",
+            }
+        ],
+    )
+    body = client.get("/api/bill/fleet").json()
+    assert body["total"] == 1
+    assert body["tasks"][0]["task"] == "w-a"
+
+
+@pytest.fixture
+def fast_poll(monkeypatch):
+    """Shrink the (deliberately human-scale) production poll interval.
+
+    Without this, a test that needs N snapshots waits N-1 real poll intervals.
+    Tests that pin the *ordering* of the first snapshot must not use this — for
+    them the long interval is what makes a premature sleep observable.
+    """
+    monkeypatch.setattr(bill, "_POLL_INTERVAL", 0.02)
+
+
+def test_fleet_wait_checks_the_fleet_before_its_first_sleep(client, monkeypatch):
+    """A worker that went blocked before the request arrived must wake it at once.
+
+    Pinned two ways so neither alone can carry it: exactly one snapshot is taken,
+    and the call returns far inside one production poll interval — a
+    sleep-then-check loop would take ``_POLL_INTERVAL`` seconds to answer.
+    """
+    calls = {"n": 0}
+
+    def rows(origin, with_outcome=False):  # noqa: ARG001
+        calls["n"] += 1
+        return [{"state": "blocked", "unseen": False, "task": "w-a"}]
+
+    monkeypatch.setattr(bill, "_fleet_rows", rows)
+    started = time.monotonic()
+    body = client.get("/api/bill/fleet/wait", params={"timeout": 5}).json()
+    elapsed = time.monotonic() - started
+    assert body["woke"] is True
+    assert body["tasks"][0]["task"] == "w-a"
+    assert calls["n"] == 1
+    assert elapsed < 0.5
+    assert bill._POLL_INTERVAL > 1.0, (
+        "the elapsed bound above only means something if a sleep costs more than it"
+    )
+
+
+@pytest.mark.usefixtures("fast_poll")
+def test_fleet_wait_times_out_on_a_calm_fleet(client, monkeypatch):
+    monkeypatch.setattr(
+        bill,
+        "_fleet_rows",
+        lambda origin, with_outcome=False: [  # noqa: ARG005
+            {"state": "working", "unseen": False, "task": "w-a"}
+        ],
+    )
+    body = client.get("/api/bill/fleet/wait", params={"timeout": 0.05}).json()
+    assert body["woke"] is False
+    assert body["total"] == 1
+
+
+@pytest.mark.usefixtures("fast_poll")
+def test_fleet_wait_wakes_when_a_worker_becomes_blocked(client, monkeypatch):
+    calls = {"n": 0}
+
+    def rows(origin, with_outcome=False):  # noqa: ARG001
+        calls["n"] += 1
+        state = "blocked" if calls["n"] > 2 else "working"
+        return [{"state": state, "unseen": False, "task": "w-a"}]
+
+    monkeypatch.setattr(bill, "_fleet_rows", rows)
+    body = client.get("/api/bill/fleet/wait", params={"timeout": 10}).json()
+    assert body["woke"] is True
+    assert body["tasks"][0]["state"] == "blocked"
+
+
+def _has_running_loop() -> bool:
+    """Whether the *calling thread* is the one running the event loop.
+
+    ``get_running_loop`` raises only when no loop is running in this thread, which is
+    exactly the executor-thread case — so this distinguishes "ran on the loop" from
+    "ran in the executor" without needing to know either thread's identity (the test
+    client's own request thread is a third thread and would confuse an id comparison).
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return False
+    return True
+
+
+def test_fleet_wait_takes_the_blocking_work_off_the_event_loop(client, monkeypatch):
+    """Bill holds this loop open continuously, and each snapshot shells out to tmux and
+    to ``git worktree list`` per repo — on the loop that would stall every terminal
+    WebSocket at the poll rate. The outcome pass reads transcripts, so it counts too."""
+    on_loop = []
+
+    def rows(origin, with_outcome=False):  # noqa: ARG001
+        on_loop.append(("snapshot", _has_running_loop()))
+        return [{"state": "blocked", "unseen": False, "session": "w-a", "task": "w-a"}]
+
+    def outcome_of(name):  # noqa: ARG001
+        on_loop.append(("outcome", _has_running_loop()))
+
+    monkeypatch.setattr(bill, "_fleet_rows", rows)
+    monkeypatch.setattr(bill, "_outcome_of", outcome_of)
+
+    client.get("/api/bill/fleet/wait", params={"timeout": 5})
+
+    assert [step for step, _ in on_loop] == ["snapshot", "outcome"]
+    assert not any(ran_on_loop for _, ran_on_loop in on_loop), on_loop
+
+
+@pytest.mark.usefixtures("fast_poll")
+def test_fleet_wait_enriches_outcomes_once_on_the_way_out(client, monkeypatch):
+    """A finished worker produces the most common wake, and Bill is told the OUTCOME
+    column already holds its final line — so wait must carry outcomes too. Reading
+    them per poll would put transcript reads back in the hot loop, so this also pins
+    that the read happens exactly once, no matter how many polls it took."""
+    calls = {"rows": 0, "outcomes": 0}
+
+    def rows(origin, with_outcome=False):  # noqa: ARG001
+        calls["rows"] += 1
+        state = "idle" if calls["rows"] > 2 else "working"
+        unseen = calls["rows"] > 2
+        return [{"state": state, "unseen": unseen, "session": "w-a", "task": "w-a"}]
+
+    def outcome_of(name):  # noqa: ARG001
+        calls["outcomes"] += 1
+        return "DELIVERED: https://example.test/pull/7"
+
+    monkeypatch.setattr(bill, "_fleet_rows", rows)
+    monkeypatch.setattr(bill, "_outcome_of", outcome_of)
+
+    body = client.get("/api/bill/fleet/wait", params={"timeout": 10}).json()
+
+    assert body["woke"] is True
+    assert body["tasks"][0]["outcome"] == "DELIVERED: https://example.test/pull/7"
+    assert calls["rows"] == 3
+    assert calls["outcomes"] == 1
+
+
+def test_fleet_wait_clamps_an_absurd_timeout(client, monkeypatch):
+    """An unbounded timeout would pin a server task (and a worker thread) for as long
+    as the caller asked, so the ceiling is the server's, not the caller's."""
+    monkeypatch.setattr(bill, "_MAX_WAIT_TIMEOUT", 0.05)
+    monkeypatch.setattr(bill, "_POLL_INTERVAL", 0.01)
+    monkeypatch.setattr(
+        bill,
+        "_fleet_rows",
+        lambda origin, with_outcome=False: [  # noqa: ARG005
+            {"state": "working", "unseen": False, "task": "w-a"}
+        ],
+    )
+    started = time.monotonic()
+    body = client.get("/api/bill/fleet/wait", params={"timeout": 100000}).json()
+    assert body["woke"] is False
+    assert time.monotonic() - started < 5
+
+
+def test_outcome_of_reads_the_workers_final_line(monkeypatch):
+    class _Event:
+        def __init__(self, text):
+            self.text = text
+            self.tool_summary = ""
+
+    class _Adapter:
+        def read_new(self):
+            return [_Event("ran the tests"), _Event("DELIVERED: https://example.test/pull/7")]
+
+    monkeypatch.setattr(bill, "resolve_adapter", lambda *a, **kw: _Adapter())  # noqa: ARG005
+    monkeypatch.setattr(bill, "_session_meta", lambda name: {"workdir": "/w"})  # noqa: ARG005
+    assert bill._outcome_of("w-a") == "DELIVERED: https://example.test/pull/7"
+
+
+def test_outcome_of_is_none_without_a_transcript(monkeypatch):
+    monkeypatch.setattr(bill, "resolve_adapter", lambda *a, **kw: None)  # noqa: ARG005
+    monkeypatch.setattr(bill, "_session_meta", lambda name: {})  # noqa: ARG005
+    assert bill._outcome_of("w-a") is None
+
+
+def test_outcome_of_is_none_when_the_transcript_is_corrupt(monkeypatch):
+    def _blow_up(*a, **kw):  # noqa: ARG001
+        raise ValueError("corrupt transcript")
+
+    monkeypatch.setattr(bill, "resolve_adapter", _blow_up)
+    monkeypatch.setattr(bill, "_session_meta", lambda name: {"workdir": "/w"})  # noqa: ARG005
+    assert bill._outcome_of("w-a") is None
+
+
+def test_derive_name_sanitizes_and_uniquifies():
+    assert bill._derive_name("feat/flaky-login", set()) == "feat-flaky-login"
+    assert bill._derive_name("feat/flaky-login", {"feat-flaky-login"}) == "feat-flaky-login-2"
+    assert (
+        bill._derive_name("feat/flaky-login", {"feat-flaky-login", "feat-flaky-login-2"})
+        == "feat-flaky-login-3"
+    )
+
+
+def test_spawn_rejects_a_missing_brief(client, tmp_path):
+    missing = tmp_path / "nope.md"
+    r = client.post(
+        "/api/bill/spawn",
+        json={
+            "repo": str(tmp_path),
+            "branch": "feat/x",
+            "kind": "ship",
+            "brief_path": str(missing),
+        },
+    )
+    assert r.status_code == 400
+    detail = r.json()["detail"]
+    assert detail["stage"] == "brief"
+    assert str(missing) in detail["error"], (
+        "the error must name the exact path searched — an absolute --brief is "
+        "never resolved against Bill's home, the CLI already absolutized it "
+        "against the caller's cwd before this request arrived"
+    )
+    assert "resolved against" not in detail["help"], (
+        "the help must not assert a resolution rule that didn't apply to this request"
+    )
+
+
+def test_spawn_rejects_a_missing_relative_brief(client, tmp_path):
+    r = client.post(
+        "/api/bill/spawn",
+        json={
+            "repo": str(tmp_path),
+            "branch": "feat/x",
+            "kind": "ship",
+            "brief_path": "briefs/nope.md",
+        },
+    )
+    assert r.status_code == 400
+    detail = r.json()["detail"]
+    assert detail["stage"] == "brief"
+    assert str(bill.bill_bundle.home() / "briefs" / "nope.md") in detail["error"]
+    assert "resolved against" in detail["help"]
+
+
+def test_spawn_rejects_an_unknown_kind(client, tmp_path):
+    brief = tmp_path / "b.md"
+    brief.write_text("do the thing")
+    r = client.post(
+        "/api/bill/spawn",
+        json={
+            "repo": str(tmp_path),
+            "branch": "feat/x",
+            "kind": "wander",
+            "brief_path": str(brief),
+        },
+    )
+    assert r.status_code == 400
+    assert r.json()["detail"]["stage"] == "kind"
+
+
+def test_spawn_rejects_a_repo_without_git(client, tmp_path, monkeypatch):
+    brief = tmp_path / "b.md"
+    brief.write_text("do the thing")
+    monkeypatch.setattr("lumbergh.routers.sessions.get_live_sessions", dict)
+    create_calls = []
+    monkeypatch.setattr(
+        bill.worktrees,
+        "create",
+        lambda *a, **kw: create_calls.append((a, kw)),
+    )
+
+    r = client.post(
+        "/api/bill/spawn",
+        json={
+            "repo": str(tmp_path),
+            "branch": "feat/x",
+            "kind": "ship",
+            "brief_path": str(brief),
+        },
+    )
+    assert r.status_code == 400
+    assert r.json()["detail"]["stage"] == "repo"
+    assert create_calls == []
+
+
+def test_spawn_surfaces_a_worktree_failure(client, tmp_path, monkeypatch):
+    brief = tmp_path / "b.md"
+    brief.write_text("do the thing")
+    (tmp_path / ".git").mkdir()
+    monkeypatch.setattr("lumbergh.routers.sessions.get_live_sessions", dict)
+    monkeypatch.setattr(
+        bill.worktrees,
+        "create",
+        lambda *a, **kw: {"error": "branch already checked out"},  # noqa: ARG005
+    )
+    r = client.post(
+        "/api/bill/spawn",
+        json={
+            "repo": str(tmp_path),
+            "branch": "feat/x",
+            "kind": "ship",
+            "brief_path": str(brief),
+        },
+    )
+    assert r.status_code == 400
+    body = r.json()["detail"]
+    assert body["stage"] == "worktree"
+    assert "already checked out" in body["error"]
+
+
+def test_spawn_unwinds_the_worktree_when_the_session_fails(client, tmp_path, monkeypatch):
+    brief = tmp_path / "b.md"
+    brief.write_text("do the thing")
+    (tmp_path / ".git").mkdir()
+    reaped = {}
+
+    monkeypatch.setattr("lumbergh.routers.sessions.get_live_sessions", dict)
+    monkeypatch.setattr(
+        bill.worktrees,
+        "create",
+        lambda *a, **kw: {"path": str(tmp_path / "wt"), "links_applied": []},  # noqa: ARG005
+    )
+
+    def boom(*a, **kw):  # noqa: ARG001
+        raise RuntimeError("tmux is not installed")
+
+    monkeypatch.setattr(bill, "create_tmux_session", boom)
+
+    def record_reap(path, **kw):  # noqa: ARG001
+        reaped["path"] = str(path)
+        return {"status": "removed"}
+
+    monkeypatch.setattr(bill.worktrees, "reap", record_reap)
+    removed = []
+    monkeypatch.setattr(bill.worktrees, "remove_entry", removed.append)
+
+    r = client.post(
+        "/api/bill/spawn",
+        json={
+            "repo": str(tmp_path),
+            "branch": "feat/x",
+            "kind": "ship",
+            "brief_path": str(brief),
+        },
+    )
+    assert r.status_code == 400
+    assert r.json()["detail"]["stage"] == "session"
+    assert reaped["path"] == str(tmp_path / "wt")
+    assert removed == [Path(tmp_path / "wt")]
+
+
+def test_spawn_rejects_a_name_that_is_already_live(client, tmp_path, monkeypatch):
+    brief = tmp_path / "b.md"
+    brief.write_text("do the thing")
+    (tmp_path / ".git").mkdir()
+    monkeypatch.setattr("lumbergh.routers.sessions.get_live_sessions", lambda: {"feat-x": {}})
+    create_calls = []
+    monkeypatch.setattr(
+        bill.worktrees,
+        "create",
+        lambda *a, **kw: create_calls.append((a, kw)),
+    )
+
+    r = client.post(
+        "/api/bill/spawn",
+        json={
+            "repo": str(tmp_path),
+            "branch": "feat/x",
+            "kind": "ship",
+            "brief_path": str(brief),
+            "name": "feat-x",
+        },
+    )
+    assert r.status_code == 400
+    assert r.json()["detail"]["stage"] == "name"
+    assert create_calls == []
+
+
+def test_spawn_rejects_a_name_with_a_slash(client, tmp_path, monkeypatch):
+    brief = tmp_path / "b.md"
+    brief.write_text("do the thing")
+    (tmp_path / ".git").mkdir()
+    monkeypatch.setattr("lumbergh.routers.sessions.get_live_sessions", dict)
+    create_calls = []
+    monkeypatch.setattr(
+        bill.worktrees,
+        "create",
+        lambda *a, **kw: create_calls.append((a, kw)),
+    )
+
+    r = client.post(
+        "/api/bill/spawn",
+        json={
+            "repo": str(tmp_path),
+            "branch": "feat/x",
+            "kind": "ship",
+            "brief_path": str(brief),
+            "name": "feat/x",
+        },
+    )
+    assert r.status_code == 400
+    assert r.json()["detail"]["stage"] == "name"
+    assert create_calls == []
+
+
+def test_spawn_accepts_a_valid_name(client, tmp_path, monkeypatch):
+    brief = tmp_path / "b.md"
+    brief.write_text("do the thing")
+    (tmp_path / ".git").mkdir()
+    monkeypatch.setattr("lumbergh.routers.sessions.get_live_sessions", dict)
+    monkeypatch.setattr(
+        bill.worktrees,
+        "create",
+        lambda *a, **kw: {"path": str(tmp_path / "wt"), "links_applied": []},  # noqa: ARG005
+    )
+    monkeypatch.setattr(bill, "create_tmux_session", lambda *a, **kw: None)  # noqa: ARG005
+    monkeypatch.setattr(bill, "_store_session", lambda **kw: None)  # noqa: ARG005
+    monkeypatch.setattr(bill, "_deliver_brief", lambda *a, **kw: True)  # noqa: ARG005
+
+    r = client.post(
+        "/api/bill/spawn",
+        json={
+            "repo": str(tmp_path),
+            "branch": "feat/x",
+            "kind": "ship",
+            "brief_path": str(brief),
+            "name": "task-slug",
+        },
+    )
+    assert r.status_code == 200
+    assert r.json()["session"] == "task-slug"
+
+
+def test_spawn_preserves_the_original_stage_when_unwind_itself_fails(client, tmp_path, monkeypatch):
+    brief = tmp_path / "b.md"
+    brief.write_text("do the thing")
+    (tmp_path / ".git").mkdir()
+
+    monkeypatch.setattr("lumbergh.routers.sessions.get_live_sessions", dict)
+    monkeypatch.setattr(
+        bill.worktrees,
+        "create",
+        lambda *a, **kw: {"path": str(tmp_path / "wt"), "links_applied": []},  # noqa: ARG005
+    )
+
+    def session_boom(*a, **kw):  # noqa: ARG001
+        raise RuntimeError("tmux is not installed")
+
+    def reap_boom(*a, **kw):  # noqa: ARG001
+        raise RuntimeError("git worktree remove exploded")
+
+    monkeypatch.setattr(bill, "create_tmux_session", session_boom)
+    monkeypatch.setattr(bill.worktrees, "reap", reap_boom)
+
+    r = client.post(
+        "/api/bill/spawn",
+        json={
+            "repo": str(tmp_path),
+            "branch": "feat/x",
+            "kind": "ship",
+            "brief_path": str(brief),
+        },
+    )
+    assert r.status_code == 400
+    body = r.json()["detail"]
+    assert body["stage"] == "session"
+    assert "tmux is not installed" in body["error"]
+    assert "manual cleanup" in body["help"]
+
+
+def test_spawn_unwinds_fully_when_the_brief_never_delivers(client, tmp_path, monkeypatch):
+    brief = tmp_path / "b.md"
+    brief.write_text("do the thing")
+    (tmp_path / ".git").mkdir()
+    killed = []
+    reaped = {}
+    removed = []
+
+    monkeypatch.setattr("lumbergh.routers.sessions.get_live_sessions", dict)
+    monkeypatch.setattr(
+        bill.worktrees,
+        "create",
+        lambda *a, **kw: {"path": str(tmp_path / "wt"), "links_applied": []},  # noqa: ARG005
+    )
+    monkeypatch.setattr(bill, "create_tmux_session", lambda *a, **kw: None)  # noqa: ARG005
+    monkeypatch.setattr(bill, "_store_session", lambda **kw: None)  # noqa: ARG005
+    monkeypatch.setattr(bill, "send_text", lambda name, text: False)  # noqa: ARG005
+    monkeypatch.setattr(bill, "kill_tmux_session", killed.append)
+
+    def record_reap(path, **kw):  # noqa: ARG001
+        reaped["path"] = str(path)
+        return {"status": "removed"}
+
+    monkeypatch.setattr(bill.worktrees, "reap", record_reap)
+    monkeypatch.setattr(bill.worktrees, "remove_entry", removed.append)
+
+    r = client.post(
+        "/api/bill/spawn",
+        json={
+            "repo": str(tmp_path),
+            "branch": "feat/x",
+            "kind": "ship",
+            "brief_path": str(brief),
+        },
+    )
+    assert r.status_code == 400
+    assert r.json()["detail"]["stage"] == "delivery"
+    assert killed == ["feat-x"]
+    assert reaped["path"] == str(tmp_path / "wt")
+    assert removed == [Path(tmp_path / "wt")]
+
+
+def test_spawn_delivers_on_a_later_attempt_without_unwinding(client, tmp_path, monkeypatch):
+    brief = tmp_path / "b.md"
+    brief.write_text("do the thing")
+    (tmp_path / ".git").mkdir()
+    attempts = []
+    killed = []
+
+    monkeypatch.setattr("lumbergh.routers.sessions.get_live_sessions", dict)
+    monkeypatch.setattr(
+        bill.worktrees,
+        "create",
+        lambda *a, **kw: {"path": str(tmp_path / "wt"), "links_applied": []},  # noqa: ARG005
+    )
+    monkeypatch.setattr(bill, "create_tmux_session", lambda *a, **kw: None)  # noqa: ARG005
+    monkeypatch.setattr(bill, "_store_session", lambda **kw: None)  # noqa: ARG005
+    monkeypatch.setattr(bill, "kill_tmux_session", killed.append)
+
+    def flaky_send_text(name, text):  # noqa: ARG001
+        attempts.append(name)
+        return len(attempts) > 1
+
+    monkeypatch.setattr(bill, "send_text", flaky_send_text)
+
+    r = client.post(
+        "/api/bill/spawn",
+        json={
+            "repo": str(tmp_path),
+            "branch": "feat/x",
+            "kind": "ship",
+            "brief_path": str(brief),
+        },
+    )
+    assert r.status_code == 200, r.text
+    assert len(attempts) == 2
+    assert killed == []
+
+
+def test_spawn_unwinds_fully_when_storing_the_session_raises(client, tmp_path, monkeypatch):
+    """Recording the task has its own stage: "check tmux" is the wrong advice for a
+    caller whose session store is broken."""
+    brief = tmp_path / "b.md"
+    brief.write_text("do the thing")
+    (tmp_path / ".git").mkdir()
+    killed = []
+    reaped = {}
+    removed = []
+
+    monkeypatch.setattr("lumbergh.routers.sessions.get_live_sessions", dict)
+    monkeypatch.setattr(
+        bill.worktrees,
+        "create",
+        lambda *a, **kw: {"path": str(tmp_path / "wt"), "links_applied": []},  # noqa: ARG005
+    )
+    monkeypatch.setattr(bill, "create_tmux_session", lambda *a, **kw: None)  # noqa: ARG005
+
+    def boom(**kw):  # noqa: ARG001
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(bill, "_store_session", boom)
+    monkeypatch.setattr(bill, "kill_tmux_session", killed.append)
+
+    def record_reap(path, **kw):  # noqa: ARG001
+        reaped["path"] = str(path)
+        return {"status": "removed"}
+
+    monkeypatch.setattr(bill.worktrees, "reap", record_reap)
+    monkeypatch.setattr(bill.worktrees, "remove_entry", removed.append)
+
+    r = client.post(
+        "/api/bill/spawn",
+        json={
+            "repo": str(tmp_path),
+            "branch": "feat/x",
+            "kind": "ship",
+            "brief_path": str(brief),
+        },
+    )
+    assert r.status_code == 400
+    body = r.json()["detail"]
+    assert body["stage"] == "record"
+    assert "disk full" in body["error"]
+    assert killed == ["feat-x"]
+    assert reaped["path"] == str(tmp_path / "wt")
+    assert removed == [Path(tmp_path / "wt")]
+
+
+def test_spawn_happy_path_records_the_task_and_delivers_the_brief(client, tmp_path, monkeypatch):
+    brief = tmp_path / "b.md"
+    brief.write_text("do the thing")
+    (tmp_path / ".git").mkdir()
+    sent = {}
+    stored = {}
+
+    monkeypatch.setattr("lumbergh.routers.sessions.get_live_sessions", dict)
+    monkeypatch.setattr(
+        bill.worktrees,
+        "create",
+        lambda *a, **kw: {"path": str(tmp_path / "wt"), "links_applied": []},  # noqa: ARG005
+    )
+    monkeypatch.setattr(bill, "create_tmux_session", lambda *a, **kw: None)  # noqa: ARG005
+    monkeypatch.setattr(bill, "_store_session", lambda **kw: stored.update(kw))
+    monkeypatch.setattr(
+        bill, "send_text", lambda name, text: sent.update(name=name, text=text) or True
+    )
+
+    r = client.post(
+        "/api/bill/spawn",
+        json={
+            "repo": str(tmp_path),
+            "branch": "feat/x",
+            "kind": "scout",
+            "brief_path": str(brief),
+            "task_intent": "figure out the flaky login test",
+        },
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["session"] == "feat-x"
+    assert body["kind"] == "scout"
+    assert stored["name"] == "feat-x"
+    assert str(brief) in sent["text"]
+
+
+def test_fleet_isolates_a_row_whose_transcript_read_raises(client, monkeypatch):
+    monkeypatch.setattr("lumbergh.routers.worktrees._live_sessions", dict)
+    monkeypatch.setattr(
+        bill.fleet,
+        "snapshot",
+        lambda *a, **kw: [  # noqa: ARG005
+            {"session": "broken", "task": "w-broken"},
+            {"session": "healthy", "task": "w-healthy"},
+        ],
+    )
+    monkeypatch.setattr(bill, "_session_meta", lambda name: {"workdir": "/w"})  # noqa: ARG005
+
+    class _Event:
+        def __init__(self, text):
+            self.text = text
+
+    class _RaisingAdapter:
+        def read_new(self):
+            raise ValueError("corrupt transcript")
+
+    class _HealthyAdapter:
+        def read_new(self):
+            return [_Event("DELIVERED: https://example.test/pull/1")]
+
+    def resolve(session_name, cwd, provider):  # noqa: ARG001
+        return _RaisingAdapter() if session_name == "broken" else _HealthyAdapter()
+
+    monkeypatch.setattr(bill, "resolve_adapter", resolve)
+
+    body = client.get("/api/bill/fleet").json()
+    rows_by_session = {row["session"]: row for row in body["tasks"]}
+    assert rows_by_session["broken"]["outcome"] is None
+    assert rows_by_session["healthy"]["outcome"] == "DELIVERED: https://example.test/pull/1"
+
+
+def test_summon_creates_bill_and_materializes_his_home(client, tmp_path, monkeypatch):
+    spawned = {}
+    monkeypatch.setattr("lumbergh.routers.sessions.get_live_sessions", dict)
+    monkeypatch.setattr(bill.bill_bundle, "home", lambda: tmp_path / "bill")
+    monkeypatch.setattr(bill.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(
+        bill,
+        "create_tmux_session",
+        lambda name, workdir, **kw: spawned.update(  # noqa: ARG005
+            name=name, workdir=str(workdir)
+        ),
+    )
+    monkeypatch.setattr(bill, "_store_session", lambda **kw: None)  # noqa: ARG005
+
+    body = client.post("/api/bill/summon").json()
+    assert body == {
+        "session": "bill",
+        "workdir": str(tmp_path / "bill"),
+        "existing": False,
+    }
+    assert (tmp_path / "bill" / "AGENTS.md").is_file()
+    assert spawned["name"] == "bill"
+
+
+def test_summon_returns_the_existing_session_without_respawning(client, tmp_path, monkeypatch):
+    monkeypatch.setattr("lumbergh.routers.sessions.get_live_sessions", lambda: {"bill": {}})
+    monkeypatch.setattr(
+        "lumbergh.routers.sessions.get_stored_sessions",
+        lambda: {"bill": {"workdir": str(tmp_path / "bill")}},
+    )
+    monkeypatch.setattr(bill.bill_bundle, "home", lambda: tmp_path / "bill")
+
+    def boom(*a, **kw):  # noqa: ARG001
+        raise AssertionError("must not spawn a second Bill")
+
+    monkeypatch.setattr(bill, "create_tmux_session", boom)
+    body = client.post("/api/bill/summon").json()
+    assert body["existing"] is True
+    assert body["session"] == "bill"
+
+
+def test_summon_refuses_when_bill_is_held_by_a_different_workdir(client, tmp_path, monkeypatch):
+    monkeypatch.setattr("lumbergh.routers.sessions.get_live_sessions", lambda: {"bill": {}})
+    monkeypatch.setattr(
+        "lumbergh.routers.sessions.get_stored_sessions",
+        lambda: {"bill": {"workdir": str(tmp_path / "someones-worktree")}},
+    )
+    monkeypatch.setattr(bill.bill_bundle, "home", lambda: tmp_path / "bill")
+
+    def boom(*a, **kw):  # noqa: ARG001
+        raise AssertionError("must not touch a session that isn't Bill")
+
+    monkeypatch.setattr(bill, "create_tmux_session", boom)
+
+    r = client.post("/api/bill/summon")
+    assert r.status_code == 400
+    detail = r.json()["detail"]
+    assert detail["stage"] == "identity"
+    assert str(tmp_path / "someones-worktree") in detail["error"]
+    assert detail["workdir"] == str(tmp_path / "bill")
+
+
+def test_summon_refuses_an_unrecorded_live_bill(client, tmp_path, monkeypatch):
+    monkeypatch.setattr("lumbergh.routers.sessions.get_live_sessions", lambda: {"bill": {}})
+    monkeypatch.setattr("lumbergh.routers.sessions.get_stored_sessions", dict)
+    monkeypatch.setattr(bill.bill_bundle, "home", lambda: tmp_path / "bill")
+
+    def boom(*a, **kw):  # noqa: ARG001
+        raise AssertionError("must not touch an unverifiable session")
+
+    monkeypatch.setattr(bill, "create_tmux_session", boom)
+
+    r = client.post("/api/bill/summon")
+    assert r.status_code == 400
+    detail = r.json()["detail"]
+    assert detail["stage"] == "identity"
+    assert detail["workdir"] == str(tmp_path / "bill")
+
+
+def test_summon_renders_the_configured_personality(client, tmp_path, monkeypatch):
+    monkeypatch.setattr("lumbergh.routers.sessions.get_live_sessions", dict)
+    monkeypatch.setattr(bill.bill_bundle, "home", lambda: tmp_path / "bill")
+    monkeypatch.setattr(bill.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(bill, "create_tmux_session", lambda *a, **kw: None)  # noqa: ARG005
+    monkeypatch.setattr(bill, "_store_session", lambda **kw: None)  # noqa: ARG005
+    monkeypatch.setattr(bill, "_settings", lambda: {"bill": {"personality": "lumbergh"}})
+
+    client.post("/api/bill/summon")
+    assert (tmp_path / "bill" / "AGENTS.md").read_text() == bill.bill_bundle.render("lumbergh")
+
+
+def test_summon_kills_the_freshly_created_session_when_storing_fails(tmp_path, monkeypatch):
+    tmux_has_bill = {"alive": False}
+    killed = []
+
+    def fake_create(*a, **kw):  # noqa: ARG001
+        tmux_has_bill["alive"] = True
+
+    def fake_kill(name):
+        killed.append(name)
+        tmux_has_bill["alive"] = False
+
+    monkeypatch.setattr(
+        "lumbergh.routers.sessions.get_live_sessions",
+        lambda: {"bill": {}} if tmux_has_bill["alive"] else {},
+    )
+    monkeypatch.setattr(bill.bill_bundle, "home", lambda: tmp_path / "bill")
+    monkeypatch.setattr(bill.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(bill, "create_tmux_session", fake_create)
+    monkeypatch.setattr(bill, "kill_tmux_session", fake_kill)
+
+    def boom(**kw):  # noqa: ARG001
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(bill, "_store_session", boom)
+
+    app = FastAPI()
+    app.include_router(bill.router)
+    raw_client = TestClient(app, raise_server_exceptions=False)
+
+    r = raw_client.post("/api/bill/summon")
+    assert r.status_code == 400
+    detail = r.json()["detail"]
+    assert detail["stage"] == "record"
+    assert "disk full" in detail["error"]
+    assert detail["workdir"] == str(tmp_path / "bill")
+    assert killed == ["bill"]
+
+    monkeypatch.setattr(bill, "_store_session", lambda **kw: None)  # noqa: ARG005
+    retry = raw_client.post("/api/bill/summon")
+    assert retry.status_code == 200
+    assert retry.json()["existing"] is False
+
+
+def test_summon_recovers_when_a_racing_request_wins_the_create(client, tmp_path, monkeypatch):
+    calls = {"n": 0}
+
+    def live():
+        calls["n"] += 1
+        return {} if calls["n"] == 1 else {"bill": {}}
+
+    monkeypatch.setattr("lumbergh.routers.sessions.get_live_sessions", live)
+    monkeypatch.setattr(
+        "lumbergh.routers.sessions.get_stored_sessions",
+        lambda: {"bill": {"workdir": str(tmp_path / "bill")}},
+    )
+    monkeypatch.setattr(bill.bill_bundle, "home", lambda: tmp_path / "bill")
+    monkeypatch.setattr(bill.shutil, "which", lambda name: f"/usr/bin/{name}")
+
+    def boom(*a, **kw):  # noqa: ARG001
+        raise RuntimeError("duplicate session: bill")
+
+    monkeypatch.setattr(bill, "create_tmux_session", boom)
+
+    body = client.post("/api/bill/summon").json()
+    assert body == {"session": "bill", "workdir": str(tmp_path / "bill"), "existing": True}
+
+
+def test_summon_surfaces_a_genuine_tmux_failure(client, tmp_path, monkeypatch):
+    monkeypatch.setattr("lumbergh.routers.sessions.get_live_sessions", dict)
+    monkeypatch.setattr(bill.bill_bundle, "home", lambda: tmp_path / "bill")
+    monkeypatch.setattr(bill.shutil, "which", lambda name: f"/usr/bin/{name}")
+
+    def boom(*a, **kw):  # noqa: ARG001
+        raise RuntimeError("tmux is not installed")
+
+    monkeypatch.setattr(bill, "create_tmux_session", boom)
+
+    r = client.post("/api/bill/summon")
+    assert r.status_code == 400
+    detail = r.json()["detail"]
+    assert detail["stage"] == "session"
+    assert "tmux is not installed" in detail["error"]
+    assert detail["workdir"] == str(tmp_path / "bill")
+
+
+def test_summon_refuses_when_the_harness_binary_is_missing(client, tmp_path, monkeypatch):
+    monkeypatch.setattr("lumbergh.routers.sessions.get_live_sessions", dict)
+    monkeypatch.setattr(bill.bill_bundle, "home", lambda: tmp_path / "bill")
+    monkeypatch.setattr(bill.shutil, "which", lambda name: None)  # noqa: ARG005
+
+    def boom(*a, **kw):  # noqa: ARG001
+        raise AssertionError("must not create a session for a missing harness")
+
+    monkeypatch.setattr(bill, "create_tmux_session", boom)
+
+    r = client.post("/api/bill/summon")
+    assert r.status_code == 400
+    detail = r.json()["detail"]
+    assert detail["stage"] == "harness"
+    assert "pi" in detail["error"]
+    assert "pi" in detail["help"]
+    assert detail["workdir"] == str(tmp_path / "bill")
+
+
+def test_summon_creates_normally_when_the_harness_binary_is_present(client, tmp_path, monkeypatch):
+    monkeypatch.setattr("lumbergh.routers.sessions.get_live_sessions", dict)
+    monkeypatch.setattr(bill.bill_bundle, "home", lambda: tmp_path / "bill")
+    monkeypatch.setattr(bill.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(bill, "create_tmux_session", lambda *a, **kw: None)  # noqa: ARG005
+    monkeypatch.setattr(bill, "_store_session", lambda **kw: None)  # noqa: ARG005
+
+    body = client.post("/api/bill/summon").json()
+    assert body["existing"] is False
+
+
+def test_write_brief_refuses_a_path_outside_bills_home(client, tmp_path, monkeypatch):
+    monkeypatch.setattr(bill.bill_bundle, "home", lambda: tmp_path / "bill")
+    r = client.post("/api/bill/brief", json={"path": str(tmp_path / "escape.md"), "body": "x"})
+    assert r.status_code == 400
+    assert r.json()["detail"]["stage"] == "path"
+    assert not (tmp_path / "escape.md").exists()
+
+
+def test_write_brief_accepts_a_path_inside_briefs(client, tmp_path, monkeypatch):
+    monkeypatch.setattr(bill.bill_bundle, "home", lambda: tmp_path / "bill")
+    (tmp_path / "bill" / "briefs").mkdir(parents=True)
+    r = client.post(
+        "/api/bill/brief", json={"path": str(tmp_path / "bill" / "briefs" / "w.md"), "body": "hi"}
+    )
+    assert r.status_code == 200
+    assert (tmp_path / "bill" / "briefs" / "w.md").read_text() == "hi"
+
+
+def test_write_brief_creates_missing_parent_directories(client, tmp_path, monkeypatch):
+    monkeypatch.setattr(bill.bill_bundle, "home", lambda: tmp_path / "bill")
+    nested = tmp_path / "bill" / "briefs" / "sub" / "w.md"
+    r = client.post("/api/bill/brief", json={"path": str(nested), "body": "hi"})
+    assert r.status_code == 200
+    assert nested.read_text() == "hi"
+
+
+def test_spawn_accepts_a_brief_path_relative_to_bills_home(client, tmp_path, monkeypatch):
+    """The invocation AGENTS.md documents: Bill writes ``briefs/<slug>.md`` from his home,
+    then spawns with ``--brief briefs/<slug>.md``. Resolving that against the *server's*
+    cwd made the documented command fail with "write the brief before spawning" — telling
+    a weak model to redo the thing it had just done."""
+    home = tmp_path / "bill"
+    (home / "briefs").mkdir(parents=True)
+    (home / "briefs" / "flaky-login.md").write_text("# Task: fix the flaky login test\n")
+    repo = tmp_path / "app"
+    (repo / ".git").mkdir(parents=True)
+    sent = {}
+
+    monkeypatch.setattr(bill.bill_bundle, "home", lambda: home)
+    monkeypatch.setattr("lumbergh.routers.sessions.get_live_sessions", dict)
+    monkeypatch.setattr(
+        bill.worktrees,
+        "create",
+        lambda *a, **kw: {"path": str(tmp_path / "wt"), "links_applied": []},  # noqa: ARG005
+    )
+    monkeypatch.setattr(bill, "create_tmux_session", lambda *a, **kw: None)  # noqa: ARG005
+    monkeypatch.setattr(bill, "_store_session", lambda **kw: None)  # noqa: ARG005
+    monkeypatch.setattr(bill, "send_text", lambda name, text: sent.update(text=text) or True)  # noqa: ARG005
+
+    r = client.post(
+        "/api/bill/spawn",
+        json={
+            "repo": str(repo),
+            "branch": "feat/x",
+            "kind": "ship",
+            "brief_path": "briefs/flaky-login.md",
+            "name": "flaky-login",
+        },
+    )
+
+    assert r.status_code == 200, r.text
+    assert r.json()["brief_path"] == str(home / "briefs" / "flaky-login.md")
+    assert str(home / "briefs" / "flaky-login.md") in sent["text"]
+
+
+def test_spawn_help_for_a_missing_brief_names_the_path_it_looked_in(client, tmp_path, monkeypatch):
+    """ "Write the brief" is unhelpful when the brief exists and the path was wrong, so the
+    help has to say where the server actually looked."""
+    monkeypatch.setattr(bill.bill_bundle, "home", lambda: tmp_path / "bill")
+    r = client.post(
+        "/api/bill/spawn",
+        json={
+            "repo": str(tmp_path),
+            "branch": "feat/x",
+            "kind": "ship",
+            "brief_path": "briefs/nope.md",
+        },
+    )
+    assert r.status_code == 400
+    detail = r.json()["detail"]
+    assert detail["stage"] == "brief"
+    assert str(tmp_path / "bill" / "briefs" / "nope.md") in detail["error"]
+    assert str(tmp_path / "bill") in detail["help"]
+
+
+def test_scout_report_path_lives_in_bills_home_not_beside_the_brief(tmp_path, monkeypatch):
+    """A brief in a subdirectory of ``briefs/`` used to send the scout's report two levels
+    up from wherever the brief happened to sit; the real invariant is Bill's home."""
+    monkeypatch.setattr(bill.bill_bundle, "home", lambda: tmp_path / "bill")
+    nested = tmp_path / "bill" / "briefs" / "sub" / "w.md"
+
+    text = bill._brief_delivery(nested, "scout", "w")
+
+    assert str(tmp_path / "bill" / "reports" / "w.md") in text
+
+
+def test_spawn_keeps_the_registry_row_when_the_worktree_cannot_be_removed(
+    client, tmp_path, monkeypatch
+):
+    """``worktrees.reap`` returns its failures instead of raising. Dropping the registry
+    row anyway would leave the directory on disk with nothing pointing at it — invisible
+    to ``lb fleet`` and to reconcile — while the caller was told cleanup succeeded."""
+    brief = tmp_path / "b.md"
+    brief.write_text("do the thing")
+    (tmp_path / ".git").mkdir()
+    removed = []
+
+    monkeypatch.setattr("lumbergh.routers.sessions.get_live_sessions", dict)
+    monkeypatch.setattr(
+        bill.worktrees,
+        "create",
+        lambda *a, **kw: {"path": str(tmp_path / "wt"), "links_applied": []},  # noqa: ARG005
+    )
+
+    def session_boom(*a, **kw):  # noqa: ARG001
+        raise RuntimeError("tmux is not installed")
+
+    monkeypatch.setattr(bill, "create_tmux_session", session_boom)
+    monkeypatch.setattr(
+        bill.worktrees,
+        "reap",
+        lambda *a, **kw: {"error": "worktree is locked", "reason": "locked"},  # noqa: ARG005
+    )
+    monkeypatch.setattr(bill.worktrees, "remove_entry", removed.append)
+
+    r = client.post(
+        "/api/bill/spawn",
+        json={
+            "repo": str(tmp_path),
+            "branch": "feat/x",
+            "kind": "ship",
+            "brief_path": str(brief),
+        },
+    )
+
+    body = r.json()["detail"]
+    assert body["stage"] == "session"
+    assert "tmux is not installed" in body["error"]
+    assert "manual cleanup" in body["help"]
+    assert removed == [], "the registry row outlived a worktree that is still on disk"
+
+
+@pytest.mark.parametrize(
+    "launch_command",
+    [
+        "ANTHROPIC_API_KEY=$KEY claude",
+        "(pi)",
+        ">/tmp/pi.log pi",
+        "{pi,}",
+    ],
+)
+def test_harness_check_is_skipped_when_the_first_token_is_not_a_program(launch_command):
+    """``shutil.which`` would fail on each of these first tokens and summon would refuse a
+    setup that actually works. A false refusal is worse than the silent pane failure this
+    check exists to catch, so an unrecognizable shape skips the check."""
+    assert bill._harness_binary(launch_command) is None
+
+
+@pytest.mark.parametrize(
+    ("launch_command", "expected"),
+    [
+        ("pi", "pi"),
+        ("claude --continue || claude", "claude"),
+        ("/usr/local/bin/pi --resume", "/usr/local/bin/pi"),
+    ],
+)
+def test_harness_check_still_names_the_program_for_real_launch_commands(launch_command, expected):
+    assert bill._harness_binary(launch_command) == expected

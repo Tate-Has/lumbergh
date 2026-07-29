@@ -199,3 +199,24 @@ def test_exec_tmux_attach_preserves_explicit_term(monkeypatch):
     tmux_pty._exec_tmux_attach("mysession")
 
     assert captured["TERM"] == "screen-256color"
+
+
+def test_kill_tmux_session_returns_true_on_success(monkeypatch):
+    def fake_run(argv, **_kwargs):
+        assert argv == [tmux_pty.TMUX_CMD, "kill-session", "-t", "mysession"]
+        result = MagicMock()
+        result.returncode = 0
+        return result
+
+    monkeypatch.setattr(tmux_pty.subprocess, "run", fake_run)
+    assert tmux_pty.kill_tmux_session("mysession") is True
+
+
+def test_kill_tmux_session_returns_false_when_the_session_is_gone(monkeypatch):
+    def fake_run(argv, **_kwargs):  # noqa: ARG001
+        result = MagicMock()
+        result.returncode = 1
+        return result
+
+    monkeypatch.setattr(tmux_pty.subprocess, "run", fake_run)
+    assert tmux_pty.kill_tmux_session("mysession") is False

@@ -149,6 +149,8 @@ def record_worktree(
     session: str | None = None,
     links_applied: list[dict] | None = None,
     task_intent: str | None = None,
+    kind: str | None = None,
+    origin: str | None = None,
 ) -> dict:
     row = {
         "path": _key(path),
@@ -158,6 +160,8 @@ def record_worktree(
         "associated_session": session,
         "links_applied": links_applied or [],
         "task_intent": task_intent,
+        "kind": kind,
+        "origin": origin,
     }
     db = get_worktrees_db()
     db.upsert(row, Query().path == row["path"])
@@ -231,6 +235,8 @@ def create(
     session: str | None = None,
     task_intent: str | None = None,
     global_base_dir: str | None = None,
+    kind: str | None = None,
+    origin: str | None = None,
 ) -> dict:
     cfg = parse_worktree_config(repo)
     dest = resolve_worktree_dir(repo, branch, cfg, global_base_dir)
@@ -251,6 +257,8 @@ def create(
         session=session,
         links_applied=applied,
         task_intent=task_intent,
+        kind=kind,
+        origin=origin,
     )
     return {"path": str(wt), "links_applied": applied}
 

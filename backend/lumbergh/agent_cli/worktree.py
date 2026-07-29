@@ -6,6 +6,9 @@ from lumbergh.agent_cli.main import _emit, _err, _request
 from lumbergh.agent_cli.toon import render_collection, render_object
 
 _COLS = ["path", "repo", "branch", "session", "agent", "state"]
+# Named so a drift test can check the subcommands Bill's AGENTS.md tells him to run
+# against the ones this module actually dispatches.
+SUBCOMMANDS = ("ls", "create", "reap", "adopt", "link", "unlink")
 
 
 def run(sub: str, flags: dict, positional: list) -> int:
@@ -20,7 +23,9 @@ def run(sub: str, flags: dict, positional: list) -> int:
     if sub in ("link", "unlink"):
         return _linkop(sub, positional)
     return _err(
-        f"unknown worktree subcommand `{sub}`", "lb worktree ls|create|reap|adopt|link|unlink", 2
+        f"unknown worktree subcommand `{sub}`",
+        f"lb worktree {'|'.join(SUBCOMMANDS)}",
+        2,
     )
 
 

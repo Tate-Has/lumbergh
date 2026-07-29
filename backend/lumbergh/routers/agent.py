@@ -15,6 +15,7 @@ from pydantic import BaseModel
 
 from lumbergh import session_attention
 from lumbergh.activity.resolve import resolve_adapter
+from lumbergh.activity.resolve import session_meta as _meta
 from lumbergh.detect import regions
 from lumbergh.idle_monitor import idle_monitor
 from lumbergh.tmux_pty import capture_pane_text, send_text
@@ -28,12 +29,6 @@ def _live_names() -> list[str]:
     from lumbergh.routers.sessions import get_live_sessions
 
     return list(get_live_sessions().keys())
-
-
-def _meta(name: str) -> dict:
-    from lumbergh.routers.sessions import get_stored_sessions
-
-    return get_stored_sessions().get(name, {})
 
 
 def _require(name: str) -> None:

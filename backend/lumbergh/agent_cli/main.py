@@ -35,8 +35,48 @@ FLAGS = {
         "--rm-branch",
         "--json",
     },
+    "fleet": {"--wait", "--timeout", "--origin", "--json"},
+    "spawn": {
+        "--repo",
+        "--branch",
+        "--kind",
+        "--brief",
+        "--name",
+        "--base",
+        "--agent",
+        "--intent",
+        "--new",
+    },
 }
 _BOOL_FLAGS = {"--full", "--wait", "--check", "--new", "--force", "--rm-branch", "--json"}
+
+# One usage line per command, so `lb <command> --help` is a real answer rather than a
+# request the command runs anyway. Bill's AGENTS.md points him here when he is unsure of
+# syntax, and a weak model that can self-serve syntax does not stall. Every key in FLAGS
+# must appear here (a test pins that), and the error paths in `fleet`/`spawn` reuse these
+# strings so a usage line can never drift from the help output.
+_COMMAND_HELP = {
+    "": "lb — live dashboard of every session Lumbergh supervises",
+    "read": "lb read --session <name> [--last N] [--source transcript|pane|detection] [--full]",
+    "state": "lb state --session <name>",
+    "wait": "lb wait --session <name> --until idle|working|blocked|error|rest [--timeout <s>]",
+    "wait-output": (
+        'lb wait-output --session <name> --match "<text>" [--regex <re>] '
+        "[--timeout <s>] [--lines <n>]"
+    ),
+    "prompt": 'lb prompt --session <name> "<text>" [--wait]',
+    "skill": "lb skill [install] [--dir <path>] [--check]",
+    "worktree": (
+        "lb worktree ls --repo <path> [--json] | create --repo <path> --branch <b> [--new] "
+        "[--base <b>] [--session <name>] [--intent '...'] | reap <path> [--force] [--rm-branch] "
+        "| adopt <path> [--session <name>] | link <path> | unlink <path>"
+    ),
+    "fleet": "lb fleet [--wait] [--timeout <s>] [--origin bill] [--json]",
+    "spawn": (
+        "lb spawn --repo <path> --branch <b> --kind ship|scout --brief <file> "
+        "[--new] [--base <b>] [--name <n>] [--agent <provider>] [--intent '...']"
+    ),
+}
 
 
 def _emit(s: str) -> None:
@@ -89,6 +129,12 @@ def _parse(argv):
     return command, flags, positional, None
 
 
+def _print_help(command: str) -> int:
+    _emit(_COMMAND_HELP[command])
+    _emit(f"flags: {' '.join(sorted(FLAGS[command])) or '(none)'} --help")
+    return 0
+
+
 def _target(flags):
     return flags.get("--session") or os.environ.get("LUMBERGH_SESSION")
 
@@ -102,6 +148,9 @@ def main(argv=None) -> int:
             perr, f"valid flags for `{command or 'lb'}`: {valid} (--help always allowed)", 2
         )
 
+    if "--help" in flags:
+        return _print_help(command)
+
     dispatch = {
         "": lambda: _cmd_home(),
         "state": lambda: _cmd_state(_target(flags)),
@@ -111,6 +160,8 @@ def main(argv=None) -> int:
         "prompt": lambda: _cmd_prompt(_target(flags), positional, flags),
         "skill": lambda: _cmd_skill(positional, flags),
         "worktree": lambda: _cmd_worktree(positional, flags),
+        "fleet": lambda: _cmd_fleet(flags),
+        "spawn": lambda: _cmd_spawn(flags),
     }
     handler = dispatch.get(command)
     if handler is None:
@@ -148,6 +199,7 @@ def _cmd_home() -> int:
             [
                 "Run `lb read --session <name>` to see a session",
                 "Run `lb wait --session <name> --until idle` to block until it finishes",
+                "Run `lb fleet --wait` to block until a task needs you",
             ]
         )
     )
@@ -310,6 +362,18 @@ def _cmd_worktree(positional, flags) -> int:
     sub = positional[0] if positional else ""
     rest = positional[1:] if positional else []
     return wt.run(sub, flags, rest)
+
+
+def _cmd_fleet(flags) -> int:
+    from lumbergh.agent_cli import fleet as fleet_cli
+
+    return fleet_cli.run(flags)
+
+
+def _cmd_spawn(flags) -> int:
+    from lumbergh.agent_cli import spawn as spawn_cli
+
+    return spawn_cli.run(flags)
 
 
 if __name__ == "__main__":
