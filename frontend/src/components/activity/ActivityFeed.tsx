@@ -181,22 +181,49 @@ function Item({ item }: { item: RenderItem }) {
 export default function ActivityFeed({ sessionName }: { sessionName: string }) {
   const { items, noTranscript } = useActivitySocket({ sessionName })
   const scrollRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
   const [following, setFollowing] = useState(true)
+  const followingRef = useRef(true)
+  // True while we are programmatically scrolling, so the scroll event our own
+  // stick() fires doesn't get mistaken for the user scrolling away.
+  const programmaticRef = useRef(false)
+
+  useEffect(() => {
+    followingRef.current = following
+  }, [following])
 
   // Thinking is ephemeral: keep it only while it's the latest event (the agent is
   // still thinking). Once any real output follows, it drops out of the history.
   const visibleItems = items.filter((item, i) => item.type !== 'thinking' || i === items.length - 1)
 
+  // Stay pinned to the bottom while following. A single scroll-to-bottom fires
+  // before late layout (markdown, fonts, images, flex sizing) finishes growing
+  // the content, stranding the view mid-feed; re-sticking on every content
+  // resize keeps it at the latest through settle and new events alike.
   useEffect(() => {
-    if (following && scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    const scroller = scrollRef.current
+    const content = contentRef.current
+    if (!scroller || !content) return
+    const stick = () => {
+      if (!followingRef.current) return
+      programmaticRef.current = true
+      scroller.scrollTop = scroller.scrollHeight
+      requestAnimationFrame(() => {
+        programmaticRef.current = false
+      })
     }
-  }, [items, following])
+    stick()
+    const observer = new ResizeObserver(stick)
+    observer.observe(content)
+    return () => observer.disconnect()
+  }, [])
 
   const onScroll = () => {
+    if (programmaticRef.current) return
     const el = scrollRef.current
     if (!el) return
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40
+    followingRef.current = atBottom
     setFollowing(atBottom)
   }
 
@@ -213,15 +240,22 @@ export default function ActivityFeed({ sessionName }: { sessionName: string }) {
       <div
         ref={scrollRef}
         onScroll={onScroll}
-        className="flex-1 space-y-3 overflow-y-auto overscroll-contain p-3"
+        className="flex-1 overflow-y-auto overscroll-contain"
       >
-        {visibleItems.map((item) => (
-          <Item key={item.id} item={item} />
-        ))}
+        <div ref={contentRef} className="space-y-3 p-3">
+          {visibleItems.map((item) => (
+            <Item key={item.id} item={item} />
+          ))}
+        </div>
       </div>
       {!following && (
         <button
-          onClick={() => setFollowing(true)}
+          onClick={() => {
+            followingRef.current = true
+            setFollowing(true)
+            const el = scrollRef.current
+            if (el) el.scrollTop = el.scrollHeight
+          }}
           className="absolute bottom-16 left-1/2 -translate-x-1/2 rounded-full bg-action px-3 py-1 text-xs text-white shadow"
         >
           Jump to latest ↓
