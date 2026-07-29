@@ -5,7 +5,7 @@ File system utilities for the Lumbergh backend.
 from collections.abc import Iterator
 from pathlib import Path
 
-from lumbergh.constants import EXT_TO_LANGUAGE, IGNORE_DIRS
+from lumbergh.constants import IGNORE_DIRS
 
 
 def iter_project_files(root: Path, ignore_dirs: set[str] | None = None) -> Iterator[Path]:
@@ -54,18 +54,17 @@ def list_project_files(root: Path, ignore_dirs: set[str] | None = None) -> list[
 
 def get_file_language(path: Path | str) -> str:
     """
-    Get the language identifier for syntax highlighting based on file extension.
+    Return a syntax-highlighting hint for a file, based on its extension.
 
-    Args:
-        path: File path (Path object or string)
-
-    Returns:
-        Language identifier string (e.g., 'python', 'typescript')
+    The hint is the bare, lowercased extension without the dot (e.g. 'py',
+    'ts', 'feature'). The frontend resolves it against highlight.js / lowlight,
+    which map extensions to languages through their own alias tables and fall
+    back to content auto-detection for anything unrecognized. Files with no
+    extension return 'text'.
     """
     if isinstance(path, str):
         path = Path(path)
-    ext = path.suffix.lower()
-    return EXT_TO_LANGUAGE.get(ext, "text")
+    return path.suffix.lstrip(".").lower() or "text"
 
 
 def validate_path_within_root(path: Path, root: Path) -> bool:

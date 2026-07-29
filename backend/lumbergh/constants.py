@@ -38,26 +38,6 @@ GIT_STATUS_MAP = {
     "?": "untracked",
 }
 
-# File extension to language mapping for syntax highlighting
-EXT_TO_LANGUAGE = {
-    ".py": "python",
-    ".js": "javascript",
-    ".ts": "typescript",
-    ".tsx": "tsx",
-    ".jsx": "jsx",
-    ".json": "json",
-    ".md": "markdown",
-    ".sh": "bash",
-    ".css": "css",
-    ".html": "html",
-    ".yaml": "yaml",
-    ".yml": "yaml",
-    ".toml": "toml",
-    ".csv": "csv",
-    ".tsv": "tsv",
-    ".feature": "gherkin",
-}
-
 # Directories to ignore when listing/searching files
 IGNORE_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "build"}
 

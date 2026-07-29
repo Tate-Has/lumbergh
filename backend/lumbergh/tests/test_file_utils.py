@@ -33,26 +33,19 @@ class TestValidatePathWithinRoot:
 
 
 class TestGetFileLanguage:
-    def test_python(self):
-        assert get_file_language("main.py") == "python"
-
-    def test_typescript(self):
+    def test_returns_bare_extension(self):
+        assert get_file_language("main.py") == "py"
         assert get_file_language("App.tsx") == "tsx"
+        assert get_file_language("login.feature") == "feature"
 
-    def test_javascript(self):
-        assert get_file_language("index.js") == "javascript"
-
-    def test_gherkin(self):
-        assert get_file_language("login.feature") == "gherkin"
-
-    def test_unknown_extension(self):
-        assert get_file_language("data.xyz123") == "text"
+    def test_unrecognized_extension_still_passed_through(self):
+        assert get_file_language("data.xyz123") == "xyz123"
 
     def test_no_extension(self):
         assert get_file_language("Makefile") == "text"
 
     def test_case_insensitive(self):
-        assert get_file_language("README.MD") == "markdown"
+        assert get_file_language("README.MD") == "md"
 
     def test_path_object(self):
-        assert get_file_language(Path("src/app.ts")) == "typescript"
+        assert get_file_language(Path("src/app.ts")) == "ts"

@@ -36,26 +36,12 @@ export function getFileStats(diff: string): FileStats {
   return { additions, deletions }
 }
 
-// Extract language from file path for syntax highlighting
+// Language hint for the diff highlighter, derived from the file extension.
+// The bare extension is passed straight through: @git-diff-view/lowlight is
+// built with the full highlight.js language set and resolves extensions to
+// languages via its own alias table (py -> python, rs -> rust, feature ->
+// gherkin, ...), falling back to content auto-detection for anything it does
+// not recognize. New file types highlight automatically, no map to maintain.
 export function getLangFromPath(path: string): string {
-  const ext = path.split('.').pop()?.toLowerCase() || ''
-  const extMap: Record<string, string> = {
-    ts: 'typescript',
-    tsx: 'tsx',
-    js: 'javascript',
-    jsx: 'jsx',
-    py: 'python',
-    rs: 'rust',
-    go: 'go',
-    java: 'java',
-    css: 'css',
-    scss: 'scss',
-    json: 'json',
-    md: 'markdown',
-    sh: 'bash',
-    yml: 'yaml',
-    yaml: 'yaml',
-    feature: 'gherkin',
-  }
-  return extMap[ext] || 'plaintext'
+  return path.split('.').pop()?.toLowerCase() || 'plaintext'
 }

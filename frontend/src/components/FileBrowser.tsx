@@ -125,6 +125,12 @@ function isImagePath(path: string): boolean {
   return IMAGE_EXTENSIONS.has(ext)
 }
 
+// Resolve the backend's extension hint (e.g. 'py', 'feature') to a friendly
+// label via highlight.js's alias table; fall back to the raw hint.
+function languageLabel(hint: string): string {
+  return hljs.getLanguage(hint)?.name ?? hint
+}
+
 function isCsvPath(path: string): boolean {
   const ext = path.slice(path.lastIndexOf('.')).toLowerCase()
   return ext === '.csv' || ext === '.tsv'
@@ -274,7 +280,7 @@ function FileContentView({
               {showCsvPreview ? 'Raw' : 'Table'}
             </button>
           )}
-          <span className="text-text-muted text-xs">{selectedFile.language}</span>
+          <span className="text-text-muted text-xs">{languageLabel(selectedFile.language)}</span>
         </div>
       </div>
       <FileContentBody
