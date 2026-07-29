@@ -12,6 +12,7 @@ import subprocess
 import time
 import uuid
 from collections.abc import Callable
+from datetime import UTC, datetime
 from http import HTTPStatus
 from pathlib import Path
 from typing import TypeVar
@@ -21,7 +22,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from tinydb import Query
 
-from lumbergh import session_attention
+from lumbergh import session_attention, worktrees
 from lumbergh.constants import IGNORE_DIRS, REPO_SEARCH_SKIP_DIRS, SCRATCH_DIR, TMUX_CMD
 from lumbergh.db_utils import (
     get_project_db,
@@ -37,7 +38,6 @@ from lumbergh.git_utils import (
     amend_commit,
     checkout_branch,
     create_branch_at,
-    create_worktree,
     delete_branch,
     get_branches,
     get_branches_for_worktree,
@@ -57,7 +57,6 @@ from lumbergh.git_utils import (
     git_stash,
     git_stash_drop,
     git_stash_pop,
-    remove_worktree,
     reset_to_commit,
     reset_to_head,
     revert_file,
@@ -585,11 +584,17 @@ def _resolve_worktree_workdir(body: CreateSessionRequest) -> tuple[Path, str, st
             status_code=400, detail=f"Not a git repository: {body.worktree.parent_repo}"
         )
 
-    result = create_worktree(
-        repo_path=parent_repo,
-        branch=body.worktree.branch,
+    from lumbergh.routers.settings import get_settings
+
+    base_dir = get_settings().get("worktree", {}).get("base_dir") or None
+    result = worktrees.create(
+        parent_repo,
+        body.worktree.branch,
+        created_at=datetime.now(UTC).isoformat(),
         create_branch=body.worktree.create_branch,
         base_branch=body.worktree.base_branch,
+        session=body.name or None,
+        global_base_dir=base_dir,
     )
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
@@ -1105,7 +1110,7 @@ async def delete_session(name: str, cleanup_worktree: bool = False):
     # Clean up worktree if requested
     worktree_removed = False
     if cleanup_worktree and session_type == "worktree" and worktree_parent_repo and workdir:
-        wt_result = remove_worktree(Path(worktree_parent_repo), Path(workdir), force=True)
+        wt_result = worktrees.reap(Path(workdir), force=True)
         worktree_removed = wt_result.get("status") == "removed"
 
     # Clean up scratch directory

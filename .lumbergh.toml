@@ -1,0 +1,3 @@
+[worktree]
+links = ["frontend/node_modules"]
+post_create = ["cd backend && uv sync"]

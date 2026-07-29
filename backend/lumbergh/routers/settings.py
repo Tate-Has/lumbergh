@@ -72,6 +72,7 @@ def _get_defaults() -> dict:
                 },
             },
         },
+        "worktree": {"base_dir": ""},
     }
 
 

@@ -1691,6 +1691,27 @@ def create_worktree(
         return {"error": _classify_worktree_error(e, branch)}
 
 
+def count_unpushed_commits(cwd: Path) -> int:
+    """Count commits reachable from the worktree's HEAD but no remote branch.
+
+    This is the reap guard's "unpushed work" check. It protects only this
+    worktree's own unpushed/never-pushed work (including a detached HEAD) and
+    does not count unpushed commits sitting on unrelated local branches. With
+    no remotes at all, every commit on HEAD counts as unpushed, so a
+    never-pushed worktree is correctly protected from silent loss. Falls back
+    to 0 on git error.
+    """
+    try:
+        repo = get_repo(cwd)
+    except InvalidGitRepositoryError:
+        return 0
+    try:
+        out = repo.git.rev_list("--count", "HEAD", "--not", "--remotes")
+        return int(out.strip() or "0")
+    except GitCommandError:
+        return 0
+
+
 def remove_worktree(repo_path: Path, worktree_path: Path, force: bool = False) -> dict:
     """
     Remove a git worktree.

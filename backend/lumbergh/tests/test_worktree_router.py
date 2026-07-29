@@ -1,0 +1,122 @@
+from pathlib import Path
+
+import pytest
+from fastapi.testclient import TestClient
+
+
+@pytest.fixture
+def client(tmp_path, monkeypatch):
+    monkeypatch.setenv("LUMBERGH_DATA_DIR", str(tmp_path / "cfg"))
+    import importlib
+
+    from lumbergh import constants, db_utils, worktrees
+    from lumbergh.routers import worktrees as wt_router
+
+    importlib.reload(constants)
+    importlib.reload(db_utils)
+    importlib.reload(worktrees)
+    monkeypatch.setattr(wt_router, "get_stored_sessions", dict)
+    monkeypatch.setattr(wt_router, "list_tmux_sessions", list)
+    from lumbergh.main import app
+
+    return TestClient(app)
+
+
+def test_create_list_reap_roundtrip(client, tmp_path):
+    from lumbergh.tests.test_worktrees import _init_repo
+
+    repo = _init_repo(tmp_path / "app")
+    r = client.post(
+        "/api/worktrees", json={"repo": str(repo), "branch": "feat/x", "create_branch": True}
+    )
+    assert r.status_code == 200, r.text
+    wt_path = r.json()["path"]
+
+    listed = client.get("/api/worktrees", params={"repo": str(repo)}).json()["worktrees"]
+    assert any(w["path"] == str(Path(wt_path).resolve()) for w in listed)
+    assert listed[0]["state"] == "orphan"  # no live session in this test
+
+    reaped = client.post("/api/worktrees/reap", json={"path": wt_path, "force": True})
+    assert reaped.status_code == 200
+    assert reaped.json()["status"] == "removed"
+
+
+def test_ls_uses_stubbed_sessions_not_real_tmux(client, tmp_path):
+    from lumbergh.routers import worktrees as wt_router
+    from lumbergh.tests.test_worktrees import _init_repo
+
+    repo = _init_repo(tmp_path / "app")
+    r = client.post(
+        "/api/worktrees", json={"repo": str(repo), "branch": "feat/y", "create_branch": True}
+    )
+    wt_path = r.json()["path"]
+
+    wt_router.get_stored_sessions = lambda: {
+        "kb-sentinel": {"workdir": wt_path, "agent_provider": "sentinel"}
+    }
+    wt_router.list_tmux_sessions = lambda: [{"name": "kb-sentinel"}]
+
+    listed = client.get("/api/worktrees", params={"repo": str(repo)}).json()["worktrees"]
+    row = next(w for w in listed if w["path"] == str(Path(wt_path).resolve()))
+    assert row["state"] == "active"
+    assert row["session"] == "kb-sentinel"
+    assert row["agent"] == "sentinel"
+
+
+def test_ls_without_repo_returns_worktrees_from_all_repos(client, tmp_path):
+    from lumbergh.tests.test_worktrees import _init_repo
+
+    repo_a = _init_repo(tmp_path / "app-a")
+    repo_b = _init_repo(tmp_path / "app-b")
+    r_a = client.post(
+        "/api/worktrees", json={"repo": str(repo_a), "branch": "feat/a", "create_branch": True}
+    )
+    r_b = client.post(
+        "/api/worktrees", json={"repo": str(repo_b), "branch": "feat/b", "create_branch": True}
+    )
+    assert r_a.status_code == 200, r_a.text
+    assert r_b.status_code == 200, r_b.text
+
+    listed = client.get("/api/worktrees").json()["worktrees"]
+    repos = {w["repo"] for w in listed}
+    assert repos == {"app-a", "app-b"}
+
+
+def test_adopt_of_hand_made_worktree(client, tmp_path):
+    from lumbergh.tests.test_worktrees import _git, _init_repo
+
+    repo = _init_repo(tmp_path / "app")
+    wt = tmp_path / "hand-made-wt"
+    _git(repo, "worktree", "add", "-q", "-b", "feat/manual", str(wt))
+
+    adopted = client.post("/api/worktrees/adopt", json={"path": str(wt), "session": "kb-2"})
+    assert adopted.status_code == 200
+    body = adopted.json()
+    assert body["status"] == "adopted"
+    assert body["branch"] == "feat/manual"
+    assert body["parent_repo"] == str(repo.resolve())
+    assert body["associated_session"] == "kb-2"
+
+
+def test_link_then_unlink_promotes_symlink_to_copy(client, tmp_path):
+    from lumbergh.tests.test_worktrees import _init_repo
+
+    repo = _init_repo(tmp_path / "app")
+    (repo / ".venv").mkdir()
+    (repo / ".venv" / "marker").write_text("v")
+
+    r = client.post(
+        "/api/worktrees", json={"repo": str(repo), "branch": "feat/z", "create_branch": True}
+    )
+    wt = Path(r.json()["path"])
+    assert (wt / ".venv").is_symlink()
+
+    unlinked = client.post("/api/worktrees/unlink", json={"path": str(wt)})
+    assert unlinked.status_code == 200
+    assert unlinked.json()["unlinked"] == [{"path": ".venv", "status": "copied"}]
+    assert not (wt / ".venv").is_symlink()
+    assert (wt / ".venv" / "marker").read_text() == "v"
+
+    linked = client.post("/api/worktrees/link", json={"path": str(wt)})
+    assert linked.status_code == 200
+    assert linked.json() == {"linked": []}  # already present post-unlink -> plan_links skips it

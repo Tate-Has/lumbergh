@@ -137,6 +137,11 @@ def get_global_db() -> TinyDB:
     return _get_cached_db(CONFIG_DIR / "global.json")
 
 
+def get_worktrees_db() -> TinyDB:
+    """TinyDB instance for the worktree metadata overlay (reconciled with git)."""
+    return _get_cached_db(CONFIG_DIR / "worktrees.json")
+
+
 def get_project_db(project_path: Path) -> TinyDB:
     """
     Get a TinyDB instance for project-specific data.

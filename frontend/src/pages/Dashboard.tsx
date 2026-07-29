@@ -17,6 +17,7 @@ import { getApiBase } from '../config'
 import SessionCard from '../components/SessionCard'
 import CreateSessionModal from '../components/CreateSessionModal'
 import SettingsModal from '../components/SettingsModal'
+import WorktreePanel from '../components/WorktreePanel'
 import Button from '../components/ui/Button'
 import Banner from '../components/ui/Banner'
 import { useTheme } from '../hooks/useTheme'
@@ -731,6 +732,7 @@ export default function Dashboard() {
       {/* Main content */}
       <main className="flex-1 overflow-y-auto p-4">
         <div className="max-w-6xl mx-auto">
+          <WorktreePanel />
           <DashboardContent
             loading={loading}
             error={error}

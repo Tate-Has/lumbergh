@@ -116,7 +116,6 @@ class WorktreeConfig(BaseModel):
 
     parent_repo: str  # Path to parent git repository
     branch: str  # Branch name to checkout/create
-    reset_to: str | None = None  # If set, reset branch to this commit after checkout
     create_branch: bool = False
     base_branch: str | None = None
 

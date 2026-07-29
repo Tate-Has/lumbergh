@@ -24,8 +24,19 @@ FLAGS = {
     "wait-output": {"--session", "--match", "--regex", "--timeout", "--lines"},
     "prompt": {"--session", "--wait"},
     "skill": {"--dir", "--check"},
+    "worktree": {
+        "--repo",
+        "--branch",
+        "--base",
+        "--session",
+        "--intent",
+        "--new",
+        "--force",
+        "--rm-branch",
+        "--json",
+    },
 }
-_BOOL_FLAGS = {"--full", "--wait", "--check"}
+_BOOL_FLAGS = {"--full", "--wait", "--check", "--new", "--force", "--rm-branch", "--json"}
 
 
 def _emit(s: str) -> None:
@@ -91,24 +102,23 @@ def main(argv=None) -> int:
             perr, f"valid flags for `{command or 'lb'}`: {valid} (--help always allowed)", 2
         )
 
+    dispatch = {
+        "": lambda: _cmd_home(),
+        "state": lambda: _cmd_state(_target(flags)),
+        "read": lambda: _cmd_read(_target(flags), flags),
+        "wait": lambda: _cmd_wait(_target(flags), flags),
+        "wait-output": lambda: _cmd_wait_output(_target(flags), flags),
+        "prompt": lambda: _cmd_prompt(_target(flags), positional, flags),
+        "skill": lambda: _cmd_skill(positional, flags),
+        "worktree": lambda: _cmd_worktree(positional, flags),
+    }
+    handler = dispatch.get(command)
+    if handler is None:
+        return _err(f"unknown command `{command}`", "run `lb` for the home view", 2)
     try:
-        if command == "":
-            return _cmd_home()
-        if command == "state":
-            return _cmd_state(_target(flags))
-        if command == "read":
-            return _cmd_read(_target(flags), flags)
-        if command == "wait":
-            return _cmd_wait(_target(flags), flags)
-        if command == "wait-output":
-            return _cmd_wait_output(_target(flags), flags)
-        if command == "prompt":
-            return _cmd_prompt(_target(flags), positional, flags)
-        if command == "skill":
-            return _cmd_skill(positional, flags)
+        return handler()
     except httpx.ConnectError:
         return _err("Lumbergh server is not running", "start it with `lumbergh`, then retry", 1)
-    return _err(f"unknown command `{command}`", "run `lb` for the home view", 2)
 
 
 def _need_session(session) -> int | None:
@@ -292,6 +302,14 @@ def _cmd_skill(positional, flags) -> int:
         return 0
     _emit(skill.SKILL_MD)
     return 0
+
+
+def _cmd_worktree(positional, flags) -> int:
+    from lumbergh.agent_cli import worktree as wt
+
+    sub = positional[0] if positional else ""
+    rest = positional[1:] if positional else []
+    return wt.run(sub, flags, rest)
 
 
 if __name__ == "__main__":
