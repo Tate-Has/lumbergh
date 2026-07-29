@@ -55,6 +55,7 @@ EXT_TO_LANGUAGE = {
     ".toml": "toml",
     ".csv": "csv",
     ".tsv": "tsv",
+    ".feature": "gherkin",
 }
 
 # Directories to ignore when listing/searching files

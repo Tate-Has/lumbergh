@@ -55,6 +55,7 @@ export function getLangFromPath(path: string): string {
     sh: 'bash',
     yml: 'yaml',
     yaml: 'yaml',
+    feature: 'gherkin',
   }
   return extMap[ext] || 'plaintext'
 }

@@ -42,6 +42,9 @@ class TestGetFileLanguage:
     def test_javascript(self):
         assert get_file_language("index.js") == "javascript"
 
+    def test_gherkin(self):
+        assert get_file_language("login.feature") == "gherkin"
+
     def test_unknown_extension(self):
         assert get_file_language("data.xyz123") == "text"
 
