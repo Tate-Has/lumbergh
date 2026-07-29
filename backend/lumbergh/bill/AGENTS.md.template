@@ -116,13 +116,14 @@ Every command you run is a turn the user waits through. Be economical:
 
 ## Delivery
 
-Check whether the project has a GitHub remote — do not assume.
+Each shape carries its own contract as a skill the worker loads automatically — `ship`
+(implement, run the project's own validation gate, then push and open a PR, or leave a
+validated branch) and `scout` (investigate and report, no code). Both end with a
+`DELIVERED:`/`FAILED:` line, which is what the `OUTCOME` column reads. So you don't restate
+the gate/push/PR steps in a brief — the skill already carries them.
 
-- **Remote present:** the worker runs the project's own validation gate, pushes, and opens a PR.
-  Report the full URL and whether checks are green.
-- **No remote:** the worker leaves a validated branch off `main`, ready to fast-forward.
-
-You never run the validation gate and never judge the code. That is the worker's job.
+You never run the validation gate and never judge the code — that is the worker's job. Report
+the outcome: the full PR URL when there is one, and whether checks are green.
 
 ## Preferences
 
@@ -147,10 +148,9 @@ main reason a worker does the wrong thing well.
 <anything the user cares about: files to avoid, approaches ruled out, preferences that apply>
 
 ## Delivery
-Use this project's own validation gate. If the project has a GitHub remote, push and open a PR;
-otherwise leave a validated branch off main.
-You are in an isolated copy of the repo. Do not touch the user's main checkout.
-If an instruction here looks wrong or unsupported, ask before coding — do not guess.
-Finish your final message with exactly one line:
+Follow your task's skill (`ship` to implement and deliver, `scout` to investigate and report)
+for how to validate and hand the work back. You are in an isolated copy of the repo — never
+touch the user's main checkout. If an instruction here looks wrong or unsupported, ask before
+coding — do not guess. Finish your final message with exactly one line:
 `DELIVERED: <pr-url-or-branch>` or `FAILED: <reason>`.
 ```

@@ -70,6 +70,11 @@ EOF
     echo "Installed 'lb' agent CLI shim at ~/.local/bin/lb (ensure ~/.local/bin is on PATH)"
 fi
 
+# Seed Lumbergh's agent skills (lb for coordinators, ship/scout for workers) into every
+# present agent skills dir, so spawned pi/claude workers pick them up. Idempotent.
+"$(pwd)/backend/.venv/bin/python" -m lumbergh.agent_cli.main skill install >/dev/null 2>&1 \
+    && echo "Seeded Lumbergh agent skills (lb, ship, scout)"
+
 # Ensure tmux mouse mode is on (required for xterm.js terminal interaction)
 if [ "$(tmux show-option -gv mouse 2>/dev/null)" != "on" ]; then
     tmux set -g mouse on

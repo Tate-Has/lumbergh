@@ -550,7 +550,16 @@ def spawn(body: SpawnBody):
         raise _fail("worktree", created["error"], "fix the branch or repo and retry")
 
     workdir = Path(created["path"])
+    from lumbergh.agent_cli import skill
     from lumbergh.providers import get_launch_command
+
+    # Best-effort, before the agent boots and reads its skills: a worker should always have
+    # the ship/scout contract available, so the brief needn't restate it. Never fail a spawn
+    # over this — a missing skill only costs the worker a little context, not the task.
+    try:
+        skill.ensure_worker_skills()
+    except Exception:
+        logger.warning("could not install worker skills for %s", name, exc_info=True)
 
     launch = get_launch_command(body.agent_provider, get_settings().get("defaultAgent"))
     try:

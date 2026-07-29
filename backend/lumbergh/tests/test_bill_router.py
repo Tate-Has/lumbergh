@@ -16,6 +16,15 @@ def client():
     return TestClient(app)
 
 
+@pytest.fixture(autouse=True)
+def _no_real_skill_writes(monkeypatch):
+    """The spawn path seeds worker skills into real agent dirs (~/.claude, ~/.pi). Stub it
+    so tests never touch the user's home; the behavior itself is covered in test_lb_skill."""
+    from lumbergh.agent_cli import skill
+
+    monkeypatch.setattr(skill, "ensure_worker_skills", list)
+
+
 def test_fleet_returns_rows(client, monkeypatch):
     monkeypatch.setattr(
         bill,
@@ -557,6 +566,40 @@ def test_spawn_accepts_a_valid_name(client, tmp_path, monkeypatch):
     )
     assert r.status_code == 200
     assert r.json()["session"] == "task-slug"
+
+
+def test_spawn_seeds_worker_skills_before_launch(client, tmp_path, monkeypatch):
+    # A spawned worker must have the ship/scout contract available, so the brief needn't
+    # restate it. Spawn seeds the skills before the agent boots.
+    brief = tmp_path / "b.md"
+    brief.write_text("do the thing")
+    (tmp_path / ".git").mkdir()
+    monkeypatch.setattr("lumbergh.routers.sessions.get_live_sessions", dict)
+    monkeypatch.setattr(
+        bill.worktrees,
+        "create",
+        lambda *a, **kw: {"path": str(tmp_path / "wt"), "links_applied": []},  # noqa: ARG005
+    )
+    calls = []
+    from lumbergh.agent_cli import skill
+
+    monkeypatch.setattr(skill, "ensure_worker_skills", lambda: calls.append(True) or [])
+    monkeypatch.setattr(bill, "create_tmux_session", lambda *a, **kw: None)  # noqa: ARG005
+    monkeypatch.setattr(bill, "_store_session", lambda **kw: None)  # noqa: ARG005
+    monkeypatch.setattr(bill, "_deliver_brief", lambda *a, **kw: bill.DeliveryResult(True, ""))  # noqa: ARG005
+
+    r = client.post(
+        "/api/bill/spawn",
+        json={
+            "repo": str(tmp_path),
+            "branch": "feat/x",
+            "kind": "ship",
+            "brief_path": str(brief),
+            "name": "task-slug",
+        },
+    )
+    assert r.status_code == 200
+    assert calls == [True]
 
 
 def test_spawn_preserves_the_original_stage_when_unwind_itself_fails(client, tmp_path, monkeypatch):

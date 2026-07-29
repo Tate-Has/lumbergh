@@ -2,19 +2,29 @@ import lumbergh.agent_cli.main as cli
 from lumbergh.agent_cli import skill
 
 
-def test_committed_skill_matches_source():
-    # CI drift guard: the committed SKILL.md must equal the canonical string.
+def test_committed_skills_match_source():
+    # CI drift guard: every committed SKILL.md must equal its canonical string.
     assert skill.check() is True
-    assert skill.committed_path().read_text() == skill.SKILL_MD
+    for name, content in skill.SKILLS.items():
+        assert skill.committed_path(name).read_text() == content
 
 
-def test_install_writes_and_is_idempotent(tmp_path):
+def test_install_writes_every_skill_and_is_idempotent(tmp_path):
     written = skill.install([tmp_path])
-    target = tmp_path / "lb" / "SKILL.md"
-    assert written == [target]
-    assert target.read_text() == skill.SKILL_MD
+    for name, content in skill.SKILLS.items():
+        target = tmp_path / name / "SKILL.md"
+        assert target in written
+        assert target.read_text() == content
     skill.install([tmp_path])  # idempotent — content unchanged
-    assert target.read_text() == skill.SKILL_MD
+    assert (tmp_path / "lb" / "SKILL.md").read_text() == skill.SKILLS["lb"]
+
+
+def test_install_can_target_a_subset_of_skills(tmp_path):
+    written = skill.install([tmp_path], names=["ship", "scout"])
+    assert (tmp_path / "ship" / "SKILL.md").exists()
+    assert (tmp_path / "scout" / "SKILL.md").exists()
+    assert not (tmp_path / "lb").exists()
+    assert len(written) == 2
 
 
 def _run(monkeypatch, argv):
@@ -41,8 +51,10 @@ def test_lb_skill_install_reports_targets(monkeypatch, tmp_path):
     monkeypatch.setattr(skill, "detect_dirs", lambda: [tmp_path])
     code, out = _run(monkeypatch, ["skill", "install"])
     assert code == 0
-    assert "installed[1]{path}:" in out
+    assert f"installed[{len(skill.SKILLS)}]{{path}}:" in out
     assert (tmp_path / "lb" / "SKILL.md").exists()
+    assert (tmp_path / "ship" / "SKILL.md").exists()
+    assert (tmp_path / "scout" / "SKILL.md").exists()
 
 
 def test_lb_skill_install_no_dirs(monkeypatch):
