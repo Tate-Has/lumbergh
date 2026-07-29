@@ -514,7 +514,7 @@ export default function SessionDetail() {
 
   const renderMobileTabContent = () => (
     <>
-      {mobileTab === 'activity' && name && <ActivityFeed sessionName={name} />}
+      {mobileTab === 'activity' && name && <ActivityFeed key={name} sessionName={name} />}
       {mobileTab === 'git' && (
         <GitTab
           sessionName={name}
@@ -651,7 +651,7 @@ export default function SessionDetail() {
       </div>
       {/* Panel content */}
       <div className="flex-1 min-h-0 overflow-hidden">
-        {rightPanel === 'activity' && name && <ActivityFeed sessionName={name} />}
+        {rightPanel === 'activity' && name && <ActivityFeed key={name} sessionName={name} />}
         {rightPanel === 'git' && (
           <GitTab
             key={name}
