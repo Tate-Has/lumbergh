@@ -30,6 +30,12 @@ _POLL_INTERVAL = 1.5
 _MAX_WAIT_TIMEOUT = 900.0
 _OUTCOME_TAIL_EVENTS = 15
 
+# Worktree paths of dead tasks Bill has already been shown. A dead task has no live session
+# to hold its seen/unseen flag, so its "surface once" lives here instead. In-memory only:
+# after a restart re-surfacing a dead task once is harmless, and it never grows without bound
+# because `_mark_seen` prunes it back to the dead tasks still in the fleet.
+_dead_acked: set[str] = set()
+
 BILL_SESSION = "bill"
 BILL_PROVIDER = "pi"
 BILL_ORIGIN = "bill"
@@ -74,12 +80,13 @@ def _fleet_rows(origin: str | None, with_outcome: bool = False) -> list[dict]:
         since_of=idle_monitor.state_since_seconds,
         unseen_of=session_attention.is_unseen,
         origin=origin,
+        dead_acked=_dead_acked,
     )
     return _add_outcomes(rows) if with_outcome else rows
 
 
 def _mark_seen(rows: list[dict]) -> None:
-    """Bill has been shown these tasks, so a finished one should stop waking him.
+    """Bill has been shown these tasks, so ones he can't act on should stop waking him.
 
     A finished worker goes idle+unseen, and ``needs_attention`` reads idle+unseen as
     "surface this once". Nothing but a human opening the session in the web UI ever
@@ -87,13 +94,23 @@ def _mark_seen(rows: list[dict]) -> None:
     while the user decides whether to land it — re-woke ``lb fleet --wait`` and the
     nudge on every poll, forever. Surfacing the fleet to Bill *is* him seeing it.
 
-    Clearing every shown row (not just idle ones) is safe: a worker that still needs
-    action is blocked/error/dead, and those wake on their state, not on unseen — so
-    Bill can never miss one just because it was marked seen.
+    A ``dead`` task (its session gone — the user killed it, or it crashed) has no live
+    session to hold that flag, so it is acknowledged by path in ``_dead_acked`` instead.
+    Same "surface once then quiet" contract; without it a dead task the user is driving
+    (whose ``reap`` refuses because of their uncommitted work) nagged Bill with no exit
+    but a destructive force-reap. ``_dead_acked`` is then pruned back to the dead tasks
+    still present, so a reaped-and-recreated path surfaces afresh and it never leaks.
+
+    Clearing every shown live row (not just idle ones) is safe: a worker that still needs
+    action is blocked/error, and those wake on their state, not on unseen — so Bill can
+    never miss one just because it was marked seen.
     """
     for row in rows:
         if row.get("session"):
             session_attention.clear_unseen(row["session"])
+        elif row.get("state") == "dead":
+            _dead_acked.add(row["path"])
+    _dead_acked.intersection_update(r["path"] for r in rows if r.get("state") == "dead")
 
 
 @router.get("/fleet")

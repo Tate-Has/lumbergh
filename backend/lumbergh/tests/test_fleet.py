@@ -100,6 +100,47 @@ def test_snapshot_marks_a_registry_row_with_a_dead_session(tmp_path, monkeypatch
 
 
 @pytest.mark.usefixtures("registry")
+def test_snapshot_marks_a_dead_row_seen_only_once_acknowledged(tmp_path, monkeypatch):
+    # A dead task has no live session to carry the seen/unseen overlay, so its `unseen`
+    # comes from `dead_acked`: the paths Bill has already been shown. Fresh -> unseen ->
+    # wakes once; acknowledged -> seen -> quiet. This is what stops the reap-refused loop.
+    path = str((tmp_path / "a-wt").resolve())
+    worktrees.record_worktree(
+        tmp_path / "a-wt", tmp_path / "a", "feat/a", "t", session="w-a", kind="ship", origin="bill"
+    )
+    monkeypatch.setattr(
+        worktrees,
+        "reconcile",
+        _fake_reconcile(
+            {
+                str((tmp_path / "a").resolve()): [
+                    {
+                        "path": path,
+                        "repo": "a",
+                        "branch": "feat/a",
+                        "session": None,
+                        "agent": None,
+                        "state": "orphan",
+                    }
+                ]
+            }
+        ),
+    )
+
+    def snap(dead_acked):
+        return fleet.snapshot(
+            {},
+            state_of=lambda n: "idle",  # noqa: ARG005
+            since_of=lambda n: 0.0,  # noqa: ARG005
+            unseen_of=lambda n: False,  # noqa: ARG005
+            dead_acked=dead_acked,
+        )
+
+    assert snap(set())[0]["unseen"] is True
+    assert snap({path})[0]["unseen"] is False
+
+
+@pytest.mark.usefixtures("registry")
 def test_snapshot_uses_live_state_for_an_active_session(tmp_path, monkeypatch):
     worktrees.record_worktree(
         tmp_path / "a-wt", tmp_path / "a", "feat/a", "t", session="w-a", kind="ship", origin="bill"
@@ -180,7 +221,13 @@ def test_snapshot_filters_by_origin(tmp_path, monkeypatch):
     [
         ("blocked", False, True),
         ("error", False, True),
-        ("dead", False, True),
+        # A worker Bill cannot resolve — the user killed its session, or it crashed —
+        # goes `dead`. It must surface once (so Bill can report it) and then stay quiet:
+        # Bill's only lever on a dead task is `reap`, which the user gates. Waking on it
+        # every poll is the loop the user hit, so `dead` follows the once-while-unseen
+        # rule, not the always-wake rule of blocked/error.
+        ("dead", True, True),
+        ("dead", False, False),
         ("idle", True, True),
         ("idle", False, False),
         ("working", False, False),

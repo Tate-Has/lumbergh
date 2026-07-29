@@ -253,6 +253,43 @@ def test_fleet_wait_still_wakes_on_a_blocked_task_after_it_was_seen(client, monk
     assert client.get("/api/bill/fleet/wait", params={"timeout": 1}).json()["woke"] is True
 
 
+@pytest.mark.usefixtures("attention")
+def test_fleet_wait_stops_waking_on_a_dead_task_the_user_left(client, monkeypatch):
+    # The exact loop the user hit: they killed a worker's session, leaving a `dead`
+    # worktree with their own uncommitted changes that `reap` refuses to remove. `dead`
+    # used to wake Bill on every `lb fleet --wait` with no safe exit (only a destructive
+    # `reap --force`). It must surface once, then stay quiet until the task changes or is
+    # reaped. Driven through the real `_fleet_rows`, so the dead_acked plumbing is exercised.
+    from lumbergh import worktrees
+    from lumbergh.routers import worktrees as worktrees_router
+
+    path = "/wt/aio-work"
+    monkeypatch.setattr(bill, "_dead_acked", set())
+    monkeypatch.setattr(bill, "_POLL_INTERVAL", 0.01)
+    monkeypatch.setattr(worktrees_router, "_live_sessions", dict)
+    monkeypatch.setattr(
+        worktrees,
+        "reconcile_all",
+        lambda live: [{"path": path, "repo": "aio", "branch": "aio-work", "session": None}],  # noqa: ARG005
+    )
+    monkeypatch.setattr(
+        worktrees,
+        "get_entry",
+        lambda p: {  # noqa: ARG005
+            "associated_session": "aio-scout",
+            "parent_repo": "/repo/aio",
+            "kind": "scout",
+            "origin": None,
+        },
+    )
+
+    first = client.get("/api/bill/fleet/wait", params={"timeout": 1}).json()
+    second = client.get("/api/bill/fleet/wait", params={"timeout": 0.1}).json()
+    assert first["tasks"][0]["state"] == "dead"
+    assert first["woke"] is True
+    assert second["woke"] is False
+
+
 def test_outcome_of_reads_the_workers_final_line(monkeypatch):
     class _Event:
         def __init__(self, text):

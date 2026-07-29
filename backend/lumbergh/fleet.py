@@ -16,7 +16,11 @@ from lumbergh import worktrees
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-ATTENTION_STATES = {"blocked", "error", "dead"}
+# States where a live worker needs Bill and he can act on it (answer a prompt, report an
+# error). These wake him on their state alone — he can never miss one. `dead` is deliberately
+# not here: a dead worker is one he cannot resolve (its session is gone, and `reap` is the
+# user's call), so it surfaces once via `unseen` and then stays quiet — see `needs_attention`.
+ATTENTION_STATES = {"blocked", "error"}
 
 _OUTCOME = re.compile(r"^(DELIVERED|FAILED):\s*(.+)$")
 
@@ -27,7 +31,9 @@ def snapshot(
     since_of: Callable[[str], float | None],
     unseen_of: Callable[[str], bool],
     origin: str | None = None,
+    dead_acked: set[str] | None = None,
 ) -> list[dict]:
+    dead_acked = dead_acked or set()
     rows: list[dict] = []
     for row in worktrees.reconcile_all(live_sessions):
         entry = worktrees.get_entry(Path(row["path"])) or {}
@@ -41,7 +47,10 @@ def snapshot(
         else:
             state = "dead" if entry.get("associated_session") else "orphan"
             since = None
-            unseen = False
+            # A dead task has no live session to carry the seen/unseen overlay, so its
+            # attention is tracked by path in `dead_acked`: unseen until Bill has been
+            # shown it once. (An orphan never needs attention, so its flag is moot.)
+            unseen = state == "dead" and row["path"] not in dead_acked
         rows.append(
             {
                 "task": session,
@@ -65,7 +74,10 @@ def snapshot(
 def needs_attention(row: dict) -> bool:
     if row["state"] in ATTENTION_STATES:
         return True
-    return row["state"] == "idle" and bool(row.get("unseen"))
+    # A finished worker (`idle`) and one Bill cannot resolve (`dead`) both surface once,
+    # then go quiet: showing Bill the fleet clears `unseen`. Waking on `dead` every poll
+    # was the reap-refused loop the user hit.
+    return row["state"] in ("idle", "dead") and bool(row.get("unseen"))
 
 
 def any_needs_attention(rows: list[dict]) -> bool:
