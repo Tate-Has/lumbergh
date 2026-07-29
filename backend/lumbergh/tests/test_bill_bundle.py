@@ -56,6 +56,14 @@ def test_bundle_forbids_writing_code_and_merging():
     assert "lb spawn" in body
 
 
+def test_bundle_documents_reading_a_workers_terminal_and_state():
+    # Without these, a worker looks merely "idle" while it is actually parked on a
+    # trust dialog, and Bill has no lb way to see it — so he reaches for raw tmux.
+    body = bill.render("professional")
+    assert "--source pane" in body
+    assert "lb state" in body
+
+
 def test_personality_never_leaks_into_the_brief_template():
     professional = bill.render("professional")
     flair = bill.render("lumbergh")

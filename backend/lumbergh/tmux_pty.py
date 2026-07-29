@@ -296,6 +296,26 @@ def send_text(session_name: str, text: str) -> bool:
         return False
 
 
+def send_key(session_name: str, key: str = "Enter") -> bool:
+    """Send a single named key (e.g. ``Enter``) with no literal text.
+
+    Used to answer a startup dialog whose default is already the right choice —
+    the folder-trust prompt, whose highlighted option is "Yes, I trust this
+    folder" — without typing anything into an input box.
+    """
+    try:
+        r = subprocess.run(
+            [TMUX_CMD, "send-keys", "-t", session_name, key],
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=5,
+        )
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
 def kill_tmux_session(session_name: str) -> bool:
     """Kill a tmux session outright, e.g. to unwind a session that never got its brief."""
     try:

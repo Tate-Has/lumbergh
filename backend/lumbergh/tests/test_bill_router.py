@@ -189,6 +189,70 @@ def test_fleet_wait_clamps_an_absurd_timeout(client, monkeypatch):
     assert time.monotonic() - started < 5
 
 
+@pytest.fixture
+def attention(monkeypatch):
+    """Real attention overlay, reset per test, with persistence stubbed to a no-op
+    so tests never touch the user's real config file."""
+    from lumbergh import session_attention
+
+    async def _noop():
+        return None
+
+    session_attention.reset()
+    monkeypatch.setattr(session_attention, "persist", _noop)
+    yield session_attention
+    session_attention.reset()
+
+
+def test_fleet_marks_a_finished_task_seen_so_it_stops_waking(client, monkeypatch, attention):
+    # A delivered worker sits idle+unseen. `needs_attention` treats idle+unseen as
+    # "wake Bill once"; nothing but a human opening the web UI ever cleared it, so it
+    # nagged `lb fleet --wait` and the nudge forever. Showing Bill the fleet is him
+    # seeing it.
+    attention.mark_attention("w-done", "idle")
+    assert attention.is_unseen("w-done")
+    monkeypatch.setattr(
+        bill,
+        "_fleet_rows",
+        lambda origin, with_outcome=False: [  # noqa: ARG005
+            {"task": "w-done", "session": "w-done", "state": "idle", "unseen": True}
+        ],
+    )
+    client.get("/api/bill/fleet")
+    assert not attention.is_unseen("w-done")
+
+
+def test_fleet_wait_marks_a_finished_task_seen_on_the_wake(client, monkeypatch, attention):
+    attention.mark_attention("w-done", "idle")
+    monkeypatch.setattr(
+        bill,
+        "_fleet_rows",
+        lambda origin, with_outcome=False: [  # noqa: ARG005
+            {"task": "w-done", "session": "w-done", "state": "idle", "unseen": True}
+        ],
+    )
+    body = client.get("/api/bill/fleet/wait", params={"timeout": 1}).json()
+    assert body["woke"] is True
+    assert not attention.is_unseen("w-done")
+
+
+def test_fleet_wait_still_wakes_on_a_blocked_task_after_it_was_seen(client, monkeypatch, attention):
+    # Marking seen must not silence a worker that still needs action: a blocked task
+    # wakes on its state, not on unseen, so Bill can never miss it.
+    attention.mark_attention("w-blocked", "blocked")
+    monkeypatch.setattr(bill, "_POLL_INTERVAL", 0.01)
+    monkeypatch.setattr(
+        bill,
+        "_fleet_rows",
+        lambda origin, with_outcome=False: [  # noqa: ARG005
+            {"task": "w-blocked", "session": "w-blocked", "state": "blocked", "unseen": True}
+        ],
+    )
+    assert client.get("/api/bill/fleet/wait", params={"timeout": 1}).json()["woke"] is True
+    assert not attention.is_unseen("w-blocked")
+    assert client.get("/api/bill/fleet/wait", params={"timeout": 1}).json()["woke"] is True
+
+
 def test_outcome_of_reads_the_workers_final_line(monkeypatch):
     class _Event:
         def __init__(self, text):
@@ -442,7 +506,7 @@ def test_spawn_accepts_a_valid_name(client, tmp_path, monkeypatch):
     )
     monkeypatch.setattr(bill, "create_tmux_session", lambda *a, **kw: None)  # noqa: ARG005
     monkeypatch.setattr(bill, "_store_session", lambda **kw: None)  # noqa: ARG005
-    monkeypatch.setattr(bill, "_deliver_brief", lambda *a, **kw: True)  # noqa: ARG005
+    monkeypatch.setattr(bill, "_deliver_brief", lambda *a, **kw: bill.DeliveryResult(True, ""))  # noqa: ARG005
 
     r = client.post(
         "/api/bill/spawn",
@@ -511,7 +575,11 @@ def test_spawn_unwinds_fully_when_the_brief_never_delivers(client, tmp_path, mon
     )
     monkeypatch.setattr(bill, "create_tmux_session", lambda *a, **kw: None)  # noqa: ARG005
     monkeypatch.setattr(bill, "_store_session", lambda **kw: None)  # noqa: ARG005
-    monkeypatch.setattr(bill, "send_text", lambda name, text: False)  # noqa: ARG005
+    monkeypatch.setattr(
+        bill,
+        "_deliver_brief",
+        lambda *a, **kw: bill.DeliveryResult(False, "worker never reached a ready input prompt"),  # noqa: ARG005
+    )
     monkeypatch.setattr(bill, "kill_tmux_session", killed.append)
 
     def record_reap(path, **kw):  # noqa: ARG001
@@ -531,47 +599,15 @@ def test_spawn_unwinds_fully_when_the_brief_never_delivers(client, tmp_path, mon
         },
     )
     assert r.status_code == 400
-    assert r.json()["detail"]["stage"] == "delivery"
+    body = r.json()["detail"]
+    assert body["stage"] == "delivery"
+    # The failure carries the delivery reason and points Bill at the pane, not a
+    # bare "check tmux" — the terminal is exactly what he needs to look at.
+    assert "ready input prompt" in body["error"]
+    assert "lb read --source pane" in body["help"]
     assert killed == ["feat-x"]
     assert reaped["path"] == str(tmp_path / "wt")
     assert removed == [Path(tmp_path / "wt")]
-
-
-def test_spawn_delivers_on_a_later_attempt_without_unwinding(client, tmp_path, monkeypatch):
-    brief = tmp_path / "b.md"
-    brief.write_text("do the thing")
-    (tmp_path / ".git").mkdir()
-    attempts = []
-    killed = []
-
-    monkeypatch.setattr("lumbergh.routers.sessions.get_live_sessions", dict)
-    monkeypatch.setattr(
-        bill.worktrees,
-        "create",
-        lambda *a, **kw: {"path": str(tmp_path / "wt"), "links_applied": []},  # noqa: ARG005
-    )
-    monkeypatch.setattr(bill, "create_tmux_session", lambda *a, **kw: None)  # noqa: ARG005
-    monkeypatch.setattr(bill, "_store_session", lambda **kw: None)  # noqa: ARG005
-    monkeypatch.setattr(bill, "kill_tmux_session", killed.append)
-
-    def flaky_send_text(name, text):  # noqa: ARG001
-        attempts.append(name)
-        return len(attempts) > 1
-
-    monkeypatch.setattr(bill, "send_text", flaky_send_text)
-
-    r = client.post(
-        "/api/bill/spawn",
-        json={
-            "repo": str(tmp_path),
-            "branch": "feat/x",
-            "kind": "ship",
-            "brief_path": str(brief),
-        },
-    )
-    assert r.status_code == 200, r.text
-    assert len(attempts) == 2
-    assert killed == []
 
 
 def test_spawn_unwinds_fully_when_storing_the_session_raises(client, tmp_path, monkeypatch):
@@ -639,7 +675,9 @@ def test_spawn_happy_path_records_the_task_and_delivers_the_brief(client, tmp_pa
     monkeypatch.setattr(bill, "create_tmux_session", lambda *a, **kw: None)  # noqa: ARG005
     monkeypatch.setattr(bill, "_store_session", lambda **kw: stored.update(kw))
     monkeypatch.setattr(
-        bill, "send_text", lambda name, text: sent.update(name=name, text=text) or True
+        bill,
+        "deliver_when_ready",
+        lambda name, text: sent.update(name=name, text=text) or bill.DeliveryResult(True, ""),
     )
 
     r = client.post(
@@ -948,7 +986,11 @@ def test_spawn_accepts_a_brief_path_relative_to_bills_home(client, tmp_path, mon
     )
     monkeypatch.setattr(bill, "create_tmux_session", lambda *a, **kw: None)  # noqa: ARG005
     monkeypatch.setattr(bill, "_store_session", lambda **kw: None)  # noqa: ARG005
-    monkeypatch.setattr(bill, "send_text", lambda name, text: sent.update(text=text) or True)  # noqa: ARG005
+    monkeypatch.setattr(
+        bill,
+        "deliver_when_ready",
+        lambda _name, text: sent.update(text=text) or bill.DeliveryResult(True, ""),
+    )
 
     r = client.post(
         "/api/bill/spawn",

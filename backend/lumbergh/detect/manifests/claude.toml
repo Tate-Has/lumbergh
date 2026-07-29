@@ -33,6 +33,21 @@ any = [
 ]
 line_regex = "^\\s*❯?\\s*\\d+\\.\\s*(yes|no)\\b"
 
+# Folder-trust dialog: shown once when Claude Code launches in a directory it has
+# not seen before — which every fresh worktree is. It is quiescent, so without a
+# rule it reads as `idle`, indistinguishable from a booted-and-ready prompt, and a
+# spawn that types the brief here loses it into the void. `--dangerously-skip-
+# permissions` does not bypass this dialog (verified), so detecting it is the only
+# reliable signal that a worker is parked here waiting to be trusted.
+[[rules]]
+id = "folder_trust_prompt"
+state = "blocked"
+priority = 780
+region = "recent"
+not_footer = true
+contains = ["trust this folder"]
+line_regex = "^\\s*❯?\\s*\\d+\\.\\s*yes\\b"
+
 # Interactive login / auth prompts.
 [[rules]]
 id = "interactive_login"

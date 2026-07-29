@@ -19,7 +19,8 @@ from lumbergh.activity.resolve import resolve_adapter
 from lumbergh.activity.resolve import session_meta as _session_meta
 from lumbergh.idle_monitor import idle_monitor
 from lumbergh.routers.sessions import SESSION_NAME_PATTERN, create_tmux_session
-from lumbergh.tmux_pty import kill_tmux_session, send_text
+from lumbergh.spawn_delivery import DeliveryResult, deliver_when_ready
+from lumbergh.tmux_pty import kill_tmux_session
 
 logger = logging.getLogger(__name__)
 
@@ -28,8 +29,6 @@ router = APIRouter(prefix="/api/bill", tags=["bill"])
 _POLL_INTERVAL = 1.5
 _MAX_WAIT_TIMEOUT = 900.0
 _OUTCOME_TAIL_EVENTS = 15
-_DELIVERY_ATTEMPTS = 3
-_DELIVERY_RETRY_DELAY = 0.05
 
 BILL_SESSION = "bill"
 BILL_PROVIDER = "pi"
@@ -79,9 +78,30 @@ def _fleet_rows(origin: str | None, with_outcome: bool = False) -> list[dict]:
     return _add_outcomes(rows) if with_outcome else rows
 
 
+def _mark_seen(rows: list[dict]) -> None:
+    """Bill has been shown these tasks, so a finished one should stop waking him.
+
+    A finished worker goes idle+unseen, and ``needs_attention`` reads idle+unseen as
+    "surface this once". Nothing but a human opening the session in the web UI ever
+    cleared that flag, so a delivered-but-unlanded task — a completely normal state
+    while the user decides whether to land it — re-woke ``lb fleet --wait`` and the
+    nudge on every poll, forever. Surfacing the fleet to Bill *is* him seeing it.
+
+    Clearing every shown row (not just idle ones) is safe: a worker that still needs
+    action is blocked/error/dead, and those wake on their state, not on unseen — so
+    Bill can never miss one just because it was marked seen.
+    """
+    for row in rows:
+        if row.get("session"):
+            session_attention.clear_unseen(row["session"])
+
+
 @router.get("/fleet")
-def get_fleet(origin: str | None = None):
-    rows = _fleet_rows(origin, with_outcome=True)
+async def get_fleet(origin: str | None = None):
+    loop = asyncio.get_running_loop()
+    rows = await loop.run_in_executor(None, _fleet_rows, origin, True)
+    _mark_seen(rows)
+    await session_attention.persist()
     return {"total": len(rows), "tasks": rows}
 
 
@@ -108,6 +128,13 @@ async def wait_fleet(timeout: float = 300.0, origin: str | None = None):
         rows = await loop.run_in_executor(None, _fleet_rows, origin)
         woke = fleet.any_needs_attention(rows)
         if woke or time.monotonic() >= deadline:
+            if woke:
+                # This wake has now surfaced the finished work to Bill; without
+                # marking it seen the same idle+unseen task re-wakes instantly on
+                # his next `--wait`, the loop the user hit. Blocked/error/dead keep
+                # waking on their state (see _mark_seen).
+                _mark_seen(rows)
+                await session_attention.persist()
             return {
                 "woke": woke,
                 "waited": round(time.monotonic() - start, 1),
@@ -429,19 +456,17 @@ def _brief_delivery(brief: Path, kind: str, name: str) -> str:
     )
 
 
-def _deliver_brief(name: str, brief: Path, kind: str) -> bool:
-    """Send the brief pointer, retrying a bounded number of times.
+def _deliver_brief(name: str, brief: Path, kind: str) -> DeliveryResult:
+    """Hand the worker its brief once it can actually receive it.
 
-    A transient tmux hiccup right after session creation is plausible and much
-    cheaper to retry than to tear the task down over.
+    A fresh worker is not ready the instant its session exists: the harness boots
+    for seconds and opens on Claude Code's folder-trust dialog. Typing the brief
+    before its input prompt exists drops it into the void, so this waits for the
+    prompt, answers the trust dialog, delivers, and confirms the worker started —
+    rather than firing once and trusting that tmux accepting the keystrokes means
+    the agent consumed them.
     """
-    text = _brief_delivery(brief, kind, name)
-    for attempt in range(_DELIVERY_ATTEMPTS):
-        if send_text(name, text):
-            return True
-        if attempt < _DELIVERY_ATTEMPTS - 1:
-            time.sleep(_DELIVERY_RETRY_DELAY)
-    return False
+    return deliver_when_ready(name, _brief_delivery(brief, kind, name))
 
 
 def _checked_request(body: SpawnBody) -> tuple[Path, Path, str]:
@@ -540,7 +565,7 @@ def spawn(body: SpawnBody):
         )
 
     try:
-        delivered = _deliver_brief(name, brief, body.kind)
+        delivery = _deliver_brief(name, brief, body.kind)
     except Exception as e:
         raise _unwind_and_fail(
             "delivery",
@@ -550,11 +575,11 @@ def spawn(body: SpawnBody):
             session=name,
         )
 
-    if not delivered:
+    if not delivery.delivered:
         raise _unwind_and_fail(
             "delivery",
-            f"worker did not accept the brief after {_DELIVERY_ATTEMPTS} attempts",
-            "check tmux, then retry",
+            delivery.reason,
+            "inspect the worker's terminal with `lb read --source pane`, then retry",
             workdir,
             session=name,
         )

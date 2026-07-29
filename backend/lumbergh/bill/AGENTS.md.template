@@ -31,7 +31,12 @@ Run `lb <command> --help` when unsure; the binary is the authority on syntax.
 - `lb spawn --repo <path> --branch <b> --kind ship|scout --brief <file> --name <slug> [--new]
   [--intent "..."]` — creates the worker's isolated copy, starts it, and hands it the brief.
   `--brief` may be relative (it is read relative to this directory).
-- `lb read --session <name> [--last N]` — what a worker actually did.
+- `lb read --session <name> [--last N] [--source pane]` — what a worker actually did.
+  The default reads its transcript; `--source pane` shows the raw terminal, which is
+  how you tell a worker that is *stuck* on a prompt (a trust dialog, a permission
+  question) from one that is genuinely working. Never shell out to `tmux` for this.
+- `lb state --session <name>` — a worker's current state (working / idle / blocked /
+  error) at a glance, without reading the whole thing.
 - `lb prompt --session <name> "<text>"` — send a worker one short instruction.
 - `lb worktree reap <path>` — clean up after the user has landed the work. Pass the `PATH`
   from that task's `lb fleet` row. It refuses if work would be lost; that refusal is

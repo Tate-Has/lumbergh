@@ -45,6 +45,33 @@ Do you want to proceed?
   2. No
 """
 
+# Claude Code's one-time folder-trust dialog, shown when it launches in a path
+# it has not seen before — exactly what a fresh worktree is. A worker parked here
+# is quiescent, so without a rule it reads as `idle`, indistinguishable from
+# "booted and ready", and a spawn that types the brief here loses it into the void.
+CLAUDE_FOLDER_TRUST = """\
+──────────────────────────────────────────────
+ Accessing workspace:
+
+ /home/user/src/app-worktrees/fix-thing
+
+ Quick safety check: Is this a project you
+ created or one you trust? (Like your own
+ code, a well-known open source project, or
+ work from your team). If not, take a moment
+ to review what's in this folder first.
+
+ Claude Code'll be able to read, edit, and
+ execute files here.
+
+ Security guide
+
+ ❯ 1. Yes, I trust this folder
+   2. No, exit
+
+ Enter to confirm · Esc to cancel
+"""
+
 CLAUDE_IDLE = """\
 ● Done — all tests pass.
 
@@ -119,6 +146,10 @@ def test_structured_question_menu_is_blocked():
 
 def test_pi_trust_prompt_is_blocked():
     assert classify_overrides(PI_TRUST_PROMPT) == SessionState.BLOCKED
+
+
+def test_folder_trust_dialog_is_blocked():
+    assert classify_overrides(CLAUDE_FOLDER_TRUST) == SessionState.BLOCKED
 
 
 def test_idle_pane_is_not_blocked():

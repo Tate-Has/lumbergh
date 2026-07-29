@@ -41,6 +41,49 @@ def test_create_list_reap_roundtrip(client, tmp_path):
     assert reaped.json()["status"] == "removed"
 
 
+def test_reap_kills_the_associated_session(client, tmp_path, monkeypatch):
+    # A reaped task's tmux session used to linger — visible in `lb` with no worktree
+    # behind it. Reaping the worktree should take its worker down with it.
+    from lumbergh.routers import worktrees as wt_router
+    from lumbergh.tests.test_worktrees import _init_repo
+
+    killed = []
+    monkeypatch.setattr(wt_router, "kill_tmux_session", lambda name: killed.append(name) or True)
+
+    repo = _init_repo(tmp_path / "app")
+    r = client.post(
+        "/api/worktrees",
+        json={"repo": str(repo), "branch": "feat/x", "create_branch": True, "session": "w-x"},
+    )
+    wt_path = r.json()["path"]
+
+    reaped = client.post("/api/worktrees/reap", json={"path": wt_path, "force": True})
+    assert reaped.json()["status"] == "removed"
+    assert killed == ["w-x"]
+
+
+def test_reap_refusal_leaves_the_session_alone(client, tmp_path, monkeypatch):
+    # A refused reap (dirty/unpushed) is a stop-and-report — it must not kill the
+    # worker whose work would be lost.
+    from lumbergh.routers import worktrees as wt_router
+    from lumbergh.tests.test_worktrees import _init_repo
+
+    killed = []
+    monkeypatch.setattr(wt_router, "kill_tmux_session", lambda name: killed.append(name) or True)
+
+    repo = _init_repo(tmp_path / "app")
+    r = client.post(
+        "/api/worktrees",
+        json={"repo": str(repo), "branch": "feat/x", "create_branch": True, "session": "w-x"},
+    )
+    wt_path = r.json()["path"]
+    (Path(wt_path) / "dirty.txt").write_text("uncommitted")
+
+    reaped = client.post("/api/worktrees/reap", json={"path": wt_path, "force": False})
+    assert reaped.json().get("reason") == "dirty"
+    assert killed == []
+
+
 def test_ls_uses_stubbed_sessions_not_real_tmux(client, tmp_path):
     from lumbergh.routers import worktrees as wt_router
     from lumbergh.tests.test_worktrees import _init_repo
