@@ -86,3 +86,24 @@ def test_a_flavoured_personality_forbids_itself_in_worker_facing_text():
     assert "never let it into a brief" in flair
     for audience in ("prompt to a worker", "tool will read"):
         assert audience in flair
+
+
+def test_available_personalities_lists_the_on_disk_presets():
+    assert set(bill.available_personalities()) == {"professional", "lumbergh"}
+
+
+def test_render_uses_custom_text_when_personality_is_custom():
+    body = bill.render("custom", custom_text="You are Bill the pirate. Arrr.")
+    assert "{{PERSONALITY}}" not in body
+    assert "pirate" in body
+
+
+def test_render_custom_with_blank_text_falls_back_to_default():
+    assert bill.render("custom", custom_text="   ") == bill.render("professional")
+
+
+def test_materialize_writes_custom_personality(tmp_path):
+    home = bill.materialize(
+        personality="custom", custom_text="Arr matey.", home_dir=tmp_path / "bill"
+    )
+    assert "Arr matey." in (home / "AGENTS.md").read_text()
