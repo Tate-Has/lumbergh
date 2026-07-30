@@ -4,6 +4,7 @@ import Button from './ui/Button'
 import CloudSettings from './CloudSettings'
 import SecuritySettings from './SecuritySettings'
 import GeneralSettings from './GeneralSettings'
+import BillSettings from './BillSettings'
 import AISettingsTab from './AISettingsTab'
 import { getDefaultProviderConfigs, type AIProviderConfig } from './aiProviders'
 import { getApiBase } from '../config'
@@ -31,9 +32,10 @@ interface Settings {
   showSessionDots?: boolean
   scratchMaxAgeDays?: number
   questionDetectionEnabled?: boolean
+  bill?: { harness?: string; personality?: string; customPersonality?: string }
 }
 
-type TabId = 'general' | 'ai' | 'cloud' | 'security'
+type TabId = 'general' | 'bill' | 'ai' | 'cloud' | 'security'
 
 export default function SettingsModal({ onClose }: Props) {
   const [activeTab, setActiveTab] = useState<TabId>('general')
@@ -49,6 +51,9 @@ export default function SettingsModal({ onClose }: Props) {
   const [passwordChanged, setPasswordChanged] = useState(false)
   const [defaultAgent, setDefaultAgent] = useState('claude-code')
   const [agentProviders, setAgentProviders] = useState<Record<string, { label: string }>>({})
+  const [billHarness, setBillHarness] = useState('pi')
+  const [billPersonality, setBillPersonality] = useState('professional')
+  const [billCustomPersonality, setBillCustomPersonality] = useState('')
   const [tabVisibility, setTabVisibility] = useState<Record<string, boolean>>({
     git: true,
     files: true,
@@ -93,6 +98,10 @@ export default function SettingsModal({ onClose }: Props) {
       setCloudUsername(data.cloudUsername ?? null)
       if (data.defaultAgent) setDefaultAgent(data.defaultAgent)
       if (data.agentProviders) setAgentProviders(data.agentProviders)
+      if (data.bill?.harness) setBillHarness(data.bill.harness)
+      if (data.bill?.personality) setBillPersonality(data.bill.personality)
+      if (data.bill?.customPersonality != null)
+        setBillCustomPersonality(data.bill.customPersonality)
       if (data.tabVisibility) setTabVisibility(data.tabVisibility)
       if (data.showSessionDots != null) setShowSessionDots(data.showSessionDots)
       if (data.questionDetectionEnabled != null)
@@ -131,6 +140,11 @@ export default function SettingsModal({ onClose }: Props) {
       payload.gitGraphCommits = Math.min(1000, Math.max(10, parsedCommits))
       payload.telemetryConsent = telemetryConsent
       payload.defaultAgent = defaultAgent
+      payload.bill = {
+        harness: billHarness,
+        personality: billPersonality,
+        customPersonality: billCustomPersonality,
+      }
       payload.tabVisibility = tabVisibility
       payload.showSessionDots = showSessionDots
       payload.questionDetectionEnabled = questionDetectionEnabled
@@ -169,6 +183,7 @@ export default function SettingsModal({ onClose }: Props) {
 
   const tabs: { id: TabId; label: string }[] = [
     { id: 'general', label: 'General' },
+    { id: 'bill', label: 'Bill' },
     { id: 'ai', label: 'AI' },
     { id: 'cloud', label: 'Cloud' },
     { id: 'security', label: 'Security' },
@@ -227,6 +242,18 @@ export default function SettingsModal({ onClose }: Props) {
                 onScratchMaxAgeDaysChange={setScratchMaxAgeDays}
                 telemetryConsent={telemetryConsent}
                 onTelemetryConsentChange={setTelemetryConsent}
+              />
+            )}
+
+            {activeTab === 'bill' && (
+              <BillSettings
+                harness={billHarness}
+                onHarnessChange={setBillHarness}
+                agentProviders={agentProviders}
+                personality={billPersonality}
+                onPersonalityChange={setBillPersonality}
+                customPersonality={billCustomPersonality}
+                onCustomPersonalityChange={setBillCustomPersonality}
               />
             )}
 
