@@ -85,6 +85,13 @@ export default function SettingsModal({ onClose }: Props) {
     }
   }, [])
 
+  const applyBillSettings = useCallback((bill: Settings['bill']) => {
+    if (!bill) return
+    if (bill.harness) setBillHarness(bill.harness)
+    if (bill.personality) setBillPersonality(bill.personality)
+    if (bill.customPersonality != null) setBillCustomPersonality(bill.customPersonality)
+  }, [])
+
   const fetchSettings = useCallback(async () => {
     try {
       const res = await fetch(`${getApiBase()}/settings`)
@@ -98,10 +105,7 @@ export default function SettingsModal({ onClose }: Props) {
       setCloudUsername(data.cloudUsername ?? null)
       if (data.defaultAgent) setDefaultAgent(data.defaultAgent)
       if (data.agentProviders) setAgentProviders(data.agentProviders)
-      if (data.bill?.harness) setBillHarness(data.bill.harness)
-      if (data.bill?.personality) setBillPersonality(data.bill.personality)
-      if (data.bill?.customPersonality != null)
-        setBillCustomPersonality(data.bill.customPersonality)
+      applyBillSettings(data.bill)
       if (data.tabVisibility) setTabVisibility(data.tabVisibility)
       if (data.showSessionDots != null) setShowSessionDots(data.showSessionDots)
       if (data.questionDetectionEnabled != null)
@@ -113,7 +117,7 @@ export default function SettingsModal({ onClose }: Props) {
     } finally {
       setIsLoading(false)
     }
-  }, [applyAiSettings])
+  }, [applyAiSettings, applyBillSettings])
 
   useEffect(() => {
     fetchSettings()
