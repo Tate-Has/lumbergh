@@ -59,3 +59,9 @@ backend/lumbergh/frontend_dist/
 .agents/
 .claude/skills/
 skills-lock.json
+
+# git worktrees for isolated feature work
+.worktrees/
+
+# subagent-driven-development scratch (ledgers, briefs, review packages)
+.superpowers/
