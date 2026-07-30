@@ -167,8 +167,13 @@ def _settings() -> dict:
     return get_settings()
 
 
-def _personality() -> str:
-    return _settings().get("bill", {}).get("personality") or bill_bundle.DEFAULT_PERSONALITY
+def _personality() -> tuple[str, str | None]:
+    b = _settings().get("bill", {}) or {}
+    return b.get("personality") or bill_bundle.DEFAULT_PERSONALITY, b.get("customPersonality")
+
+
+def _harness() -> str:
+    return (_settings().get("bill", {}) or {}).get("harness") or BILL_PROVIDER
 
 
 def _live_bill_conflict(workdir: Path) -> str | None:
@@ -270,7 +275,8 @@ def summon():
     doing it before we even know whether the name is safe to use is harmless — and
     it means an upgrade lands even when a name conflict blocks the summon itself.
     """
-    workdir = bill_bundle.materialize(_personality())
+    personality, custom_text = _personality()
+    workdir = bill_bundle.materialize(personality, custom_text)
 
     resolved = _resolve_live_bill(workdir)
     if resolved is not None:
@@ -278,13 +284,14 @@ def summon():
 
     from lumbergh.providers import get_launch_command
 
-    launch_command = get_launch_command(BILL_PROVIDER, _settings().get("defaultAgent"))
+    harness = _harness()
+    launch_command = get_launch_command(harness, _settings().get("defaultAgent"))
 
     binary = _harness_binary(launch_command)
     if binary and shutil.which(binary) is None:
         raise _fail(
             "harness",
-            f"the `{BILL_PROVIDER}` harness binary `{binary}` is not installed",
+            f"the `{harness}` harness binary `{binary}` is not installed",
             f"install `{binary}`, then summon Bill again",
             # Bill's home is already materialized by this point, and a caller that
             # only wanted to find it (the e2e suite, a UI showing his briefs) must not
@@ -321,7 +328,7 @@ def summon():
             workdir=str(workdir),
             description="Your engineering manager",
             type="direct",
-            agent_provider=BILL_PROVIDER,
+            agent_provider=harness,
         )
     except Exception as e:
         # get_live_sessions() only reflects tmux, never sessions_table, so a session

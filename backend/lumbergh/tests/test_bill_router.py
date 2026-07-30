@@ -904,6 +904,45 @@ def test_summon_renders_the_configured_personality(client, tmp_path, monkeypatch
     assert (tmp_path / "bill" / "AGENTS.md").read_text() == bill.bill_bundle.render("lumbergh")
 
 
+def test_summon_uses_the_configured_harness(client, tmp_path, monkeypatch):
+    spawned = {}
+    stored = {}
+    monkeypatch.setattr("lumbergh.routers.sessions.get_live_sessions", dict)
+    monkeypatch.setattr(bill.bill_bundle, "home", lambda: tmp_path / "bill")
+    monkeypatch.setattr(bill.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(
+        bill,
+        "create_tmux_session",
+        lambda name, workdir, launch_command=None, **kw: spawned.update(  # noqa: ARG005
+            launch_command=launch_command
+        ),
+    )
+    monkeypatch.setattr(bill, "_store_session", lambda **kw: stored.update(kw))
+    monkeypatch.setattr(bill, "_settings", lambda: {"bill": {"harness": "claude-code"}})
+
+    client.post("/api/bill/summon")
+    assert "claude" in spawned["launch_command"]
+    assert stored["agent_provider"] == "claude-code"
+
+
+def test_summon_renders_a_custom_personality(client, tmp_path, monkeypatch):
+    monkeypatch.setattr("lumbergh.routers.sessions.get_live_sessions", dict)
+    monkeypatch.setattr(bill.bill_bundle, "home", lambda: tmp_path / "bill")
+    monkeypatch.setattr(bill.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(bill, "create_tmux_session", lambda *a, **kw: None)  # noqa: ARG005
+    monkeypatch.setattr(bill, "_store_session", lambda **kw: None)  # noqa: ARG005
+    monkeypatch.setattr(
+        bill,
+        "_settings",
+        lambda: {
+            "bill": {"personality": "custom", "customPersonality": "You are Bill the pirate."}
+        },
+    )
+
+    client.post("/api/bill/summon")
+    assert "pirate" in (tmp_path / "bill" / "AGENTS.md").read_text()
+
+
 def test_summon_kills_the_freshly_created_session_when_storing_fails(tmp_path, monkeypatch):
     tmux_has_bill = {"alive": False}
     killed = []
