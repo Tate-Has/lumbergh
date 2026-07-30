@@ -106,7 +106,7 @@ def _status_top_offset(status: str, position: str, client_h: str, window_h: str)
     return lines if lines > 0 else 1
 
 
-def capture_pane_content(session_name: str) -> str:
+def capture_pane_content(target: str) -> str:
     """Capture the current visible content of the active pane.
 
     Returns the terminal content with ANSI escape codes preserved.
@@ -128,7 +128,7 @@ def capture_pane_content(session_name: str) -> str:
                 TMUX_CMD,
                 "capture-pane",
                 "-t",
-                session_name,
+                target,
                 "-p",  # print to stdout
                 "-e",  # include escape sequences (ANSI colors)
             ],
@@ -152,7 +152,7 @@ def capture_pane_content(session_name: str) -> str:
                     TMUX_CMD,
                     "display-message",
                     "-t",
-                    session_name,
+                    target,
                     "-p",
                     "#{cursor_x},#{cursor_y},#{?cursor_flag,1,0},"
                     "#{status},#{status-position},#{client_height},#{window_height}",
@@ -196,7 +196,7 @@ def capture_pane_content(session_name: str) -> str:
         return ""
 
 
-def capture_pane_title(session_name: str) -> str:
+def capture_pane_title(target: str) -> str:
     """Return the active pane's OSC-set title (``#{pane_title}``), or "".
 
     A single lightweight ``display-message`` call. Failures degrade to an empty
@@ -204,7 +204,7 @@ def capture_pane_title(session_name: str) -> str:
     """
     try:
         result = subprocess.run(
-            [TMUX_CMD, "display-message", "-t", session_name, "-p", "#{pane_title}"],
+            [TMUX_CMD, "display-message", "-t", target, "-p", "#{pane_title}"],
             capture_output=True,
             encoding="utf-8",
             errors="replace",
@@ -259,9 +259,9 @@ def refresh_client(session_name: str) -> bool:
         return False
 
 
-def capture_pane_text(session_name: str, lines: int | None = None) -> str:
+def capture_pane_text(target: str, lines: int | None = None) -> str:
     """Plain, newline-separated pane text (no ANSI) — for reading, not rendering."""
-    cmd = [TMUX_CMD, "capture-pane", "-t", session_name, "-p"]
+    cmd = [TMUX_CMD, "capture-pane", "-t", target, "-p"]
     if lines:
         cmd += ["-S", str(-lines)]
     try:
@@ -273,6 +273,23 @@ def capture_pane_text(session_name: str, lines: int | None = None) -> str:
         return result.stdout.rstrip("\n")
     except Exception:
         return ""
+
+
+def list_session_windows(session: str) -> list[str]:
+    """Window names in a session, or [] on any failure."""
+    try:
+        result = subprocess.run(
+            [TMUX_CMD, "list-windows", "-t", session, "-F", "#{window_name}"],
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=2,
+        )
+        if result.returncode != 0:
+            return []
+        return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    except Exception:
+        return []
 
 
 def send_text(session_name: str, text: str) -> bool:

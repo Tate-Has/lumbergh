@@ -17,6 +17,16 @@ def registry(tmp_path, monkeypatch):
     db.close()
 
 
+@pytest.fixture
+def worktrees_db(tmp_path, monkeypatch):
+    from tinydb import TinyDB
+
+    db = TinyDB(tmp_path / "worktrees.json")
+    monkeypatch.setattr(worktrees, "get_worktrees_db", lambda: db)
+    yield db
+    db.close()
+
+
 def _write(p: Path, text: str) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(text)
@@ -340,3 +350,30 @@ def test_record_worktree_defaults_kind_and_origin_to_none(tmp_path):
     )
     assert row["kind"] is None
     assert row["origin"] is None
+
+
+@pytest.mark.usefixtures("worktrees_db")
+def test_record_worktree_stores_target_and_run(tmp_path):
+    row = worktrees.record_worktree(
+        path=tmp_path / "wt",
+        parent_repo=tmp_path / "repo",
+        branch="feat/x",
+        created_at="2026-07-30T00:00:00Z",
+        target="port:fleet-644",
+        run="batch-9",
+    )
+    assert row["target"] == "port:fleet-644"
+    assert row["run"] == "batch-9"
+
+
+@pytest.mark.usefixtures("worktrees_db")
+def test_record_worktree_session_kwarg_back_compat(tmp_path):
+    row = worktrees.record_worktree(
+        path=tmp_path / "wt2",
+        parent_repo=tmp_path / "repo",
+        branch="feat/y",
+        created_at="2026-07-30T00:00:00Z",
+        session="scout-1",
+    )
+    assert row["target"] == "scout-1"
+    assert row["run"] is None

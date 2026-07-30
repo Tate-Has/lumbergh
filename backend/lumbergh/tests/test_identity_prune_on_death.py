@@ -4,7 +4,7 @@ import lumbergh.idle_monitor as im
 async def test_check_all_sessions_prunes_identity(monkeypatch):
     monitor = im.IdleMonitor()
     monitor._fingerprints = {"dead": "x"}
-    monkeypatch.setattr(monitor, "_get_live_session_names", lambda: ["alive"])
+    monkeypatch.setattr(im, "discover_live_targets", lambda: ["alive"])
     pruned = {}
     monkeypatch.setattr(
         im.session_identity, "prune", lambda live: pruned.setdefault("live", set(live))

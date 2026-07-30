@@ -299,6 +299,51 @@ def test_fleet_wait_stops_waking_on_a_dead_task_the_user_left(client, monkeypatc
     assert second["woke"] is False
 
 
+def test_fleet_rows_carry_target_and_run(monkeypatch):
+    """A window-level batch worker is recorded with a `session:window` target distinct
+    from the bare tmux session (Task 5's registry). The fleet row must surface that
+    target (plus its run group) and resolve state against it, not the bare session —
+    otherwise every window of a batch collapses onto one shared status."""
+    from lumbergh import worktrees
+    from lumbergh.idle_detector import SessionState
+
+    monkeypatch.setattr("lumbergh.routers.worktrees._live_sessions", dict)
+    monkeypatch.setattr(
+        worktrees,
+        "reconcile_all",
+        lambda live: [  # noqa: ARG005
+            {"path": "/wt/644", "repo": "port", "branch": "kb-644", "session": "port"}
+        ],
+    )
+    monkeypatch.setattr(
+        worktrees,
+        "get_entry",
+        lambda p: {  # noqa: ARG005
+            "parent_repo": "/repo/port",
+            "target": "port:fleet-644",
+            "associated_session": "port:fleet-644",
+            "run": "batch-9",
+            "kind": "ship",
+            "origin": "bill",
+        },
+    )
+    state_queries = []
+    monkeypatch.setattr(
+        bill.idle_monitor,
+        "get_state",
+        lambda t: state_queries.append(t) or SessionState.WORKING,
+    )
+
+    rows = bill._fleet_rows("bill")
+
+    assert rows[0]["target"] == "port:fleet-644"
+    assert rows[0]["run"] == "batch-9"
+    assert rows[0]["task"] == "port:fleet-644"
+    assert state_queries == ["port:fleet-644"], (
+        "state must be resolved against the window target, not the bare tmux session"
+    )
+
+
 def test_outcome_of_reads_the_workers_final_line(monkeypatch):
     class _Event:
         def __init__(self, text):

@@ -39,11 +39,15 @@ def snapshot(
         entry = worktrees.get_entry(Path(row["path"])) or {}
         if origin is not None and entry.get("origin") != origin:
             continue
-        session = row.get("session") or entry.get("associated_session")
+        # `target` is the window-aware identity Task 5 started writing to the registry
+        # (e.g. `port:fleet-644` for one window of a batch); `associated_session` is the
+        # pre-target mirror, kept as a fallback for entries recorded before that landed.
+        target = entry.get("target") or entry.get("associated_session")
+        tracked = target or row["session"]
         if row["session"]:
-            state = state_of(row["session"])
-            since = since_of(row["session"])
-            unseen = unseen_of(row["session"])
+            state = state_of(tracked)
+            since = since_of(tracked)
+            unseen = unseen_of(tracked)
         else:
             state = "dead" if entry.get("associated_session") else "orphan"
             since = None
@@ -53,7 +57,7 @@ def snapshot(
             unseen = state == "dead" and row["path"] not in dead_acked
         rows.append(
             {
-                "task": session,
+                "task": tracked,
                 # ``repo`` is only a basename (``reconcile`` fills it from ``repo.name``),
                 # which is what a human wants to read but useless to ``lb spawn --repo``.
                 # The registry holds the real path, so both travel on the row.
@@ -61,6 +65,8 @@ def snapshot(
                 "repo_path": entry.get("parent_repo"),
                 "branch": row["branch"],
                 "session": row["session"],
+                "target": target,
+                "run": entry.get("run"),
                 "kind": entry.get("kind"),
                 "state": state,
                 "since": round(since) if since is not None else None,

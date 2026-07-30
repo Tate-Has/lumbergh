@@ -26,16 +26,15 @@ _REST = {"idle", "blocked", "error"}
 
 
 def _live_names() -> list[str]:
-    from lumbergh.routers.sessions import get_live_sessions
-
-    return list(get_live_sessions().keys())
+    return idle_monitor.live_targets()
 
 
 def _require(name: str) -> None:
-    if name not in _live_names():
+    names = _live_names()
+    if name not in names:
         raise HTTPException(
             status_code=404,
-            detail={"error": f'no session named "{name}"', "sessions": _live_names()},
+            detail={"error": f'no session named "{name}"', "sessions": names},
         )
 
 

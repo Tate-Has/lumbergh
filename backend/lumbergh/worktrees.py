@@ -151,17 +151,22 @@ def record_worktree(
     task_intent: str | None = None,
     kind: str | None = None,
     origin: str | None = None,
+    target: str | None = None,
+    run: str | None = None,
 ) -> dict:
+    resolved_target = target if target is not None else session
     row = {
         "path": _key(path),
         "parent_repo": str(Path(parent_repo).resolve()),
         "branch": branch,
         "created_at": created_at,
-        "associated_session": session,
+        "target": resolved_target,
+        "associated_session": resolved_target,
         "links_applied": links_applied or [],
         "task_intent": task_intent,
         "kind": kind,
         "origin": origin,
+        "run": run,
     }
     db = get_worktrees_db()
     db.upsert(row, Query().path == row["path"])

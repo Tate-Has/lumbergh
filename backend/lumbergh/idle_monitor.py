@@ -33,6 +33,7 @@ from lumbergh.db_utils import (
     session_data_lock,
 )
 from lumbergh.idle_detector import SessionState, classify_overrides
+from lumbergh.targets import parse_target
 from lumbergh.tmux_pty import (
     IS_WINDOWS,
     capture_pane_content,
@@ -43,6 +44,52 @@ from lumbergh.tmux_pty import (
 logger = logging.getLogger(__name__)
 
 _ANSI_PATTERN = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b[PX^_][^\x1b]*\x1b\\")
+
+
+def _live_session_names() -> list[str]:
+    try:
+        server = libtmux.Server(tmux_bin=TMUX_CMD)
+        names = [s.name for s in server.sessions if s.name is not None]
+        if names or not IS_WINDOWS:
+            return names
+    except Exception:
+        if not IS_WINDOWS:
+            return []
+
+    # Windows fallback: psmux's `-F` format flags don't always work
+    # under libtmux, so parse the default `list-sessions` output.
+    try:
+        import subprocess
+
+        result = subprocess.run(
+            [TMUX_CMD, "list-sessions"],
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+        if result.returncode != 0:
+            return []
+        names = []
+        pattern = re.compile(r"^([^:]+):")
+        for line in result.stdout.splitlines():
+            match = pattern.match(line)
+            if match:
+                names.append(match.group(1))
+        return names
+    except Exception:
+        return []
+
+
+def discover_live_targets() -> list[str]:
+    from lumbergh.targets import discover_targets
+    from lumbergh.tmux_pty import list_session_windows
+
+    return discover_targets(
+        _live_session_names(),
+        list_windows=list_session_windows,
+        capture=lambda t: capture_pane_text(t, lines=200),
+    )
 
 
 class IdleMonitor:
@@ -78,6 +125,7 @@ class IdleMonitor:
         self._running = False
         self._bill_nudged = False
         self._bill_nudge_checked_at = 0.0
+        self._live_targets: list[str] = []
 
     def start(self) -> None:
         if self._task is None or self._task.done():
@@ -94,6 +142,9 @@ class IdleMonitor:
 
     def get_state(self, session_name: str) -> SessionState:
         return self._states.get(session_name, SessionState.UNKNOWN)
+
+    def live_targets(self) -> list[str]:
+        return list(self._live_targets)
 
     def _record_state_change(self, session_name: str, state: SessionState) -> None:
         self._states[session_name] = state
@@ -173,26 +224,28 @@ class IdleMonitor:
     async def _check_all_sessions(self) -> None:
         loop = asyncio.get_event_loop()
         try:
-            sessions = await loop.run_in_executor(None, self._get_live_session_names)
+            targets = await loop.run_in_executor(None, discover_live_targets)
         except Exception as e:
             logger.warning(f"Failed to get live sessions: {e}")
             return
 
-        dead_sessions = set(self._fingerprints.keys()) - set(sessions)
-        for name in dead_sessions:
-            self._fingerprints.pop(name, None)
-            self._last_change.pop(name, None)
-            self._states.pop(name, None)
-            self._working_since.pop(name, None)
-            self._state_since.pop(name, None)
-            self._needs_answer.pop(name, None)
-            self._question_checked.discard(name)
-            self._question_inflight.discard(name)
+        self._live_targets = list(targets)
 
-        session_identity.prune(set(sessions))
+        dead_targets = set(self._fingerprints.keys()) - set(targets)
+        for target in dead_targets:
+            self._fingerprints.pop(target, None)
+            self._last_change.pop(target, None)
+            self._states.pop(target, None)
+            self._working_since.pop(target, None)
+            self._state_since.pop(target, None)
+            self._needs_answer.pop(target, None)
+            self._question_checked.discard(target)
+            self._question_inflight.discard(target)
+
+        session_identity.prune({parse_target(t)[0] for t in targets})
 
         await asyncio.gather(
-            *(self._check_session(name) for name in sessions),
+            *(self._check_session(target) for target in targets),
             return_exceptions=True,
         )
 
@@ -237,40 +290,6 @@ class IdleMonitor:
         # leaves `idle` because he was never actually woken. `nudge` shells out to tmux
         # twice, so it goes to the executor like the sweep above.
         self._bill_nudged = await loop.run_in_executor(None, bill_nudge.nudge)
-
-    def _get_live_session_names(self) -> list[str]:
-        try:
-            server = libtmux.Server(tmux_bin=TMUX_CMD)
-            names = [s.name for s in server.sessions if s.name is not None]
-            if names or not IS_WINDOWS:
-                return names
-        except Exception:
-            if not IS_WINDOWS:
-                return []
-
-        # Windows fallback: psmux's `-F` format flags don't always work
-        # under libtmux, so parse the default `list-sessions` output.
-        try:
-            import subprocess
-
-            result = subprocess.run(
-                [TMUX_CMD, "list-sessions"],
-                capture_output=True,
-                encoding="utf-8",
-                errors="replace",
-                check=False,
-            )
-            if result.returncode != 0:
-                return []
-            names = []
-            pattern = re.compile(r"^([^:]+):")
-            for line in result.stdout.splitlines():
-                match = pattern.match(line)
-                if match:
-                    names.append(match.group(1))
-            return names
-        except Exception:
-            return []
 
     async def _burst_capture(self, session_name: str) -> list[str]:
         """Take BURST_CAPTURES snapshots with short async gaps between them."""

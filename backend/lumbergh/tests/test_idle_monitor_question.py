@@ -129,7 +129,7 @@ async def test_dead_session_clears_question_state(monkeypatch):
     monitor._question_checked.add("dead")
     monitor._question_inflight.add("dead")
 
-    monkeypatch.setattr(monitor, "_get_live_session_names", list)
+    monkeypatch.setattr(im, "discover_live_targets", list)
     monkeypatch.setattr(im.session_identity, "prune", lambda _s: None)
 
     await monitor._check_all_sessions()

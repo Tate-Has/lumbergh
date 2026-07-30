@@ -67,7 +67,9 @@ def _outcome_of(session: str) -> str | None:
 def _add_outcomes(rows: list[dict]) -> list[dict]:
     """Attach each worker's contracted final line to its row, in place."""
     for row in rows:
-        row["outcome"] = _outcome_of(row["session"]) if row.get("session") else None
+        session = row.get("session")
+        identifier = (row.get("target") or session) if session else None
+        row["outcome"] = _outcome_of(identifier) if identifier else None
     return rows
 
 
@@ -107,7 +109,7 @@ def _mark_seen(rows: list[dict]) -> None:
     """
     for row in rows:
         if row.get("session"):
-            session_attention.clear_unseen(row["session"])
+            session_attention.clear_unseen(row.get("target") or row["session"])
         elif row.get("state") == "dead":
             _dead_acked.add(row["path"])
     _dead_acked.intersection_update(r["path"] for r in rows if r.get("state") == "dead")
