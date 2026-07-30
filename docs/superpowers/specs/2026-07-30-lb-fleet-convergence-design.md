@@ -93,7 +93,9 @@ Three new verbs. The surface grows only with verbs that finish a whole determini
 
 ## `sherpa fleet` deprecation path
 
-`sherpa fleet` is not rewritten in place. Its behavior is re-homed into `lb`/backend, then `sherpa fleet` becomes a **thin shim** that shells out to the new `lb` verbs (so muscle memory and existing scripts keep working) with a deprecation notice. It is deleted once nothing calls it. No flag-day cutover.
+`sherpa fleet` is not rewritten in place — its behavior is re-homed into `lb`/backend. Because the only consumer is Jim and his own scripts, a **hard removal is acceptable**: when the old commands die, callers fail loudly, which is the desired signal rather than a silent wrong behavior.
+
+An **optional** thin shim (shell out to the new `lb` verbs with a deprecation notice) can be left in place if convenient, but it is a nicety, not a requirement, and carries no flag-day-cutover obligation.
 
 ## Phasing
 
@@ -102,7 +104,7 @@ Each phase ships value and is independently landable.
 1. **Window-aware substrate** — target model, discovery, per-target state/transcript, registry `target`+`run`. *(Ships the single pane of glass alone.)*
 2. **Unified spawn** — `--into`/`--run`, one spawn primitive.
 3. **Workflow verbs** — `batch`, `land`, `teardown`.
-4. **Redis removal + fleet shim** — cut the worker-side uplink over to `blocked`+`prompt`, re-home `sherpa fleet` onto `lb`, deprecate.
+4. **Redis removal + fleet retirement** — cut the worker-side uplink over to `blocked`+`prompt`, re-home `sherpa fleet` onto `lb`, then retire the old commands (hard removal acceptable; optional shim if convenient).
 
 ## Testing
 
