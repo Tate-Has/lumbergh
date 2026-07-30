@@ -10,6 +10,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from lumbergh import bill as bill_bundle
 from lumbergh.db_utils import get_settings_db
 from lumbergh.providers import DEFAULT_PROVIDER, PROVIDERS
 
@@ -32,7 +33,7 @@ def _get_defaults() -> dict:
         "repoSearchDir": repo_search_dir,
         "gitGraphCommits": 100,
         "defaultAgent": DEFAULT_PROVIDER,
-        "bill": {"personality": "professional"},
+        "bill": {"harness": "pi", "personality": "professional", "customPersonality": ""},
         "tabVisibility": {
             "git": True,
             "files": True,
@@ -96,6 +97,12 @@ class AISettings(BaseModel):
     providers: dict[str, AIProviderConfig] | None = None
 
 
+class BillSettings(BaseModel):
+    personality: str | None = None
+    customPersonality: str | None = None  # noqa: N815 - API field name
+    harness: str | None = None
+
+
 class SettingsUpdate(BaseModel):
     repoSearchDir: str | None = None  # noqa: N815 - API field name
     gitGraphCommits: int | None = None  # noqa: N815 - API field name
@@ -113,6 +120,7 @@ class SettingsUpdate(BaseModel):
     showSessionDots: bool | None = None  # noqa: N815 - API field name
     scratchMaxAgeDays: int | None = None  # noqa: N815 - API field name
     questionDetectionEnabled: bool | None = None  # noqa: N815 - API field name
+    bill: BillSettings | None = None
 
 
 def deep_merge(base: dict, override: dict) -> dict:
@@ -270,7 +278,38 @@ def _validate_updates(updates: SettingsUpdate) -> dict[str, object]:
     if updates.ai is not None:
         update_data["ai"] = _serialize_ai_update(updates.ai)
 
+    if updates.bill is not None:
+        update_data["bill"] = _validate_bill_update(updates.bill)
+
     return update_data
+
+
+_MAX_CUSTOM_PERSONALITY = 4000
+
+
+def _validate_bill_update(bill: BillSettings) -> dict:
+    """Extract the provided Bill fields, rejecting an unknown personality/harness or an
+    over-long custom personality. Only set fields are returned, so a partial update
+    deep-merges cleanly over the stored block."""
+    data = bill.model_dump(exclude_none=True)
+
+    if "personality" in data:
+        valid = set(bill_bundle.available_personalities()) | {bill_bundle.CUSTOM_PERSONALITY}
+        if data["personality"] not in valid:
+            raise HTTPException(
+                status_code=400, detail=f"Unknown personality: {data['personality']}"
+            )
+
+    if "harness" in data and data["harness"] not in PROVIDERS:
+        raise HTTPException(status_code=400, detail=f"Unknown agent provider: {data['harness']}")
+
+    if "customPersonality" in data and len(data["customPersonality"]) > _MAX_CUSTOM_PERSONALITY:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Custom personality must be at most {_MAX_CUSTOM_PERSONALITY} characters",
+        )
+
+    return data
 
 
 def _serialize_ai_update(ai: AISettings) -> dict:
