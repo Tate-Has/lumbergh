@@ -285,7 +285,7 @@ def test_fleet_wait_stops_waking_on_a_dead_task_the_user_left(client, monkeypatc
         worktrees,
         "get_entry",
         lambda p: {  # noqa: ARG005
-            "associated_session": "aio-scout",
+            "target": "aio-scout",
             "parent_repo": "/repo/aio",
             "kind": "scout",
             "origin": None,
@@ -321,7 +321,6 @@ def test_fleet_rows_carry_target_and_run(monkeypatch):
         lambda p: {  # noqa: ARG005
             "parent_repo": "/repo/port",
             "target": "port:fleet-644",
-            "associated_session": "port:fleet-644",
             "run": "batch-9",
             "kind": "ship",
             "origin": "bill",

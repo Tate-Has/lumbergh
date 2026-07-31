@@ -41,7 +41,7 @@ def test_create_list_reap_roundtrip(client, tmp_path):
     assert reaped.json()["status"] == "removed"
 
 
-def test_reap_kills_the_associated_session(client, tmp_path, monkeypatch):
+def test_reap_kills_the_worker_session(client, tmp_path, monkeypatch):
     # A reaped task's tmux session used to linger — visible in `lb` with no worktree
     # behind it. Reaping the worktree should take its worker down with it.
     from lumbergh.routers import worktrees as wt_router
@@ -169,7 +169,7 @@ def test_adopt_of_hand_made_worktree(client, tmp_path):
     assert body["status"] == "adopted"
     assert body["branch"] == "feat/manual"
     assert body["parent_repo"] == str(repo.resolve())
-    assert body["associated_session"] == "kb-2"
+    assert body["target"] == "kb-2"
 
 
 def test_link_then_unlink_promotes_symlink_to_copy(client, tmp_path):

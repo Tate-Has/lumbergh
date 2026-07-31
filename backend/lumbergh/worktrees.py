@@ -170,7 +170,6 @@ def record_worktree(
         "branch": branch,
         "created_at": created_at,
         "target": resolved_target,
-        "associated_session": resolved_target,
         "links_applied": links_applied or [],
         "task_intent": task_intent,
         "kind": kind,

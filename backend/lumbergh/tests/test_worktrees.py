@@ -163,7 +163,7 @@ def test_registry_record_get_remove(tmp_path, monkeypatch):
     )
     row = worktrees.get_entry(wt)
     assert row["branch"] == "feat/x"
-    assert row["associated_session"] == "kb-1"
+    assert row["target"] == "kb-1"
     assert row["created_at"] == "2026-07-28T00:00:00Z"
     assert [r["path"] for r in worktrees.all_entries()] == [str(wt.resolve())]
     worktrees.remove_entry(wt)
@@ -297,7 +297,7 @@ def test_create_applies_links_and_records(tmp_path, monkeypatch):
     wt = Path(created["path"])
     assert (wt / ".venv").is_symlink()
     entry = worktrees.get_entry(wt)
-    assert entry["associated_session"] == "kb-9"
+    assert entry["target"] == "kb-9"
     assert entry["created_at"] == now
     assert {r["path"] for r in entry["links_applied"]} == {".venv"}
 

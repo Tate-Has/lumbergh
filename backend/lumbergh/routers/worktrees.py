@@ -78,7 +78,7 @@ def reap(body: ReapBody):
     # real removal: a refused reap (dirty/unpushed) is a stop-and-report, and its
     # worker must be left running so nothing is lost.
     entry = worktrees.get_entry(path) or {}
-    worker = entry.get("target") or entry.get("associated_session")
+    worker = entry.get("target")
     result = worktrees.reap(path, force=body.force, rm_branch=body.rm_branch)
     if result.get("status") == "removed" and worker:
         if parse_target(worker)[1] is not None:

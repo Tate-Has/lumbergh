@@ -40,10 +40,9 @@ def snapshot(
         entry = worktrees.get_entry(Path(row["path"])) or {}
         if origin is not None and entry.get("origin") != origin:
             continue
-        # `target` is the window-aware identity Task 5 started writing to the registry
-        # (e.g. `port:fleet-644` for one window of a batch); `associated_session` is the
-        # pre-target mirror, kept as a fallback for entries recorded before that landed.
-        target = entry.get("target") or entry.get("associated_session")
+        # `target` is the window-aware identity of a tracked worker (e.g. `port:fleet-644`
+        # for one window of a batch, or a bare session name for a standalone worker).
+        target = entry.get("target")
         tracked = target or row["session"]
         # A window worker (`--into`) is intentionally never stored in `live_sessions`, so
         # `row["session"]` is always None for one even while it's running — only the idle
@@ -55,7 +54,7 @@ def snapshot(
             since = since_of(tracked)
             unseen = unseen_of(tracked)
         else:
-            state = "dead" if entry.get("associated_session") else "orphan"
+            state = "dead" if entry.get("target") else "orphan"
             since = None
             # A dead task has no live session to carry the seen/unseen overlay, so its
             # attention is tracked by path in `dead_acked`: unseen until Bill has been

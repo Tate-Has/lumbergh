@@ -821,7 +821,7 @@ def teardown(body: TeardownBody):
     members = run_members(body.run)
     results, refused = [], []
     for m in members:
-        target = m.get("target") or m.get("associated_session")
+        target = m.get("target")
         killed = False
         if target and parse_target(target)[1] is not None:
             killed = kill_tmux_window(target)
