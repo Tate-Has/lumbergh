@@ -11,8 +11,10 @@ Each poll takes a short burst of captures (to avoid aliasing with the
 animation period) and compares the tail fingerprint across bursts and
 across polls.
 
-Pattern-based overrides from :mod:`idle_detector` catch cases that
-quiescence alone cannot (rate limit errors, shell prompts).
+Pattern-based overrides from :mod:`idle_detector` catch the one case
+quiescence alone cannot: a pane parked on an approval/question/login
+prompt (BLOCKED). "The agent exited/died" is not scraped from pane text —
+it is derived from the process signal here (see :meth:`_mark_exited`).
 """
 
 import asyncio
@@ -126,6 +128,10 @@ class IdleMonitor:
         self._bill_nudged = False
         self._bill_nudge_checked_at = 0.0
         self._live_targets: list[str] = []
+        # Targets whose agent process went missing but whose terminal is still
+        # open — held one poll before being declared exited, so a transient
+        # discovery miss can't fire a false "the worker died" wake.
+        self._exit_pending: set[str] = set()
 
     def start(self) -> None:
         if self._task is None or self._task.done():
@@ -231,16 +237,8 @@ class IdleMonitor:
 
         self._live_targets = list(targets)
 
-        dead_targets = set(self._fingerprints.keys()) - set(targets)
-        for target in dead_targets:
-            self._fingerprints.pop(target, None)
-            self._last_change.pop(target, None)
-            self._states.pop(target, None)
-            self._working_since.pop(target, None)
-            self._state_since.pop(target, None)
-            self._needs_answer.pop(target, None)
-            self._question_checked.discard(target)
-            self._question_inflight.discard(target)
+        live_session_names = set(await loop.run_in_executor(None, _live_session_names))
+        await self._reap_dead_targets(set(targets), live_session_names)
 
         session_identity.prune({parse_target(t)[0] for t in targets})
 
@@ -253,6 +251,57 @@ class IdleMonitor:
             await self._maybe_nudge_bill(loop)
         except Exception:
             logger.debug("bill nudge skipped", exc_info=True)
+
+    def _forget_target(self, target: str) -> None:
+        self._fingerprints.pop(target, None)
+        self._last_change.pop(target, None)
+        self._states.pop(target, None)
+        self._working_since.pop(target, None)
+        self._state_since.pop(target, None)
+        self._needs_answer.pop(target, None)
+        self._question_checked.discard(target)
+        self._question_inflight.discard(target)
+        self._exit_pending.discard(target)
+
+    async def _reap_dead_targets(self, targets: set[str], live_sessions: set[str]) -> None:
+        """Retire targets we were tracking that are no longer discovered.
+
+        A target drops out for one of two reasons, told apart by the process
+        signal (not pane text): if its tmux session is still alive, the agent
+        process itself exited/died while the terminal stayed open — a real
+        "the worker stopped" event worth surfacing as ERROR. If the whole
+        session is gone, it was just killed — retire it silently.
+        """
+        dead_targets = set(self._fingerprints.keys()) - targets
+        self._exit_pending &= dead_targets  # an agent that came back is no longer exiting
+
+        for target in dead_targets:
+            terminal_alive = parse_target(target)[0] in live_sessions
+            was_tracked = self._states.get(target) not in (None, SessionState.ERROR)
+            exiting = terminal_alive and was_tracked
+
+            if exiting and target not in self._exit_pending:
+                # First poll the agent is missing: hold one cycle (keep tracking
+                # state so it re-enters here next poll) to absorb a transient miss.
+                self._exit_pending.add(target)
+                continue
+
+            confirmed_exit = exiting and target in self._exit_pending
+            self._forget_target(target)
+            if confirmed_exit:
+                await self._mark_exited(target)
+
+    async def _mark_exited(self, session_name: str) -> None:
+        """Surface an agent that exited/died from a still-open terminal.
+
+        Ground truth from the process signal, so unlike the old pane-text guess
+        it fires only when the agent is genuinely gone. Wakes the overseer once,
+        then stops tracking (the persisted state carries the UI until relaunch).
+        """
+        logger.info(f"Session {session_name} agent exited (process gone, terminal alive) -> error")
+        await self._persist_state(session_name, SessionState.ERROR)
+        session_attention.mark_attention(session_name, SessionState.ERROR.value)
+        await session_attention.persist()
 
     async def _maybe_nudge_bill(self, loop: asyncio.AbstractEventLoop) -> None:
         """Wake Bill if he's idle with live work, off the event loop and throttled.

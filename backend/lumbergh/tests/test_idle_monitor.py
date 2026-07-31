@@ -13,6 +13,7 @@ import json
 
 import pytest
 
+import lumbergh.idle_monitor as im
 from lumbergh.idle_detector import SessionState
 from lumbergh.idle_monitor import IdleMonitor
 
@@ -121,13 +122,83 @@ def test_regression_busy_pane_with_empty_prompt_not_marked_idle():
     assert state == SessionState.WORKING
 
 
-def test_error_pattern_overrides_quiescence():
-    """Rate limit message -> ERROR even if pane is stable."""
-    error_content = IDLE_CAPTURE + "\nrate limit exceeded (429)\n"
+def test_error_like_text_does_not_flip_to_error():
+    """Error/rate-limit *words* in the pane must not be read as a real error.
+
+    They are almost always displayed content — a diff, a log line, code being
+    edited — not the agent actually stopping. Real "the agent died" is derived
+    from the process signal (see the exited-agent path), never from pane text.
+    """
+    error_content = IDLE_CAPTURE + "\nrate limit exceeded (429) — APIError, Connection error\n"
     mon = IdleMonitor()
     mon._classify_burst("s1", [error_content, error_content, error_content], now=100.0)
     state = mon._classify_burst("s1", [error_content, error_content, error_content], now=200.0)
-    assert state == SessionState.ERROR
+    assert state != SessionState.ERROR
+    assert state == SessionState.IDLE
+
+
+def _seed_tracked_agent(mon, name="worker", state=SessionState.WORKING):
+    mon._fingerprints[name] = "fp"
+    mon._states[name] = state
+
+
+def _capture_exit_effects(mon, monkeypatch):
+    persisted, marked = [], {}
+
+    async def _persist(name, state):
+        persisted.append((name, state))
+
+    async def _noop():
+        return None
+
+    monkeypatch.setattr(mon, "_persist_state", _persist)
+    monkeypatch.setattr(im.session_attention, "mark_attention", lambda n, s: marked.update({n: s}))
+    monkeypatch.setattr(im.session_attention, "persist", _noop)
+    return persisted, marked
+
+
+async def test_agent_exit_from_live_terminal_surfaces_error_after_confirm(monkeypatch):
+    """Agent process gone but its terminal still open -> ERROR, after a one-poll hold."""
+    mon = IdleMonitor()
+    persisted, marked = _capture_exit_effects(mon, monkeypatch)
+    _seed_tracked_agent(mon)
+
+    await mon._reap_dead_targets(targets=set(), live_sessions={"worker"})
+    assert marked == {}  # held, not yet fired
+    assert "worker" in mon._exit_pending
+
+    await mon._reap_dead_targets(targets=set(), live_sessions={"worker"})
+    assert marked == {"worker": "error"}
+    assert persisted == [("worker", SessionState.ERROR)]
+    assert "worker" not in mon._fingerprints  # stopped tracking after firing
+
+
+async def test_killed_session_is_retired_silently(monkeypatch):
+    """Whole tmux session gone (killed) -> no error, no wake."""
+    mon = IdleMonitor()
+    persisted, marked = _capture_exit_effects(mon, monkeypatch)
+    _seed_tracked_agent(mon)
+
+    await mon._reap_dead_targets(targets=set(), live_sessions=set())
+
+    assert marked == {}
+    assert persisted == []
+    assert "worker" not in mon._fingerprints
+    assert mon._exit_pending == set()
+
+
+async def test_transient_discovery_miss_does_not_fire_exit(monkeypatch):
+    """A single missed poll while the agent lives must not fire a false exit."""
+    mon = IdleMonitor()
+    _persisted, marked = _capture_exit_effects(mon, monkeypatch)
+    _seed_tracked_agent(mon)
+
+    await mon._reap_dead_targets(targets=set(), live_sessions={"worker"})
+    assert "worker" in mon._exit_pending
+
+    await mon._reap_dead_targets(targets={"worker"}, live_sessions={"worker"})
+    assert marked == {}
+    assert mon._exit_pending == set()
 
 
 def test_sessions_tracked_independently():
