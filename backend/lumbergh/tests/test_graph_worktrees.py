@@ -59,3 +59,19 @@ def test_graph_resolves_session_name_from_path_map(tmp_path):
 
     sibling = next(wt for wt in graph["worktrees"] if not wt["isMain"])
     assert sibling["sessionName"] == "foo-worker"
+
+
+def test_session_path_map_resolves_workdir_to_name(tmp_path, monkeypatch):
+    from lumbergh.routers import sessions
+
+    wt_path = tmp_path / "wt"
+    wt_path.mkdir()
+    monkeypatch.setattr(
+        sessions,
+        "get_stored_sessions",
+        lambda: {"foo-worker": {"workdir": str(wt_path)}, "no-dir": {}},
+    )
+
+    path_map = sessions.get_session_path_map()
+
+    assert path_map == {str(wt_path.resolve()): "foo-worker"}

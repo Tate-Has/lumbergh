@@ -63,11 +63,22 @@ export interface GraphCommit {
   stash?: boolean
 }
 
+export interface GraphWorktree {
+  branch: string
+  /** 7-char short hash — matches a GraphCommit's shortHash, not hash. */
+  headHash: string
+  path: string
+  isMain: boolean
+  isCurrent: boolean
+  sessionName: string | null
+}
+
 export interface GraphData {
   commits: GraphCommit[]
   branches: { name: string; hash: string; current: boolean }[]
   head: { hash: string; branch: string | null } | null
   workingChanges: { files: number; staged: number; unstaged: number } | null
+  worktrees?: GraphWorktree[]
 }
 
 export interface GraphEdge {

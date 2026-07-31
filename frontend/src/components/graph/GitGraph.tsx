@@ -1,12 +1,55 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { MoreVertical, Monitor, Cloud, Archive, Tag, AlertTriangle, Trash2 } from 'lucide-react'
+import {
+  MoreVertical,
+  Monitor,
+  Cloud,
+  Archive,
+  Tag,
+  AlertTriangle,
+  Trash2,
+  GitBranch,
+} from 'lucide-react'
 import { getApiBase } from '../../config'
-import type { GraphData } from '../diff/types'
+import type { GraphData, GraphWorktree } from '../diff/types'
 import { computeGraphLayout, laneColor } from './graphLayout'
 import { relativeDate } from '../../utils/relativeDate'
 import { useClickOutside } from '../../hooks/useClickOutside'
 import { useDraggablePanel } from '../../hooks/useDraggablePanel'
+import { getSessionStatus, statusColorClasses, type SessionBase } from '../../utils/sessionStatus'
 import dayjs from 'dayjs'
+
+/** Live agent state for a worktree's owning session, derived for a status dot. */
+function worktreeDot(session: SessionBase | undefined): { dot: string; pulse: boolean } {
+  if (!session) return { dot: 'bg-text-tertiary', pulse: false }
+  const status = getSessionStatus(session)
+  return { dot: statusColorClasses[status.color]?.dot ?? 'bg-text-tertiary', pulse: status.pulse }
+}
+
+function WorktreeBadge({
+  worktree,
+  session,
+}: {
+  worktree: GraphWorktree
+  session: SessionBase | undefined
+}) {
+  const { dot, pulse } = worktreeDot(session)
+  const stateLabel = session ? getSessionStatus(session).label : 'No agent session'
+  const title = `Worktree ${worktree.branch}${
+    worktree.sessionName ? ` · ${worktree.sessionName} — ${stateLabel}` : ' · no agent'
+  }${worktree.isCurrent ? ' · you are here' : ''}`
+  return (
+    <span
+      title={title}
+      className={`inline-flex items-center gap-1 shrink-0 px-1.5 py-0.5 rounded text-[11px] font-medium leading-none bg-bg-surface text-text-secondary ring-1 ${
+        worktree.isCurrent ? 'ring-action' : 'ring-border-default'
+      }`}
+    >
+      <span className={`w-2 h-2 rounded-full shrink-0 ${dot} ${pulse ? 'animate-pulse' : ''}`} />
+      <GitBranch size={11} className="opacity-60 shrink-0" />
+      <span className="truncate max-w-[120px]">{worktree.sessionName ?? worktree.branch}</span>
+    </span>
+  )
+}
 
 function TagBadge({ name }: { name: string }) {
   return (
@@ -636,6 +679,7 @@ export default function GitGraph({
   const branchPanelStorageKey = storageKeyFor(branchPanelStorageKey_PREFIX, sessionName)
   const graphPanelStorageKey = storageKeyFor(graphPanelStorageKey_PREFIX, sessionName)
   const [graphData, setGraphData] = useState<GraphData | null>(null)
+  const [sessions, setSessions] = useState<SessionBase[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [commitLimit, setCommitLimit] = useState(100)
@@ -692,6 +736,41 @@ export default function GitGraph({
       })
       .catch(() => {})
   }, [])
+
+  // Poll live session state to overlay agent status on worktree badges. This is
+  // deliberately client-side — the cached graph payload carries only structural
+  // worktree data, so live state never goes stale in the cache.
+  useEffect(() => {
+    let cancelled = false
+    const load = () => {
+      fetch(`${getApiBase()}/sessions`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (!cancelled && Array.isArray(data)) setSessions(data)
+        })
+        .catch(() => {})
+    }
+    load()
+    const interval = setInterval(load, 5000)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [])
+
+  const sessionsByName = useMemo(() => {
+    const map = new Map<string, SessionBase>()
+    for (const s of sessions) map.set(s.name, s)
+    return map
+  }, [sessions])
+
+  const worktreeByShortHash = useMemo(() => {
+    const map = new Map<string, GraphWorktree>()
+    for (const wt of graphData?.worktrees ?? []) {
+      if (!map.has(wt.headHash)) map.set(wt.headHash, wt)
+    }
+    return map
+  }, [graphData])
 
   const etagRef = useRef<string>('')
 
@@ -941,6 +1020,13 @@ export default function GitGraph({
     if (!graphData) return []
     return computeGraphLayout(graphData.commits, graphData.head?.hash ?? null)
   }, [graphData])
+
+  // Worktrees whose HEAD is older than the commit limit aren't drawn on the graph —
+  // surface them in a strip so they don't silently vanish.
+  const offscreenWorktrees = useMemo(() => {
+    const visible = new Set(nodes.map((n) => n.commit.shortHash))
+    return (graphData?.worktrees ?? []).filter((wt) => !wt.isMain && !visible.has(wt.headHash))
+  }, [graphData, nodes])
 
   const hasWip = graphData?.workingChanges != null
   // Find which row HEAD is on so we can insert WIP right above it
@@ -1269,6 +1355,26 @@ export default function GitGraph({
       {/* Error */}
       {error && <div className="px-3 py-2 text-sm text-danger bg-danger/10">{error}</div>}
 
+      {/* Off-screen worktrees — HEADs older than the commit limit */}
+      {offscreenWorktrees.length > 0 && (
+        <div className="flex items-center gap-2 px-3 py-1.5 text-xs border-b border-border-default bg-bg-surface/50 overflow-x-auto">
+          <span className="text-text-muted shrink-0">Off-screen worktrees:</span>
+          {offscreenWorktrees.map((wt) => (
+            <button
+              key={wt.path}
+              onClick={() => setCommitLimit((n) => n + 200)}
+              title="Load more commits to reveal this worktree on the graph"
+              className="shrink-0"
+            >
+              <WorktreeBadge
+                worktree={wt}
+                session={wt.sessionName ? sessionsByName.get(wt.sessionName) : undefined}
+              />
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Graph */}
       <div ref={containerRef} className="flex-1 min-h-0 overflow-auto">
         {nodes.length === 0 && !loading && !error ? (
@@ -1507,6 +1613,17 @@ export default function GitGraph({
                   >
                     {node.commit.message}
                   </span>
+                  {/* Worktree fleet badge */}
+                  {(() => {
+                    const wt = worktreeByShortHash.get(node.commit.shortHash)
+                    if (!wt || wt.isMain) return null
+                    return (
+                      <WorktreeBadge
+                        worktree={wt}
+                        session={wt.sessionName ? sessionsByName.get(wt.sessionName) : undefined}
+                      />
+                    )
+                  })()}
                   {/* Context menu button */}
                   <button
                     onClick={(e) => {
