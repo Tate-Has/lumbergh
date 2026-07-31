@@ -837,9 +837,10 @@ def land_run(body: LandBody):
     if not members:
         raise _fail("run", f"no workers in run `{body.run}`", "check the --run id")
     repos = {m.get("parent_repo") for m in members}
-    if len(repos) != 1 or None in repos:
+    repo_path = next(iter(repos)) if len(repos) == 1 else None
+    if repo_path is None:
         raise _fail("run", "run spans multiple repos (or a member has no repo)", "land per repo")
-    repo = Path(next(iter(repos)))
+    repo = Path(repo_path)
     base = body.onto or "main"
 
     result = land.assemble(repo, body.run, base, [m["branch"] for m in members])

@@ -66,6 +66,9 @@ export default function CsvViewer({ content, delimiter = '' }: Props) {
     )
   }, [filteredIndices, sort, rows])
 
+  // TanStack Virtual returns functions React Compiler can't memoize; skipping
+  // memoization here is safe (and the compiler's own advice).
+  // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
     count: orderedIndices.length,
     getScrollElement: () => scrollRef.current,

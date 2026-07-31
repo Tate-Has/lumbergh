@@ -53,7 +53,9 @@ def test_two_window_workers_visible_and_reap_isolated(tmp_path, session_name, fa
 
     def all_three_visible():
         targets = discover_live_targets()
-        return all(f"{session_name}:{w}" in targets for w in ("fleet-643", "fleet-644", "fleet-645"))
+        return all(
+            f"{session_name}:{w}" in targets for w in ("fleet-643", "fleet-644", "fleet-645")
+        )
 
     assert _wait_until(all_three_visible)
 
