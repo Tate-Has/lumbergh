@@ -14,11 +14,13 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from lumbergh import bill as bill_bundle
-from lumbergh import fleet, session_attention, worktrees
+from lumbergh import fleet, land, session_attention, worktrees
 from lumbergh.activity.resolve import resolve_adapter
 from lumbergh.activity.resolve import session_meta as _session_meta
+from lumbergh.briefs import enumerate_briefs
 from lumbergh.idle_monitor import idle_monitor
 from lumbergh.routers.sessions import SESSION_NAME_PATTERN, create_tmux_session, create_tmux_window
+from lumbergh.runs import run_members
 from lumbergh.spawn_delivery import DeliveryResult, deliver_when_ready
 from lumbergh.targets import format_target, parse_target
 from lumbergh.tmux_pty import kill_tmux_session, kill_tmux_window, list_session_windows
@@ -686,3 +688,145 @@ def write_brief(body: BriefBody):
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(body.body)
     return {"path": str(target)}
+
+
+class BatchBody(BaseModel):
+    repo: str
+    run: str
+    briefs: list[str]
+    kind: str
+    base: str | None = None
+    session: str | None = None
+
+
+@router.post("/batch")
+def batch(body: BatchBody):
+    """Stand up one window worker per brief, all in one session, grouped by run."""
+    session = body.session or body.run
+    try:
+        pairs = enumerate_briefs(body.briefs)
+    except ValueError as e:
+        raise _fail("briefs", str(e), "check --briefs paths and filenames")
+    if not pairs:
+        raise _fail("briefs", "no briefs found", "pass a directory of .md files or a file list")
+
+    workers, failed = [], []
+    for brief_path, stem in pairs:
+        try:
+            workers.append(
+                spawn(
+                    SpawnBody(
+                        repo=body.repo,
+                        branch=stem,
+                        kind=body.kind,
+                        brief_path=str(brief_path),
+                        name=stem,
+                        create_branch=True,
+                        base_branch=body.base,
+                        into=session,
+                        run=body.run,
+                    )
+                )
+            )
+        except HTTPException as e:
+            failed.append({"brief": stem, "error": e.detail})
+    return {"run": body.run, "session": session, "workers": workers, "failed": failed}
+
+
+class LandBody(BaseModel):
+    run: str
+    onto: str | None = None
+    push: bool = False
+    smoke: str | None = None
+    skip_smoke: bool = False
+
+
+@router.post("/land")
+def land_run(body: LandBody):
+    """Assemble a run's branches, smoke-test, and (only on explicit go) single-push."""
+    members = run_members(body.run)
+    if not members:
+        raise _fail("run", f"no workers in run `{body.run}`", "check the --run id")
+    repos = {m.get("parent_repo") for m in members}
+    if len(repos) != 1 or None in repos:
+        raise _fail("run", "run spans multiple repos (or a member has no repo)", "land per repo")
+    repo = Path(next(iter(repos)))
+    base = body.onto or "main"
+
+    result = land.assemble(repo, body.run, base, [m["branch"] for m in members])
+    if not result["ok"]:
+        raise _fail(
+            result["stage"],
+            result.get("error", "assembly failed"),
+            "resolve the conflict/ordering and re-run",
+            **{k: str(v) for k, v in result.items() if k in ("branch", "commit") and v is not None},
+        )
+
+    worktree = Path(result["worktree"])
+    batch_branch = result["batch"]
+
+    smoke_state = "skipped"
+    if not body.skip_smoke:
+        cmd = body.smoke or worktrees.read_land_smoke(repo)
+        if not cmd:
+            land.cleanup_assembly(repo, worktree, batch_branch)
+            raise _fail(
+                "smoke",
+                "no smoke command configured",
+                "add [land].smoke to .lumbergh.toml, or pass --smoke/--skip-smoke",
+            )
+        smoke = land.run_smoke(worktree, cmd)
+        if not smoke["ok"]:
+            raise _fail(
+                "smoke",
+                f"smoke failed (exit {smoke['returncode']})",
+                f"batch branch {batch_branch} left for inspection at {worktree}",
+            )
+        smoke_state = "passed"
+
+    if not body.push:
+        land.cleanup_assembly(repo, worktree, batch_branch)
+        return {
+            "run": body.run,
+            "batch": batch_branch,
+            "base": base,
+            "pushed": False,
+            "picked": result["picked"],
+            "smoke": smoke_state,
+            "next": "re-run with --push to push the batch onto the base (one CI build)",
+        }
+
+    push = land.push_batch(worktree, batch_branch, base)
+    land.cleanup_assembly(repo, worktree, batch_branch)
+    if not push["ok"]:
+        raise _fail("push", push.get("error", "push failed"), "check the remote and retry")
+    return {
+        "run": body.run,
+        "batch": batch_branch,
+        "base": base,
+        "pushed": True,
+        "picked": result["picked"],
+        "smoke": smoke_state,
+    }
+
+
+class TeardownBody(BaseModel):
+    run: str
+    force: bool = False
+
+
+@router.post("/teardown")
+def teardown(body: TeardownBody):
+    """Kill each run member's window and reap its worktree; refuse dirty work."""
+    members = run_members(body.run)
+    results, refused = [], []
+    for m in members:
+        target = m.get("target") or m.get("associated_session")
+        killed = False
+        if target and parse_target(target)[1] is not None:
+            killed = kill_tmux_window(target)
+        reap = worktrees.reap(Path(m["path"]), force=body.force, rm_branch=True)
+        if reap.get("status") != "removed":
+            refused.append(target)
+        results.append({"target": target, "killed": killed, "reaped": reap.get("status")})
+    return {"run": body.run, "results": results, "refused": refused}

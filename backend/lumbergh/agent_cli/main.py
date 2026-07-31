@@ -50,8 +50,21 @@ FLAGS = {
         "--into",
         "--run",
     },
+    "batch": {"--repo", "--run", "--briefs", "--kind", "--base", "--session"},
+    "land": {"--run", "--onto", "--push", "--smoke", "--skip-smoke"},
+    "teardown": {"--run", "--force"},
 }
-_BOOL_FLAGS = {"--full", "--wait", "--check", "--new", "--force", "--rm-branch", "--json"}
+_BOOL_FLAGS = {
+    "--full",
+    "--wait",
+    "--check",
+    "--new",
+    "--force",
+    "--rm-branch",
+    "--json",
+    "--push",
+    "--skip-smoke",
+}
 
 # One usage line per command, so `lb <command> --help` is a real answer rather than a
 # request the command runs anyway. Bill's AGENTS.md points him here when he is unsure of
@@ -81,6 +94,12 @@ _COMMAND_HELP = {
         "[--new] [--base <b>] [--name <n>] [--agent <provider>] [--intent '...'] "
         "[--into <session>] [--run <id>]"
     ),
+    "batch": (
+        "lb batch --repo <path> --run <id> --briefs <dir|a.md,b.md> --kind ship|scout "
+        "[--base <b>] [--session <n>]"
+    ),
+    "land": "lb land --run <id> [--onto <base>] [--push] [--smoke '<cmd>'] [--skip-smoke]",
+    "teardown": "lb teardown --run <id> [--force]",
 }
 
 
@@ -167,6 +186,9 @@ def main(argv=None) -> int:
         "worktree": lambda: _cmd_worktree(positional, flags),
         "fleet": lambda: _cmd_fleet(flags),
         "spawn": lambda: _cmd_spawn(flags),
+        "batch": lambda: _cmd_batch(flags),
+        "land": lambda: _cmd_land(flags),
+        "teardown": lambda: _cmd_teardown(flags),
     }
     handler = dispatch.get(command)
     if handler is None:
@@ -379,6 +401,24 @@ def _cmd_spawn(flags) -> int:
     from lumbergh.agent_cli import spawn as spawn_cli
 
     return spawn_cli.run(flags)
+
+
+def _cmd_batch(flags) -> int:
+    from lumbergh.agent_cli import batch as batch_cli
+
+    return batch_cli.run(flags)
+
+
+def _cmd_land(flags) -> int:
+    from lumbergh.agent_cli import land as land_cli
+
+    return land_cli.run(flags)
+
+
+def _cmd_teardown(flags) -> int:
+    from lumbergh.agent_cli import teardown as teardown_cli
+
+    return teardown_cli.run(flags)
 
 
 if __name__ == "__main__":

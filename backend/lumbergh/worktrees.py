@@ -79,6 +79,15 @@ def parse_worktree_config(repo: Path) -> WorktreeProjectConfig:
     )
 
 
+def read_land_smoke(repo: Path) -> str | None:
+    dotfile = repo / ".lumbergh.toml"
+    if not dotfile.is_file():
+        return None
+    data = tomllib.loads(dotfile.read_text())
+    smoke = data.get("land", {}).get("smoke")
+    return smoke if isinstance(smoke, str) and smoke else None
+
+
 def resolve_worktree_dir(
     repo: Path, branch: str, cfg: WorktreeProjectConfig, global_base_dir: str | None
 ) -> Path:
