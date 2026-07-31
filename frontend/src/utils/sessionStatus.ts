@@ -10,6 +10,17 @@ export interface SessionBase {
   theOne?: boolean
 }
 
+/** Normalize the `/sessions` payload into a session array.
+ *
+ * The endpoint returns `{ sessions: [...] }`; older call sites assumed a bare
+ * array and silently dropped every session. Accept both so the overlay is robust.
+ */
+export function parseSessionsPayload(data: unknown): SessionBase[] {
+  if (Array.isArray(data)) return data as SessionBase[]
+  const wrapped = (data as { sessions?: unknown })?.sessions
+  return Array.isArray(wrapped) ? (wrapped as SessionBase[]) : []
+}
+
 export function getSessionStatus(session: SessionBase): {
   color: string
   pulse: boolean

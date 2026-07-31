@@ -1,5 +1,29 @@
 import { describe, it, expect } from 'vitest'
-import { getSessionStatus, statusColorClasses, sessionUrgencyRank } from './sessionStatus'
+import {
+  getSessionStatus,
+  statusColorClasses,
+  sessionUrgencyRank,
+  parseSessionsPayload,
+} from './sessionStatus'
+
+describe('parseSessionsPayload', () => {
+  it('unwraps the { sessions: [...] } shape the API actually returns', () => {
+    const sessions = parseSessionsPayload({
+      sessions: [{ name: 'issue-669', alive: true, idleState: 'idle', displayName: null }],
+    })
+    expect(sessions.map((s) => s.name)).toEqual(['issue-669'])
+  })
+
+  it('still accepts a bare array', () => {
+    const sessions = parseSessionsPayload([{ name: 'a', alive: true, displayName: null }])
+    expect(sessions).toHaveLength(1)
+  })
+
+  it('falls back to empty for malformed payloads', () => {
+    expect(parseSessionsPayload(null)).toEqual([])
+    expect(parseSessionsPayload({})).toEqual([])
+  })
+})
 
 describe('getSessionStatus', () => {
   it('maps blocked to a violet, pulsing, "waiting on you" status', () => {

@@ -15,7 +15,12 @@ import { computeGraphLayout, laneColor } from './graphLayout'
 import { relativeDate } from '../../utils/relativeDate'
 import { useClickOutside } from '../../hooks/useClickOutside'
 import { useDraggablePanel } from '../../hooks/useDraggablePanel'
-import { getSessionStatus, statusColorClasses, type SessionBase } from '../../utils/sessionStatus'
+import {
+  getSessionStatus,
+  parseSessionsPayload,
+  statusColorClasses,
+  type SessionBase,
+} from '../../utils/sessionStatus'
 import dayjs from 'dayjs'
 
 /** Live agent state for a worktree's owning session, derived for a status dot. */
@@ -746,7 +751,7 @@ export default function GitGraph({
       fetch(`${getApiBase()}/sessions`)
         .then((r) => r.json())
         .then((data) => {
-          if (!cancelled && Array.isArray(data)) setSessions(data)
+          if (!cancelled) setSessions(parseSessionsPayload(data))
         })
         .catch(() => {})
     }
