@@ -8,7 +8,12 @@ into one target per window.
 
 from collections.abc import Callable
 
-_AGENT_MARKERS = ("Claude Code", "╭─ Claude")  # box-drawn Claude Code prompt frame
+from lumbergh.providers import PROVIDERS
+
+# Process command names that mean "a coding agent is alive in this pane". Derived
+# from the provider launch strings (their first token) so this set can never drift
+# from what Lumbergh actually starts — add a provider and detection follows for free.
+AGENT_COMMANDS = frozenset(entry["launch"].split()[0] for entry in PROVIDERS.values())
 
 
 def parse_target(target: str) -> tuple[str, str | None]:
@@ -32,27 +37,33 @@ def select_targets(windows_by_session: dict[str, list[str]]) -> list[str]:
     return targets
 
 
-def window_runs_agent(pane_text: str) -> bool:
-    return any(marker in pane_text for marker in _AGENT_MARKERS)
+def window_runs_agent(pane_commands: set[str]) -> bool:
+    """True when an agent process is alive in the pane's process tree.
+
+    The pane's *processes* are the ground-truth signal, not its on-screen text:
+    a coding agent's UI chrome (the welcome banner, the box-drawn input frame)
+    is only rendered in some states, so sniffing pane text silently drops a busy
+    or compact-mode agent. The process is there regardless of what is drawn.
+    """
+    return bool(pane_commands & AGENT_COMMANDS)
 
 
 def discover_targets(
     session_names: list[str],
     list_windows: Callable[[str], list[str]],
-    capture: Callable[[str], str],
+    pane_commands: Callable[[str], set[str]],
 ) -> list[str]:
     windows_by_session: dict[str, list[str]] = {}
     for session in session_names:
         windows = list_windows(session)
         if len(windows) == 1:
-            pane_text = capture(session)
-            if window_runs_agent(pane_text):
+            if window_runs_agent(pane_commands(session)):
                 windows_by_session[session] = windows
             else:
                 windows_by_session[session] = []
         else:
             agent_windows = [
-                w for w in windows if window_runs_agent(capture(format_target(session, w)))
+                w for w in windows if window_runs_agent(pane_commands(format_target(session, w)))
             ]
             windows_by_session[session] = agent_windows
     return select_targets(windows_by_session)

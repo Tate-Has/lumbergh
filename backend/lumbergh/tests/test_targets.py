@@ -6,8 +6,10 @@ from lumbergh.targets import (
     window_runs_agent,
 )
 
-CLAUDE_PANE = "\n╭─ Claude Code ─╮\n│ > \n╰──────────────╯\n"
-SHELL_PANE = "user@host:~/src$ "
+# Ground-truth signal is the pane's process tree, not its on-screen text.
+AGENT = {"bash", "claude"}
+AGENT_WITH_SUBPROCESS = {"bash", "claude", "uv", "python"}  # agent shelled out to a tool
+SHELL = {"bash"}
 
 
 def test_parse_bare_session_has_no_window():
@@ -38,40 +40,54 @@ def test_session_with_no_agent_windows_yields_nothing():
     assert select_targets({"port": []}) == []
 
 
-def test_window_runs_agent_detects_claude_ui():
-    assert window_runs_agent(CLAUDE_PANE) is True
+def test_window_runs_agent_detects_agent_process():
+    assert window_runs_agent(AGENT) is True
+
+
+def test_window_runs_agent_detects_agent_running_a_subprocess():
+    assert window_runs_agent(AGENT_WITH_SUBPROCESS) is True
 
 
 def test_window_runs_agent_rejects_plain_shell():
-    assert window_runs_agent(SHELL_PANE) is False
+    assert window_runs_agent(SHELL) is False
+
+
+def test_discover_finds_agent_with_no_visible_ui_marker():
+    """Regression: a busy/compact-mode agent shows no box-frame chrome in its
+    pane, but its process is alive — it must still be discovered. This is the
+    port/issue-668 drop-out that made sessions vanish from `lb`."""
+    result = discover_targets(
+        ["issue-668"],
+        list_windows=lambda _s: ["win0"],
+        pane_commands=lambda _t: AGENT,
+    )
+    assert result == ["issue-668"]
 
 
 def test_discover_collapses_single_agent_window():
-    windows = {"port": ["win0"]}
-    panes = {"port": CLAUDE_PANE}  # bare session capture
     result = discover_targets(
         ["port"],
-        list_windows=lambda s: windows[s],
-        capture=lambda t: panes.get(t, ""),
+        list_windows=lambda _s: ["win0"],
+        pane_commands=lambda t: AGENT if t == "port" else SHELL,
     )
     assert result == ["port"]
 
 
 def test_discover_expands_two_agent_windows():
-    panes = {"port:fleet-643": CLAUDE_PANE, "port:fleet-644": CLAUDE_PANE}
+    commands = {"port:fleet-643": AGENT, "port:fleet-644": AGENT}
     result = discover_targets(
         ["port"],
         list_windows=lambda _s: ["fleet-644", "fleet-643"],
-        capture=lambda t: panes.get(t, ""),
+        pane_commands=lambda t: commands.get(t, SHELL),
     )
     assert result == ["port:fleet-643", "port:fleet-644"]
 
 
 def test_discover_ignores_non_agent_windows():
-    panes = {"port:fleet-644": CLAUDE_PANE, "port:logs": SHELL_PANE}
+    commands = {"port:fleet-644": AGENT, "port:logs": SHELL}
     result = discover_targets(
         ["port"],
         list_windows=lambda _s: ["fleet-644", "logs"],
-        capture=lambda t: panes.get(t, ""),
+        pane_commands=lambda t: commands.get(t, SHELL),
     )
     assert result == ["port"]  # only one agent window → collapses

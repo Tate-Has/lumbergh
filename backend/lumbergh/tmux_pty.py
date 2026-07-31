@@ -14,6 +14,7 @@ import re
 import struct
 import subprocess
 import sys
+from collections.abc import Callable
 
 import libtmux
 from libtmux._internal.query_list import ObjectDoesNotExist
@@ -290,6 +291,106 @@ def list_session_windows(session: str) -> list[str]:
         return [line.strip() for line in result.stdout.splitlines() if line.strip()]
     except Exception:
         return []
+
+
+def _pane_pids(target: str) -> list[int]:
+    """Root pids of every pane in ``target`` (a session or session:window)."""
+    try:
+        result = subprocess.run(
+            [TMUX_CMD, "list-panes", "-t", target, "-F", "#{pane_pid}"],
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=2,
+        )
+        if result.returncode != 0:
+            return []
+        return [int(x) for x in result.stdout.split() if x.strip().isdigit()]
+    except Exception:
+        return []
+
+
+def _read_process_tree() -> tuple[dict[int, list[int]], dict[int, str]]:
+    """One /proc snapshot: pid→children and pid→command-name."""
+    children: dict[int, list[int]] = {}
+    comm: dict[int, str] = {}
+    try:
+        entries = os.listdir("/proc")
+    except OSError:
+        return children, comm
+    for name in entries:
+        if not name.isdigit():
+            continue
+        pid = int(name)
+        try:
+            with open(f"/proc/{pid}/stat", encoding="utf-8", errors="replace") as f:
+                data = f.read()
+        except OSError:
+            continue
+        # `/proc/<pid>/stat` is "<pid> (<comm>) <state> <ppid> …"; comm can itself
+        # hold spaces and parens, so slice on the last ')' rather than splitting.
+        try:
+            command = data[data.index("(") + 1 : data.rindex(")")]
+            ppid = int(data[data.rindex(")") + 2 :].split()[1])
+        except (ValueError, IndexError):
+            continue
+        comm[pid] = command
+        children.setdefault(ppid, []).append(pid)
+    return children, comm
+
+
+def _subtree_commands(
+    root_pids: list[int], children: dict[int, list[int]], comm: dict[int, str]
+) -> set[str]:
+    names: set[str] = set()
+    seen: set[int] = set()
+    stack = list(root_pids)
+    while stack:
+        pid = stack.pop()
+        if pid in seen:
+            continue
+        seen.add(pid)
+        if pid in comm:
+            names.add(comm[pid])
+        stack.extend(children.get(pid, []))
+    return names
+
+
+def _foreground_commands_lookup(target: str) -> set[str]:
+    """Fallback for hosts without /proc: each pane's foreground command only."""
+    try:
+        result = subprocess.run(
+            [TMUX_CMD, "list-panes", "-t", target, "-F", "#{pane_current_command}"],
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=2,
+        )
+        if result.returncode != 0:
+            return set()
+        return {line.strip() for line in result.stdout.splitlines() if line.strip()}
+    except Exception:
+        return set()
+
+
+def build_pane_commands_lookup() -> Callable[[str], set[str]]:
+    """A ``target -> {command names in its panes' process trees}`` lookup.
+
+    The /proc snapshot is taken once here and shared across every target in a
+    discovery pass, so scanning the process table costs one walk per pass, not
+    one per window. Using the whole tree (not just the foreground command) means
+    an agent that has shelled out to a tool — ``uv``, ``pytest`` — is still seen,
+    because the agent stays its ancestor. On a host without /proc, falls back to
+    each pane's foreground command (best-effort; /proc is the intended path).
+    """
+    if not os.path.isdir("/proc"):
+        return _foreground_commands_lookup
+    children, comm = _read_process_tree()
+
+    def lookup(target: str) -> set[str]:
+        return _subtree_commands(_pane_pids(target), children, comm)
+
+    return lookup
 
 
 def send_text(session_name: str, text: str) -> bool:
