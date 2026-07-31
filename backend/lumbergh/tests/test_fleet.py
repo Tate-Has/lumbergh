@@ -67,6 +67,152 @@ def test_snapshot_spans_every_repo_in_the_registry(tmp_path, monkeypatch):
 
 
 @pytest.mark.usefixtures("registry")
+def test_snapshot_includes_overseers_and_nests_workers(tmp_path, monkeypatch):
+    """Bill's fleet is overseer-centric: live direct sessions are overseer rows,
+    and a worker nests under the overseer whose workdir is the worker's repo."""
+    worktrees.record_worktree(
+        tmp_path / "port-wt",
+        tmp_path / "port",
+        "issue-668",
+        "t",
+        session="issue-668",
+        kind="ship",
+        origin="bill",
+    )
+    monkeypatch.setattr(
+        worktrees,
+        "reconcile",
+        _fake_reconcile(
+            {
+                str((tmp_path / "port").resolve()): [
+                    {
+                        "path": str((tmp_path / "port-wt").resolve()),
+                        "repo": "port",
+                        "branch": "issue-668",
+                        "session": "issue-668",
+                        "agent": "claude-code",
+                        "state": "active",
+                    }
+                ]
+            }
+        ),
+    )
+    live_sessions = {
+        "port": {"workdir": str(tmp_path / "port"), "type": "direct"},
+        "issue-668": {"workdir": str(tmp_path / "port-wt"), "type": "worktree"},
+        "bill": {"workdir": str(tmp_path / "bill"), "type": "direct"},
+    }
+    rows = fleet.snapshot(
+        live_sessions,
+        state_of=lambda n: "idle",  # noqa: ARG005
+        since_of=lambda n: 5.0,  # noqa: ARG005
+        unseen_of=lambda n: False,  # noqa: ARG005
+        live_targets={"port", "issue-668", "bill"},
+        overseer_exclude={"bill"},
+    )
+    by_task = {r["task"]: r for r in rows}
+    assert by_task["port"]["role"] == "overseer"
+    assert by_task["issue-668"]["role"] == "worker"
+    assert by_task["issue-668"]["parent"] == "port"
+    assert "bill" not in by_task  # Bill never rows himself
+
+
+@pytest.mark.usefixtures("registry")
+def test_snapshot_excludes_batch_container_session(tmp_path, monkeypatch):
+    """A batch run's container session (holds worker windows) is not an overseer."""
+    worktrees.record_worktree(
+        tmp_path / "w1",
+        tmp_path / "port",
+        "b1",
+        "t",
+        target="batch:w1",
+        kind="ship",
+        origin="bill",
+    )
+    monkeypatch.setattr(
+        worktrees,
+        "reconcile",
+        _fake_reconcile(
+            {
+                str((tmp_path / "port").resolve()): [
+                    {
+                        "path": str((tmp_path / "w1").resolve()),
+                        "repo": "port",
+                        "branch": "b1",
+                        "session": None,
+                        "agent": "claude-code",
+                        "state": "active",
+                    }
+                ]
+            }
+        ),
+    )
+    live_sessions = {
+        "batch": {"workdir": str(tmp_path / "batchdir"), "type": "direct"},
+        "port": {"workdir": str(tmp_path / "port"), "type": "direct"},
+    }
+    rows = fleet.snapshot(
+        live_sessions,
+        state_of=lambda n: "working",  # noqa: ARG005
+        since_of=lambda n: 1.0,  # noqa: ARG005
+        unseen_of=lambda n: False,  # noqa: ARG005
+        live_targets={"batch:w1", "port"},
+        overseer_exclude={"bill"},
+    )
+    by_task = {r["task"]: r for r in rows}
+    assert "batch" not in by_task  # container of worker windows, not an overseer
+    assert by_task["batch:w1"]["role"] == "worker"
+    assert by_task["port"]["role"] == "overseer"
+
+
+@pytest.mark.usefixtures("registry")
+def test_snapshot_origin_narrows_workers_but_not_overseers(tmp_path, monkeypatch):
+    worktrees.record_worktree(
+        tmp_path / "port-wt",
+        tmp_path / "port",
+        "issue-668",
+        "t",
+        session="issue-668",
+        kind="ship",
+        origin="someone-else",
+    )
+    monkeypatch.setattr(
+        worktrees,
+        "reconcile",
+        _fake_reconcile(
+            {
+                str((tmp_path / "port").resolve()): [
+                    {
+                        "path": str((tmp_path / "port-wt").resolve()),
+                        "repo": "port",
+                        "branch": "issue-668",
+                        "session": "issue-668",
+                        "agent": "claude-code",
+                        "state": "active",
+                    }
+                ]
+            }
+        ),
+    )
+    live_sessions = {
+        "port": {"workdir": str(tmp_path / "port"), "type": "direct"},
+        "issue-668": {"workdir": str(tmp_path / "port-wt"), "type": "worktree"},
+    }
+    rows = fleet.snapshot(
+        live_sessions,
+        state_of=lambda n: "idle",  # noqa: ARG005
+        since_of=lambda n: 5.0,  # noqa: ARG005
+        unseen_of=lambda n: False,  # noqa: ARG005
+        origin="bill",  # narrows workers to bill-origin only
+        live_targets={"port", "issue-668"},
+        overseer_exclude={"bill"},
+    )
+    by_task = {r["task"]: r for r in rows}
+    assert "issue-668" not in by_task  # filtered out by origin
+    assert by_task["port"]["role"] == "overseer"  # overseer still visible
+
+
+@pytest.mark.usefixtures("registry")
 def test_snapshot_marks_a_registry_row_with_a_dead_session(tmp_path, monkeypatch):
     worktrees.record_worktree(
         tmp_path / "a-wt", tmp_path / "a", "feat/a", "t", session="w-a", kind="ship", origin="bill"

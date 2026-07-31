@@ -10,6 +10,7 @@ from lumbergh.agent_cli.toon import render_collection, render_object
 # path, so without them Bill has no source for either and would invent one.
 _COLS = [
     "task",
+    "role",
     "repo",
     "branch",
     "kind",
@@ -80,6 +81,11 @@ def run(flags: dict) -> int:
 
 def _display(row: dict) -> dict:
     shown = {c: row.get(c) for c in _COLS}
+    # Workers arrive ordered under their overseer; indent them so the tree reads at a
+    # glance (`port` \n `  ↳ issue-668`). Overseers and orphans render flush-left.
+    if row.get("role") == "worker" and row.get("parent"):
+        shown["task"] = f"  ↳ {row.get('task')}"
+    shown["role"] = row.get("role") or "-"
     shown["since"] = f"{row['since']}s" if row.get("since") is not None else "-"
     shown["kind"] = row.get("kind") or "-"
     shown["unseen"] = "yes" if row.get("unseen") else ""

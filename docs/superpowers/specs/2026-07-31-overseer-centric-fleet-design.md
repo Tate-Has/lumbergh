@@ -65,14 +65,14 @@ Alternatives considered and rejected:
 `fleet.snapshot(...)` gains overseer rows and a parent link:
 
 1. **Worker rows** — unchanged in substance. Additionally set:
-   - `kind = "worker"`
+   - `role = "worker"` (the existing `kind` stays the spawn kind: ship/scout)
    - `parent` = the owning overseer's session name, resolved by matching the
      worker's `parent_repo` to a live overseer session whose `workdir` resolves
      to the same path. If no live overseer matches, `parent = None` (orphan →
      rendered at top level so nothing hides).
 2. **Overseer rows** — for each live agent session that is *not* backing a
    tracked worktree and is not `bill`, emit a row:
-   - `kind = "overseer"`
+   - `role = "overseer"` (`kind` empty)
    - `session` = the session name; `state`/`since`/`unseen` from the existing
      `state_of` / `since_of` / `unseen_of` lookups.
    - `path` = the session's `workdir`; worktree-only columns (`branch`, `run`,

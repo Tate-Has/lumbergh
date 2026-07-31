@@ -12,9 +12,20 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from lumbergh import worktrees
+from lumbergh.targets import parse_target
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+
+def _resolved(path: str | None) -> str | None:
+    if not path:
+        return None
+    try:
+        return str(Path(path).resolve())
+    except (OSError, ValueError):
+        return path
+
 
 # States where a live worker needs Bill and he can act on it (answer a prompt, report an
 # error). These wake him on their state alone — he can never miss one. `dead` is deliberately
@@ -33,16 +44,26 @@ def snapshot(
     origin: str | None = None,
     dead_acked: set[str] | None = None,
     live_targets: set[str] | None = None,
+    overseer_exclude: set[str] | None = None,
 ) -> list[dict]:
     dead_acked = dead_acked or set()
-    rows: list[dict] = []
+    overseer_exclude = overseer_exclude or set()
+
+    workers: list[dict] = []
+    worker_sessions: set[str] = set()  # session names of workers + batch containers
     for row in worktrees.reconcile_all(live_sessions):
         entry = worktrees.get_entry(Path(row["path"])) or {}
-        if origin is not None and entry.get("origin") != origin:
-            continue
         # `target` is the window-aware identity of a tracked worker (e.g. `port:fleet-644`
         # for one window of a batch, or a bare session name for a standalone worker).
         target = entry.get("target")
+        # Record every worker/container session up front — before the origin filter —
+        # so a worker hidden by --origin is still never mistaken for an overseer.
+        if target:
+            worker_sessions.add(parse_target(target)[0])
+        if row["session"]:
+            worker_sessions.add(row["session"])
+        if origin is not None and entry.get("origin") != origin:
+            continue
         tracked = target or row["session"]
         # A window worker (`--into`) is intentionally never stored in `live_sessions`, so
         # `row["session"]` is always None for one even while it's running — only the idle
@@ -60,7 +81,7 @@ def snapshot(
             # attention is tracked by path in `dead_acked`: unseen until Bill has been
             # shown it once. (An orphan never needs attention, so its flag is moot.)
             unseen = state == "dead" and row["path"] not in dead_acked
-        rows.append(
+        workers.append(
             {
                 "task": tracked,
                 # ``repo`` is only a basename (``reconcile`` fills it from ``repo.name``),
@@ -73,16 +94,94 @@ def snapshot(
                 "target": target,
                 "run": entry.get("run"),
                 "kind": entry.get("kind"),
+                "role": "worker",
+                "parent": None,  # filled once overseers are known
                 "state": state,
                 "since": round(since) if since is not None else None,
                 "unseen": unseen,
                 "path": row["path"],
             }
         )
+
+    overseers = _overseer_rows(
+        live_sessions,
+        worker_sessions,
+        overseer_exclude,
+        live_targets,
+        state_of,
+        since_of,
+        unseen_of,
+    )
+    overseer_by_path = {_resolved(o["path"]): o["task"] for o in overseers if o["path"]}
+    for w in workers:
+        w["parent"] = overseer_by_path.get(_resolved(w["repo_path"]))
+
+    return _as_tree(overseers, workers)
+
+
+def _overseer_rows(
+    live_sessions: dict[str, dict],
+    worker_sessions: set[str],
+    overseer_exclude: set[str],
+    live_targets: set[str] | None,
+    state_of: Callable[[str], str],
+    since_of: Callable[[str], float | None],
+    unseen_of: Callable[[str], bool],
+) -> list[dict]:
+    """One row per live overseer: a direct session that isn't a worker, a batch
+    container (its name owns worker windows), or Bill. Gated on actually running an
+    agent when a live-target set is supplied."""
+    agent_sessions = {parse_target(t)[0] for t in (live_targets or set())}
+    rows: list[dict] = []
+    for name, meta in live_sessions.items():
+        if name in overseer_exclude or name in worker_sessions:
+            continue
+        if meta.get("type") == "worktree":
+            continue
+        if live_targets is not None and name not in agent_sessions:
+            continue
+        workdir = meta.get("workdir")
+        since = since_of(name)
+        rows.append(
+            {
+                "task": name,
+                "repo": Path(workdir).name if workdir else None,
+                "repo_path": workdir,
+                "branch": None,
+                "session": name,
+                "target": None,
+                "run": None,
+                "kind": None,
+                "role": "overseer",
+                "parent": None,
+                "state": state_of(name),
+                "since": round(since) if since is not None else None,
+                "unseen": unseen_of(name),
+                "path": workdir,
+            }
+        )
     return rows
 
 
+def _as_tree(overseers: list[dict], workers: list[dict]) -> list[dict]:
+    """Flatten to one list ordered overseer-then-its-workers, orphans last."""
+    workers_by_parent: dict[str | None, list[dict]] = {}
+    for w in workers:
+        workers_by_parent.setdefault(w["parent"], []).append(w)
+    ordered: list[dict] = []
+    for o in overseers:
+        ordered.append(o)
+        ordered.extend(workers_by_parent.pop(o["task"], []))
+    for leftover in workers_by_parent.values():  # orphans + any unmatched parent
+        ordered.extend(leftover)
+    return ordered
+
+
 def needs_attention(row: dict) -> bool:
+    # Overseers are shown for visibility only; waking Bill on overseer state is the
+    # next (escalation) step, deliberately not wired yet — so they never wake --wait.
+    if row.get("role") == "overseer":
+        return False
     if row["state"] in ATTENTION_STATES:
         return True
     # A finished worker (`idle`) and one Bill cannot resolve (`dead`) both surface once,

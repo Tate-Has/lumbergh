@@ -68,8 +68,15 @@ def _outcome_of(session: str) -> str | None:
 
 
 def _add_outcomes(rows: list[dict]) -> list[dict]:
-    """Attach each worker's contracted final line to its row, in place."""
+    """Attach each worker's contracted final line to its row, in place.
+
+    Overseers don't deliver a contracted outcome, so they're skipped — reading
+    their (large, long-lived) transcripts every poll would be pure waste.
+    """
     for row in rows:
+        if row.get("role") == "overseer":
+            row["outcome"] = None
+            continue
         session = row.get("session")
         identifier = (row.get("target") or session) if session else None
         row["outcome"] = _outcome_of(identifier) if identifier else None
@@ -87,6 +94,7 @@ def _fleet_rows(origin: str | None, with_outcome: bool = False) -> list[dict]:
         origin=origin,
         dead_acked=_dead_acked,
         live_targets=set(idle_monitor.live_targets()),
+        overseer_exclude={BILL_SESSION},
     )
     return _add_outcomes(rows) if with_outcome else rows
 
@@ -112,6 +120,10 @@ def _mark_seen(rows: list[dict]) -> None:
     never miss one just because it was marked seen.
     """
     for row in rows:
+        if row.get("role") == "overseer":
+            # Overseers are shown, not managed-by-viewing: their unseen flag is the
+            # user's own "done while you were away" overlay, not Bill's to clear.
+            continue
         if row.get("session"):
             session_attention.clear_unseen(row.get("target") or row["session"])
         elif row.get("state") == "dead":
