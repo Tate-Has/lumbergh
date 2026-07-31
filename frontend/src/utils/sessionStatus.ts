@@ -1,7 +1,7 @@
 export interface SessionBase {
   name: string
   alive: boolean
-  idleState?: 'unknown' | 'idle' | 'working' | 'blocked' | 'error' | 'stalled' | null
+  idleState?: 'unknown' | 'idle' | 'working' | 'blocked' | 'error' | null
   unseen?: boolean
   attentionState?: 'idle' | 'blocked' | 'error' | null
   needsAnswer?: boolean
@@ -53,8 +53,6 @@ export function getSessionStatus(session: SessionBase): {
       return { color: 'purple', pulse: true, label: 'Blocked — waiting on you' }
     case 'error':
       return { color: 'red', pulse: true, label: 'Error' }
-    case 'stalled':
-      return { color: 'red', pulse: true, label: 'Stalled' }
     default:
       return { color: 'green', pulse: false, label: 'Active' }
   }

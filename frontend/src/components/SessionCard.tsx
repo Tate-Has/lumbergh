@@ -6,7 +6,6 @@ import {
   Pause,
   Play,
   AlertCircle,
-  AlertTriangle,
   Circle,
   Cloud,
   Star,
@@ -50,7 +49,6 @@ function getSessionStatus(session: Session) {
   let Icon = statusIcons[base.color as keyof typeof statusIcons] || Circle
   // Refine icons for specific states
   if (session.idleState === 'working') Icon = Play
-  if (session.idleState === 'stalled') Icon = AlertTriangle
   if (session.idleState === 'blocked') Icon = Hand
   if (session.needsAnswer && session.idleState === 'idle') Icon = MessageCircleQuestion
   return { ...base, Icon }

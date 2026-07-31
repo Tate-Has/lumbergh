@@ -101,7 +101,6 @@ class IdleMonitor:
     BURST_CAPTURES = 3
     BURST_GAP_SECONDS = 0.15
     QUIET_THRESHOLD_SECONDS = 5.0
-    STALL_THRESHOLD_SECONDS = 600
     FINGERPRINT_LINE_COUNT = 20
     # How long a session must sit continuously IDLE before we spend a cheap-LLM
     # call asking whether it is actually waiting on a human answer.
@@ -115,7 +114,6 @@ class IdleMonitor:
         self._fingerprints: dict[str, str] = {}
         self._last_change: dict[str, float] = {}
         self._states: dict[str, SessionState] = {}
-        self._working_since: dict[str, float] = {}
         self._state_since: dict[str, float] = {}
         # Soft "the agent asked something and is waiting" overlay (name -> reason),
         # inferred by a cheap LLM once per idle episode; see question_detector.
@@ -260,7 +258,6 @@ class IdleMonitor:
         self._fingerprints.pop(target, None)
         self._last_change.pop(target, None)
         self._states.pop(target, None)
-        self._working_since.pop(target, None)
         self._state_since.pop(target, None)
         self._needs_answer.pop(target, None)
         self._question_checked.discard(target)
@@ -364,14 +361,6 @@ class IdleMonitor:
         osc_title = await loop.run_in_executor(None, capture_pane_title, session_name)
 
         state = self._classify_burst(session_name, captures, time.time(), osc_title)
-
-        if state == SessionState.WORKING:
-            if session_name not in self._working_since:
-                self._working_since[session_name] = time.time()
-            elif time.time() - self._working_since[session_name] > self.STALL_THRESHOLD_SECONDS:
-                state = SessionState.STALLED
-        else:
-            self._working_since.pop(session_name, None)
 
         old_state = self._states.get(session_name, SessionState.UNKNOWN)
         if state != old_state:

@@ -27,7 +27,6 @@ class SessionState(Enum):
     WORKING = "working"
     BLOCKED = "blocked"  # Stopped on an approval / question / login — waiting on the human
     ERROR = "error"  # Agent process exited/died (derived from the process signal, not pane text)
-    STALLED = "stalled"  # Working for too long without progress
 
 
 # Only BLOCKED is derived from pane content. ERROR is *not* a content verdict:

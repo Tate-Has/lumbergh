@@ -137,6 +137,43 @@ def test_error_like_text_does_not_flip_to_error():
     assert state == SessionState.IDLE
 
 
+async def test_long_running_working_session_never_stalls(monkeypatch):
+    """A session busy for a long time stays WORKING — there is no time-based stall.
+
+    Elapsed working-time is not a reliable "stuck" signal: a healthy long command
+    (a spinner ticking over a 30-min ingest) looks identical to a real hang, so we
+    don't promote to a red 'stalled' state on duration alone.
+    """
+    mon = IdleMonitor()
+
+    async def _cap(_n):
+        return ["frame"]
+
+    async def _persist(_n, _s):
+        return None
+
+    async def _persist_attn():
+        return None
+
+    monkeypatch.setattr(mon, "_burst_capture", _cap)
+    monkeypatch.setattr(mon, "_classify_burst", lambda *_a, **_k: SessionState.WORKING)
+    monkeypatch.setattr(mon, "_persist_state", _persist)
+    monkeypatch.setattr(im, "capture_pane_title", lambda _n: "")
+    monkeypatch.setattr(im.session_attention, "persist", _persist_attn)
+    monkeypatch.setattr(im.session_attention, "mark_attention", lambda *_a: None)
+    monkeypatch.setattr(im.session_attention, "clear_unseen", lambda *_a: None)
+
+    clock = {"t": 1000.0}
+    monkeypatch.setattr(im.time, "time", lambda: clock["t"])
+
+    await mon._check_session("w")
+    assert mon.get_state("w") == SessionState.WORKING
+
+    clock["t"] += 3600  # an hour of continuous work later
+    await mon._check_session("w")
+    assert mon.get_state("w") == SessionState.WORKING
+
+
 def _seed_tracked_agent(mon, name="worker", state=SessionState.WORKING):
     mon._fingerprints[name] = "fp"
     mon._states[name] = state
