@@ -97,6 +97,36 @@ def test_reap_still_refuses_genuinely_unpushed_work(tmp_path):
     assert result.get("reason") == "unpushed", result
 
 
+@pytest.mark.usefixtures("worktrees_db")
+def test_reap_is_idempotent_when_worktree_and_parent_already_gone(tmp_path):
+    import shutil
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "master")
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
+    (repo / "base.txt").write_text("base")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "base")
+
+    now = "2026-07-30T00:00:00Z"
+    created = worktrees.create(repo, "feat/gone", created_at=now, create_branch=True)
+    wt = Path(created["path"])
+    assert worktrees.get_entry(wt) is not None
+
+    # An `lb teardown` (or manual cleanup) can leave the worktrees registry pointing
+    # at a worktree — and even its parent repo — that no longer exists on disk. Reaping
+    # such a ghost must converge to "already gone", not raise NoSuchPathError.
+    shutil.rmtree(repo)
+    shutil.rmtree(wt, ignore_errors=True)
+
+    result = worktrees.reap(wt, force=True)
+
+    assert "error" not in result, result
+    assert worktrees.get_entry(wt) is None
+
+
 def test_apply_links_excludes_symlinked_dir_so_status_stays_clean(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

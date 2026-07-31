@@ -348,6 +348,13 @@ def reap(worktree: Path, *, force: bool = False, rm_branch: bool = False) -> dic
     branch = entry.get("branch") if entry else None
     result = _git_remove_worktree(parent, worktree, force=force)
     if "error" in result:
+        # The one benign failure is "nothing left to remove": the worktree — and
+        # sometimes its whole parent repo — is already gone from disk (an lb teardown
+        # reaped it, or it was deleted by hand). Converge to removed and drop the stale
+        # registry entry rather than leaving an un-reapable ghost behind.
+        if not worktree.exists():
+            remove_entry(worktree)
+            return {"status": "removed", "path": str(worktree), "note": "already absent"}
         return result
     remove_entry(worktree)
     if rm_branch and branch:

@@ -1160,11 +1160,18 @@ async def delete_session(name: str, cleanup_worktree: bool = False):
         if result.returncode != 0:
             raise HTTPException(status_code=500, detail=f"Failed to kill session: {result.stderr}")
 
-    # Clean up worktree if requested
+    # Clean up worktree if requested. This is best-effort: removing the session
+    # record is the primary job, so a failed reap must never leave the session
+    # un-killable (the exact way lb-teardown orphans got stuck in the list).
     worktree_removed = False
     if cleanup_worktree and session_type == "worktree" and worktree_parent_repo and workdir:
-        wt_result = worktrees.reap(Path(workdir), force=True)
-        worktree_removed = wt_result.get("status") == "removed"
+        try:
+            wt_result = worktrees.reap(Path(workdir), force=True)
+            worktree_removed = wt_result.get("status") == "removed"
+        except Exception:
+            logger.exception(
+                "Worktree cleanup failed for session %s; removing session record anyway", name
+            )
 
     # Clean up scratch directory
     if session_type == "scratch" and workdir:

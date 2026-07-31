@@ -14,7 +14,7 @@ from pathlib import Path
 os.environ.setdefault("GIT_TERMINAL_PROMPT", "0")
 
 from git import InvalidGitRepositoryError, Repo
-from git.exc import GitCommandError
+from git.exc import GitCommandError, NoSuchPathError
 
 
 def _sanitize(text: str) -> str:
@@ -1785,7 +1785,7 @@ def remove_worktree(repo_path: Path, worktree_path: Path, force: bool = False) -
     """
     try:
         repo = get_repo(repo_path)
-    except InvalidGitRepositoryError:
+    except (InvalidGitRepositoryError, NoSuchPathError):
         return {"error": "Not a git repository"}
 
     try:
