@@ -84,6 +84,18 @@ def push_batch(worktree: Path, batch_branch: str, base: str) -> dict:
     return {"ok": True}
 
 
+def remove_worktree(repo: Path, worktree: Path | str) -> None:
+    """Drop the throwaway assembly worktree but keep its batch branch as a
+    durable, inspectable ref — the caller advertises the branch name, so it must
+    survive. ``delete_batch`` (or ``cleanup_assembly``) drops the branch later."""
+    _git(repo, "worktree", "remove", "--force", str(worktree))
+
+
+def delete_batch(repo: Path, batch_branch: str) -> bool:
+    r = _git(repo, "branch", "-D", batch_branch)
+    return r.returncode == 0
+
+
 def cleanup_assembly(repo: Path, worktree: Path | str, batch_branch: str) -> None:
     _git(repo, "worktree", "remove", "--force", str(worktree))
     _git(repo, "branch", "-D", batch_branch)

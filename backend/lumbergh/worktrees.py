@@ -151,6 +151,38 @@ def _reflink_copy(src: Path, dst: Path) -> None:
             shutil.copy2(src, dst)
 
 
+def _exclude_links_in_worktree(worktree: Path, specs: list[LinkSpec]) -> None:
+    """Record each linked path in the worktree's own git exclude.
+
+    Links only ever point at gitignored deps, but a ``.venv/`` pattern matches a
+    directory and not a symlink-to-directory, so a symlinked link would otherwise
+    show as untracked in exactly the tree the overseer eyeballs before landing. A
+    root-anchored entry in the worktree's local info/exclude ignores it regardless
+    of how the repo's ``.gitignore`` is written.
+    """
+    if not specs:
+        return
+    r = subprocess.run(
+        ["git", "-C", str(worktree), "rev-parse", "--git-path", "info/exclude"],
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    if r.returncode != 0:
+        return
+    exclude_file = Path(r.stdout.strip())
+    if not exclude_file.is_absolute():
+        exclude_file = worktree / exclude_file
+    existing = exclude_file.read_text().splitlines() if exclude_file.exists() else []
+    additions = [f"/{spec.path}" for spec in specs if f"/{spec.path}" not in existing]
+    if not additions:
+        return
+    exclude_file.parent.mkdir(parents=True, exist_ok=True)
+    prefix = "" if not existing or existing[-1] == "" else "\n"
+    with exclude_file.open("a", encoding="utf-8") as f:
+        f.write(prefix + "\n".join(additions) + "\n")
+
+
 def apply_links(repo: Path, worktree: Path, specs: list[LinkSpec]) -> list[dict]:
     applied: list[dict] = []
     for spec in specs:
@@ -162,6 +194,7 @@ def apply_links(repo: Path, worktree: Path, specs: list[LinkSpec]) -> list[dict]
         else:
             _reflink_copy(src, dst)
         applied.append({"path": spec.path, "mode": spec.mode})
+    _exclude_links_in_worktree(worktree, specs)
     return applied
 
 

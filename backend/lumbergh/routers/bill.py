@@ -875,7 +875,11 @@ def land_run(body: LandBody):
         smoke_state = "passed"
 
     if not body.push:
-        land.cleanup_assembly(repo, worktree, batch_branch)
+        # Keep the batch branch (drop only the throwaway worktree): the response
+        # advertises it, so it must be a real ref the overseer can inspect. `land
+        # --push` re-assembles deterministically from the members; `lb teardown`
+        # drops it.
+        land.remove_worktree(repo, worktree)
         return {
             "run": body.run,
             "batch": batch_branch,
@@ -883,7 +887,10 @@ def land_run(body: LandBody):
             "pushed": False,
             "picked": result["picked"],
             "smoke": smoke_state,
-            "next": "re-run with --push to push the batch onto the base (one CI build)",
+            "next": (
+                f"batch branch `{batch_branch}` is assembled and left in place — inspect it, "
+                f"then re-run with --push to land it, or `lb teardown --run {body.run}` to drop it"
+            ),
         }
 
     push = land.push_batch(worktree, batch_branch, base)
@@ -919,4 +926,9 @@ def teardown(body: TeardownBody):
         if reap.get("status") != "removed":
             refused.append(target)
         results.append({"target": target, "killed": killed, "reaped": reap.get("status")})
+    # Drop the batch branch a prior no-push `land` left behind (a no-op if there
+    # was none, or if a member's repo has no such branch).
+    for repo_path in {m.get("parent_repo") for m in members}:
+        if repo_path:
+            land.delete_batch(Path(repo_path), f"batch-{body.run}")
     return {"run": body.run, "results": results, "refused": refused}

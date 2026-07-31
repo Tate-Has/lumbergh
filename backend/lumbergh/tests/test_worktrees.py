@@ -36,6 +36,35 @@ def _git(cwd: Path, *args: str) -> None:
     subprocess.run(["git", "-C", str(cwd), *args], check=True, capture_output=True)
 
 
+def test_apply_links_excludes_symlinked_dir_so_status_stays_clean(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "master")
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
+    # A trailing-slash pattern matches a real directory but NOT a symlink-to-dir,
+    # the exact mismatch that left `?? e2e/.venv` in every worker worktree.
+    (repo / ".gitignore").write_text(".venv/\n")
+    (repo / "e2e").mkdir()
+    (repo / "e2e" / "keep").write_text("x")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "base")
+    (repo / "e2e" / ".venv").mkdir()  # the real dep dir in the main checkout
+
+    wt = tmp_path / "wt"
+    _git(repo, "worktree", "add", "-q", "-b", "work", str(wt), "master")
+
+    worktrees.apply_links(repo, wt, [worktrees.LinkSpec(path="e2e/.venv")])
+
+    assert (wt / "e2e" / ".venv").is_symlink()
+    status = subprocess.run(
+        ["git", "-C", str(wt), "status", "--porcelain"],
+        capture_output=True,
+        encoding="utf-8",
+    ).stdout
+    assert ".venv" not in status  # the linked dep must not read as untracked
+
+
 def _init_repo(path: Path) -> Path:
     path.mkdir(parents=True, exist_ok=True)
     _git(path, "init", "-q")

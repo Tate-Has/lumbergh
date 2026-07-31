@@ -47,3 +47,36 @@ def test_land_run_assembles_a_real_run_without_touching_the_checkout(monkeypatch
     assert resp["pushed"] is False
     assert set(resp["picked"]) == {"feat-a", "feat-b"}
     assert not (repo / "feat-a.txt").exists()  # user's master checkout untouched
+
+
+def _branch_exists(repo, branch) -> bool:
+    return (
+        subprocess.run(
+            ["git", "-C", str(repo), "rev-parse", "--verify", "--quiet", branch],
+            capture_output=True,
+        ).returncode
+        == 0
+    )
+
+
+def test_no_push_land_leaves_a_durable_batch_branch(monkeypatch, repo_with_run):
+    repo = repo_with_run
+    members = [
+        {"target": "sprint:feat-a", "branch": "feat-a", "parent_repo": str(repo), "run": "sprint"},
+        {"target": "sprint:feat-b", "branch": "feat-b", "parent_repo": str(repo), "run": "sprint"},
+    ]
+    monkeypatch.setattr("lumbergh.worktrees.all_entries", lambda: members)
+
+    resp = bill.land_run(bill.LandBody(run="sprint", onto="master", push=False, skip_smoke=True))
+
+    # The response advertises `batch-sprint`; it must be a real, inspectable ref,
+    # not a name for a branch that was assembled and immediately discarded.
+    assert resp["batch"] == "batch-sprint"
+    assert _branch_exists(repo, "batch-sprint")
+    # The throwaway assembly worktree is still cleaned up — only the branch stays.
+    wt_list = subprocess.run(
+        ["git", "-C", str(repo), "worktree", "list", "--porcelain"],
+        capture_output=True,
+        encoding="utf-8",
+    ).stdout
+    assert wt_list.count("worktree ") == 1  # only the main checkout remains
