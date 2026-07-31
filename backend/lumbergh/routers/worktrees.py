@@ -7,7 +7,8 @@ from pydantic import BaseModel
 from lumbergh import worktrees
 from lumbergh.routers.sessions import get_stored_sessions
 from lumbergh.routers.settings import get_settings
-from lumbergh.tmux_pty import kill_tmux_session, list_tmux_sessions
+from lumbergh.targets import parse_target
+from lumbergh.tmux_pty import kill_tmux_session, kill_tmux_window, list_tmux_sessions
 
 router = APIRouter(prefix="/api/worktrees", tags=["worktrees"])
 
@@ -77,10 +78,13 @@ def reap(body: ReapBody):
     # real removal: a refused reap (dirty/unpushed) is a stop-and-report, and its
     # worker must be left running so nothing is lost.
     entry = worktrees.get_entry(path) or {}
-    session = entry.get("associated_session")
+    worker = entry.get("target") or entry.get("associated_session")
     result = worktrees.reap(path, force=body.force, rm_branch=body.rm_branch)
-    if result.get("status") == "removed" and session:
-        kill_tmux_session(session)
+    if result.get("status") == "removed" and worker:
+        if parse_target(worker)[1] is not None:
+            kill_tmux_window(worker)
+        else:
+            kill_tmux_session(worker)
     return result
 
 

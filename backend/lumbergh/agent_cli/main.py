@@ -47,6 +47,8 @@ FLAGS = {
         "--agent",
         "--intent",
         "--new",
+        "--into",
+        "--run",
     },
 }
 _BOOL_FLAGS = {"--full", "--wait", "--check", "--new", "--force", "--rm-branch", "--json"}
@@ -76,7 +78,8 @@ _COMMAND_HELP = {
     "fleet": "lb fleet [--wait] [--timeout <s>] [--origin bill] [--json]",
     "spawn": (
         "lb spawn --repo <path> --branch <b> --kind ship|scout --brief <file> "
-        "[--new] [--base <b>] [--name <n>] [--agent <provider>] [--intent '...']"
+        "[--new] [--base <b>] [--name <n>] [--agent <provider>] [--intent '...'] "
+        "[--into <session>] [--run <id>]"
     ),
 }
 

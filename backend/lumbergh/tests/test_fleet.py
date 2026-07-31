@@ -270,6 +270,89 @@ def test_parse_outcome_returns_none_without_an_outcome_line():
 
 
 @pytest.mark.usefixtures("registry")
+def test_snapshot_shows_a_live_window_worker_by_its_monitored_state(tmp_path, monkeypatch):
+    """A window worker (spawned via `--into`) is never stored in `live_sessions`, so
+    `row["session"]` is None even while it's running. Only `live_targets` (the idle
+    monitor's cache) knows it's alive; without that signal the row falls to `dead`."""
+    worktrees.record_worktree(
+        tmp_path / "a-wt",
+        tmp_path / "a",
+        "feat/a",
+        "t",
+        target="port:fleet-644",
+        kind="ship",
+        origin="bill",
+    )
+    monkeypatch.setattr(
+        worktrees,
+        "reconcile",
+        _fake_reconcile(
+            {
+                str((tmp_path / "a").resolve()): [
+                    {
+                        "path": str((tmp_path / "a-wt").resolve()),
+                        "repo": "a",
+                        "branch": "feat/a",
+                        "session": None,
+                        "agent": None,
+                        "state": "orphan",
+                    }
+                ]
+            }
+        ),
+    )
+    rows = fleet.snapshot(
+        {},
+        state_of=lambda n: "working" if n == "port:fleet-644" else "dead",
+        since_of=lambda n: 0.0,  # noqa: ARG005
+        unseen_of=lambda n: False,  # noqa: ARG005
+        live_targets={"port:fleet-644"},
+    )
+    assert rows[0]["state"] == "working"
+    assert rows[0]["session"] is None
+    assert rows[0]["target"] == "port:fleet-644"
+
+
+@pytest.mark.usefixtures("registry")
+def test_snapshot_marks_a_window_worker_dead_once_its_target_is_gone(tmp_path, monkeypatch):
+    worktrees.record_worktree(
+        tmp_path / "a-wt",
+        tmp_path / "a",
+        "feat/a",
+        "t",
+        target="port:fleet-644",
+        kind="ship",
+        origin="bill",
+    )
+    monkeypatch.setattr(
+        worktrees,
+        "reconcile",
+        _fake_reconcile(
+            {
+                str((tmp_path / "a").resolve()): [
+                    {
+                        "path": str((tmp_path / "a-wt").resolve()),
+                        "repo": "a",
+                        "branch": "feat/a",
+                        "session": None,
+                        "agent": None,
+                        "state": "orphan",
+                    }
+                ]
+            }
+        ),
+    )
+    rows = fleet.snapshot(
+        {},
+        state_of=lambda n: "working",  # noqa: ARG005
+        since_of=lambda n: 0.0,  # noqa: ARG005
+        unseen_of=lambda n: False,  # noqa: ARG005
+        live_targets=set(),
+    )
+    assert rows[0]["state"] == "dead"
+
+
+@pytest.mark.usefixtures("registry")
 def test_snapshot_carries_both_paths_bill_needs_to_act(tmp_path, monkeypatch):
     """``repo`` is only a basename, so it cannot feed ``lb spawn --repo``, and the worktree
     path is what ``lb worktree reap`` takes. Without both on the row Bill has no source for

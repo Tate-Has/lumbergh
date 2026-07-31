@@ -18,9 +18,10 @@ from lumbergh import fleet, session_attention, worktrees
 from lumbergh.activity.resolve import resolve_adapter
 from lumbergh.activity.resolve import session_meta as _session_meta
 from lumbergh.idle_monitor import idle_monitor
-from lumbergh.routers.sessions import SESSION_NAME_PATTERN, create_tmux_session
+from lumbergh.routers.sessions import SESSION_NAME_PATTERN, create_tmux_session, create_tmux_window
 from lumbergh.spawn_delivery import DeliveryResult, deliver_when_ready
-from lumbergh.tmux_pty import kill_tmux_session
+from lumbergh.targets import format_target, parse_target
+from lumbergh.tmux_pty import kill_tmux_session, kill_tmux_window, list_session_windows
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +84,7 @@ def _fleet_rows(origin: str | None, with_outcome: bool = False) -> list[dict]:
         unseen_of=session_attention.is_unseen,
         origin=origin,
         dead_acked=_dead_acked,
+        live_targets=set(idle_monitor.live_targets()),
     )
     return _add_outcomes(rows) if with_outcome else rows
 
@@ -367,6 +369,8 @@ class SpawnBody(BaseModel):
     base_branch: str | None = None
     agent_provider: str | None = None
     task_intent: str | None = None
+    into: str | None = None
+    run: str | None = None
 
 
 def _fail(stage: str, error: str, help_text: str, **extra: str) -> HTTPException:
@@ -414,11 +418,14 @@ def _try_cleanup(cleanup: Callable[[], None], description: str) -> bool:
         return False
 
 
-def _unwind(workdir: Path, *, session: str | None = None) -> None:
-    """Undo partial spawn work. ``session`` is None when the tmux session never
+def _unwind(workdir: Path, *, target: str | None = None) -> None:
+    """Undo partial spawn work. ``target`` is None when the tmux container never
     started, so a stage-``"session"`` failure doesn't try to kill one that
     doesn't exist; the worktree is always fresh at this point, so the reap
     guard (dirty/unpushed) never blocks it.
+
+    A window target (``session:window``) only tears down its own window, leaving
+    sibling windows in that session alive; a bare target kills the whole session.
 
     ``worktrees.reap`` *returns* its failures rather than raising, so its result has
     to be checked: dropping the registry row after a failed ``git worktree remove``
@@ -427,8 +434,9 @@ def _unwind(workdir: Path, *, session: str | None = None) -> None:
     "manual cleanup may be needed" help never fired. Raising here is what routes it
     into that help text.
     """
-    if session is not None:
-        kill_tmux_session(session)
+    if target is not None:
+        session, window = parse_target(target)
+        kill_tmux_window(target) if window else kill_tmux_session(session)
     reaped = worktrees.reap(workdir, force=True)
     if reaped.get("error"):
         raise RuntimeError(f"could not remove the worktree at {workdir}: {reaped['error']}")
@@ -441,7 +449,7 @@ def _unwind_and_fail(
     help_text: str,
     workdir: Path,
     *,
-    session: str | None = None,
+    target: str | None = None,
 ) -> HTTPException:
     """Unwind partial work and raise the stage's 400 — without letting a cleanup
     failure replace the diagnostic that got us here. If ``_unwind`` itself raises
@@ -450,7 +458,7 @@ def _unwind_and_fail(
     since that's exactly when a human needs to step in.
     """
     if not _try_cleanup(
-        lambda: _unwind(workdir, session=session), f"unwind for stage {stage} at {workdir}"
+        lambda: _unwind(workdir, target=target), f"unwind for stage {stage} at {workdir}"
     ):
         help_text += (
             " Cleanup of the partially-created task also failed; manual cleanup may be needed."
@@ -496,10 +504,15 @@ def _deliver_brief(name: str, brief: Path, kind: str) -> DeliveryResult:
 
 
 def _checked_request(body: SpawnBody) -> tuple[Path, Path, str]:
-    """The brief, repo, and session name a spawn will use — or the stage that refuses it.
+    """The brief, repo, and worker name a spawn will use — or the stage that refuses it.
 
     Every check here happens before anything is created, so these failures never need an
     unwind. Grouped so ``spawn`` itself reads as the create-and-unwind sequence it is.
+
+    A window worker (``body.into`` set) picks its name from the windows already inside
+    that session — the session itself being live is the point (auto-create), not a
+    conflict. A bare worker keeps today's rule: its name must not collide with any live
+    session.
     """
     if body.kind not in bill_bundle.TASK_KINDS:
         raise _fail("kind", f"unknown kind `{body.kind}`", "kind must be ship or scout")
@@ -526,6 +539,17 @@ def _checked_request(body: SpawnBody) -> tuple[Path, Path, str]:
             "--name may only use letters, numbers, underscores, and hyphens",
         )
 
+    if body.into:
+        taken = set(list_session_windows(body.into))
+        name = body.name or _derive_name(body.branch, taken)
+        if name in taken:
+            raise _fail(
+                "name",
+                f"window `{name}` already exists in `{body.into}`",
+                "pass a different --name",
+            )
+        return brief, repo, name
+
     from lumbergh.routers.sessions import get_live_sessions
 
     live = set(get_live_sessions().keys())
@@ -538,8 +562,16 @@ def _checked_request(body: SpawnBody) -> tuple[Path, Path, str]:
 
 @router.post("/spawn")
 def spawn(body: SpawnBody):
-    """Create worktree + session + deliver the brief, unwinding any partial work."""
+    """Create worktree + tmux container + deliver the brief, unwinding any partial work.
+
+    ``body.into`` places the worker in a window of that session (auto-created if not
+    already live) instead of a session of its own; ``target`` is what addresses it
+    either way — the bare name, or ``session:window``. Window workers are intentionally
+    left out of the session store (Task 4's registry resolves their cwd instead), so
+    they show up via discovery and the fleet board, not the sessions list.
+    """
     brief, repo, name = _checked_request(body)
+    target = format_target(body.into, name) if body.into else name
 
     from lumbergh.routers.settings import get_settings
 
@@ -549,7 +581,9 @@ def spawn(body: SpawnBody):
         created_at=datetime.now(UTC).isoformat(),
         create_branch=body.create_branch,
         base_branch=body.base_branch,
-        session=name,
+        session=None if body.into else name,
+        target=target,
+        run=body.run,
         task_intent=body.task_intent,
         kind=body.kind,
         origin=BILL_ORIGIN,
@@ -568,46 +602,50 @@ def spawn(body: SpawnBody):
     try:
         skill.ensure_worker_skills()
     except Exception:
-        logger.warning("could not install worker skills for %s", name, exc_info=True)
+        logger.warning("could not install worker skills for %s", target, exc_info=True)
 
     launch = get_launch_command(body.agent_provider, get_settings().get("defaultAgent"))
     try:
-        create_tmux_session(name, workdir, launch_command=launch)
+        if body.into:
+            create_tmux_window(body.into, name, workdir, launch_command=launch)
+        else:
+            create_tmux_session(name, workdir, launch_command=launch)
     except (RuntimeError, OSError) as e:
         raise _unwind_and_fail(
             "session", f"could not start the worker: {e}", "check tmux, then retry", workdir
         )
 
-    try:
-        _store_session(
-            name=name,
-            workdir=str(workdir),
-            description=body.task_intent or "",
-            type="worktree",
-            agent_provider=body.agent_provider,
-            worktree_parent_repo=str(repo.resolve()),
-            worktree_branch=body.branch,
-        )
-    except Exception as e:
-        # Its own stage: failing to record the task is a store problem, not a delivery
-        # one, and "check tmux" is the wrong thing to tell a caller whose disk is full.
-        raise _unwind_and_fail(
-            "record",
-            f"could not record the task: {e}",
-            "check the session store, then retry",
-            workdir,
-            session=name,
-        )
+    if not body.into:
+        try:
+            _store_session(
+                name=name,
+                workdir=str(workdir),
+                description=body.task_intent or "",
+                type="worktree",
+                agent_provider=body.agent_provider,
+                worktree_parent_repo=str(repo.resolve()),
+                worktree_branch=body.branch,
+            )
+        except Exception as e:
+            # Its own stage: failing to record the task is a store problem, not a delivery
+            # one, and "check tmux" is the wrong thing to tell a caller whose disk is full.
+            raise _unwind_and_fail(
+                "record",
+                f"could not record the task: {e}",
+                "check the session store, then retry",
+                workdir,
+                target=target,
+            )
 
     try:
-        delivery = _deliver_brief(name, brief, body.kind)
+        delivery = _deliver_brief(target, brief, body.kind)
     except Exception as e:
         raise _unwind_and_fail(
             "delivery",
             f"could not deliver the brief: {e}",
             "check tmux, then retry",
             workdir,
-            session=name,
+            target=target,
         )
 
     if not delivery.delivered:
@@ -616,11 +654,11 @@ def spawn(body: SpawnBody):
             delivery.reason,
             "inspect the worker's terminal with `lb read --source pane`, then retry",
             workdir,
-            session=name,
+            target=target,
         )
 
     return {
-        "session": name,
+        "session": target,
         "path": str(workdir),
         "branch": body.branch,
         "kind": body.kind,

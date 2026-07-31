@@ -32,6 +32,7 @@ def snapshot(
     unseen_of: Callable[[str], bool],
     origin: str | None = None,
     dead_acked: set[str] | None = None,
+    live_targets: set[str] | None = None,
 ) -> list[dict]:
     dead_acked = dead_acked or set()
     rows: list[dict] = []
@@ -44,7 +45,12 @@ def snapshot(
         # pre-target mirror, kept as a fallback for entries recorded before that landed.
         target = entry.get("target") or entry.get("associated_session")
         tracked = target or row["session"]
-        if row["session"]:
+        # A window worker (`--into`) is intentionally never stored in `live_sessions`, so
+        # `row["session"]` is always None for one even while it's running — only the idle
+        # monitor's live-target cache actually knows it's alive. Without this, every window
+        # worker would report `dead` despite being fully monitored under its `target`.
+        is_live = bool(row["session"]) or (target in (live_targets or set()))
+        if is_live:
             state = state_of(tracked)
             since = since_of(tracked)
             unseen = unseen_of(tracked)

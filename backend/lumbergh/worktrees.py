@@ -242,6 +242,8 @@ def create(
     global_base_dir: str | None = None,
     kind: str | None = None,
     origin: str | None = None,
+    target: str | None = None,
+    run: str | None = None,
 ) -> dict:
     cfg = parse_worktree_config(repo)
     dest = resolve_worktree_dir(repo, branch, cfg, global_base_dir)
@@ -264,6 +266,8 @@ def create(
         task_intent=task_intent,
         kind=kind,
         origin=origin,
+        target=target,
+        run=run,
     )
     return {"path": str(wt), "links_applied": applied}
 

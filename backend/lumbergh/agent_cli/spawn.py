@@ -37,6 +37,8 @@ def run(flags: dict) -> int:
         "base_branch": flags.get("--base"),
         "agent_provider": flags.get("--agent"),
         "task_intent": flags.get("--intent"),
+        "into": flags.get("--into"),
+        "run": flags.get("--run"),
     }
     resp = _request("POST", "/api/bill/spawn", json=body)
     if resp.status_code >= 400:

@@ -348,6 +348,28 @@ def kill_tmux_session(session_name: str) -> bool:
         return False
 
 
+def kill_tmux_window(target: str) -> bool:
+    """Kill a single window (session:window), leaving sibling windows alive."""
+    try:
+        r = subprocess.run(
+            [TMUX_CMD, "kill-window", "-t", target],
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=5,
+        )
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
+def create_tmux_window(*args, **kwargs):
+    """Re-exported from routers.sessions (which owns venv/launch-command logic) to avoid a circular import."""
+    from lumbergh.routers.sessions import create_tmux_window as _create_tmux_window
+
+    return _create_tmux_window(*args, **kwargs)
+
+
 def capture_scrollback(session_name: str, max_lines: int = 500) -> str:
     """Capture scrollback history from the active pane (plain text, no ANSI).
 

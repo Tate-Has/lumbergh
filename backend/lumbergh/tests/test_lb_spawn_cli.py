@@ -172,3 +172,34 @@ def test_spawn_leaves_an_already_absolute_brief_path_alone(monkeypatch, tmp_path
     spawn_cli.run({"--repo": "/w/app", "--branch": "b", "--kind": "ship", "--brief": str(absolute)})
 
     assert captured["brief_path"] == str(absolute)
+
+
+def test_spawn_cli_sends_into_and_run(monkeypatch):
+    captured = {}
+
+    def fake_request(_method, _path, **kw):
+        captured["json"] = kw.get("json")
+        return _Resp(
+            {
+                "session": "port:fleet-644",
+                "kind": "ship",
+                "branch": "kb-644",
+                "path": "/wt/644",
+            }
+        )
+
+    monkeypatch.setattr(spawn_cli, "_request", fake_request)
+
+    rc = spawn_cli.run(
+        {
+            "--repo": "/repo/port",
+            "--branch": "kb-644",
+            "--kind": "ship",
+            "--brief": "briefs/x.md",
+            "--into": "port",
+            "--run": "batch-9",
+        }
+    )
+    assert rc == 0
+    assert captured["json"]["into"] == "port"
+    assert captured["json"]["run"] == "batch-9"

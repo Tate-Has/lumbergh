@@ -12,10 +12,19 @@ def session_meta(name: str) -> dict:
 
     Shared by every caller of ``resolve_adapter`` (the agent router's ``read`` endpoint
     and Bill's fleet outcome enrichment) so the lookup lives in one place.
+    Prefers session store; falls back to worktree registry for window targets.
     """
     from lumbergh.routers.sessions import get_stored_sessions
 
-    return get_stored_sessions().get(name, {})
+    stored = get_stored_sessions().get(name, {})
+    if stored:
+        return stored
+    from lumbergh import worktrees
+
+    for row in worktrees.all_entries():
+        if row.get("target") == name and row.get("path"):
+            return {"workdir": row["path"], "agent_provider": None}
+    return {}
 
 
 def resolve_adapter(

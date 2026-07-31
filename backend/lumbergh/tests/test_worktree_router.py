@@ -84,6 +84,37 @@ def test_reap_refusal_leaves_the_session_alone(client, tmp_path, monkeypatch):
     assert killed == []
 
 
+def test_reap_of_window_target_kills_window_not_session(client, tmp_path, monkeypatch):
+    # A batch worker lives at session:window (e.g. "port:fleet-644"). Reaping it must
+    # kill only that window — killing the session would take out sibling workers too.
+    from lumbergh.routers import worktrees as wt_router
+    from lumbergh.tests.test_worktrees import _init_repo
+
+    killed = {}
+    monkeypatch.setattr(
+        wt_router, "kill_tmux_window", lambda t: killed.setdefault("window", t) or True
+    )
+    monkeypatch.setattr(
+        wt_router, "kill_tmux_session", lambda t: killed.setdefault("session", t) or True
+    )
+
+    repo = _init_repo(tmp_path / "app")
+    r = client.post(
+        "/api/worktrees",
+        json={
+            "repo": str(repo),
+            "branch": "feat/x",
+            "create_branch": True,
+            "session": "port:fleet-644",
+        },
+    )
+    wt_path = r.json()["path"]
+
+    reaped = client.post("/api/worktrees/reap", json={"path": wt_path, "force": True})
+    assert reaped.json()["status"] == "removed"
+    assert killed == {"window": "port:fleet-644"}
+
+
 def test_ls_uses_stubbed_sessions_not_real_tmux(client, tmp_path):
     from lumbergh.routers import worktrees as wt_router
     from lumbergh.tests.test_worktrees import _init_repo

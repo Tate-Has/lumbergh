@@ -377,3 +377,24 @@ def test_record_worktree_session_kwarg_back_compat(tmp_path):
     )
     assert row["target"] == "scout-1"
     assert row["run"] is None
+
+
+def test_create_threads_target_and_run(tmp_path, monkeypatch):
+    monkeypatch.setenv("LUMBERGH_DATA_DIR", str(tmp_path / "cfg"))
+    from lumbergh import constants, db_utils
+
+    importlib.reload(constants)
+    importlib.reload(db_utils)
+    importlib.reload(worktrees)
+    repo = _init_repo(tmp_path / "repo")
+    created = worktrees.create(
+        repo,
+        "feat/z",
+        created_at="2026-07-30T00:00:00Z",
+        create_branch=True,
+        target="port:fleet-644",
+        run="batch-9",
+    )
+    entry = worktrees.get_entry(Path(created["path"]))
+    assert entry["target"] == "port:fleet-644"
+    assert entry["run"] == "batch-9"

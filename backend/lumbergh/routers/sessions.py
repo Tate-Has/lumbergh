@@ -173,6 +173,48 @@ def find_venv_activate(workdir: Path) -> Path | None:
     return None
 
 
+def _start_agent_in_target(target: str, workdir: Path, launch_command: str) -> None:
+    """Correlate a tmux target to its Lumbergh identity, activate a venv if found, and launch the agent.
+
+    Args:
+        target: tmux target to send keys to — a session name or a `session:window` pane.
+        workdir: Working directory for the session/window (used to locate a venv).
+        launch_command: Shell command to start the agent.
+    """
+    # Correlate this pane to its Lumbergh session for the SessionStart hook.
+    subprocess.run(
+        [
+            TMUX_CMD,
+            "send-keys",
+            "-t",
+            target,
+            f"export LUMBERGH_SESSION={shlex.quote(target)}",
+            "Enter",
+        ],
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+
+    # Activate venv if found
+    venv_activate = find_venv_activate(workdir)
+    if venv_activate:
+        subprocess.run(
+            [TMUX_CMD, "send-keys", "-t", target, f"source {venv_activate}", "Enter"],
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+
+    # Start the agent
+    subprocess.run(
+        [TMUX_CMD, "send-keys", "-t", target, launch_command, "Enter"],
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+
+
 def create_tmux_session(
     name: str, workdir: Path, launch_command: str = "claude --continue || claude"
 ) -> None:
@@ -195,38 +237,49 @@ def create_tmux_session(
     if result.returncode != 0:
         raise RuntimeError(f"Failed to create session: {result.stderr}")
 
-    # Correlate this pane to its Lumbergh session for the SessionStart hook.
-    subprocess.run(
-        [
-            TMUX_CMD,
-            "send-keys",
-            "-t",
-            name,
-            f"export LUMBERGH_SESSION={shlex.quote(name)}",
-            "Enter",
-        ],
-        capture_output=True,
-        encoding="utf-8",
-        errors="replace",
-    )
+    _start_agent_in_target(name, workdir, launch_command)
 
-    # Activate venv if found
-    venv_activate = find_venv_activate(workdir)
-    if venv_activate:
-        subprocess.run(
-            [TMUX_CMD, "send-keys", "-t", name, f"source {venv_activate}", "Enter"],
+
+def create_tmux_window(
+    session: str, window: str, workdir: Path, launch_command: str = "claude --continue || claude"
+) -> str:
+    """Create a worker in a tmux window, auto-creating the session if it doesn't exist yet.
+
+    Args:
+        session: tmux session name to hold the window (created if absent)
+        window: window name to create within the session
+        workdir: Working directory for the window
+        launch_command: Shell command to start the agent
+
+    Returns:
+        The full tmux target, `session:window`.
+
+    Raises:
+        RuntimeError: If tmux session/window creation fails
+    """
+    from lumbergh.tmux_pty import list_tmux_sessions
+
+    live = {s["name"] for s in list_tmux_sessions()}
+    if session not in live:
+        result = subprocess.run(
+            [TMUX_CMD, "new-session", "-d", "-s", session, "-n", window, "-c", str(workdir)],
             capture_output=True,
             encoding="utf-8",
             errors="replace",
         )
+    else:
+        result = subprocess.run(
+            [TMUX_CMD, "new-window", "-t", session, "-n", window, "-c", str(workdir)],
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+    if result.returncode != 0:
+        raise RuntimeError(f"Failed to create window {session}:{window}: {result.stderr}")
 
-    # Start the agent
-    subprocess.run(
-        [TMUX_CMD, "send-keys", "-t", name, launch_command, "Enter"],
-        capture_output=True,
-        encoding="utf-8",
-        errors="replace",
-    )
+    target = f"{session}:{window}"
+    _start_agent_in_target(target, workdir, launch_command)
+    return target
 
 
 @directories_router.get("/validate")

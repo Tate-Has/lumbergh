@@ -1275,3 +1275,58 @@ def test_harness_check_is_skipped_when_the_first_token_is_not_a_program(launch_c
 )
 def test_harness_check_still_names_the_program_for_real_launch_commands(launch_command, expected):
     assert bill._harness_binary(launch_command) == expected
+
+
+def test_spawn_into_creates_window_worker(monkeypatch, tmp_path):
+    from lumbergh.routers import bill
+
+    (tmp_path / "repo" / ".git").mkdir(parents=True)
+    brief = tmp_path / "brief.md"
+    brief.write_text("do the thing")
+
+    monkeypatch.setattr(bill, "_resolve_brief", lambda p: brief)  # noqa: ARG005
+    monkeypatch.setattr(
+        "lumbergh.routers.bill.get_live_sessions"
+        if hasattr(bill, "get_live_sessions")
+        else "lumbergh.routers.sessions.get_live_sessions",
+        dict,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "lumbergh.routers.bill.list_session_windows",
+        lambda s: [],  # noqa: ARG005
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "lumbergh.routers.bill.worktrees.create",
+        lambda *a, **k: (  # noqa: ARG005
+            {"path": str(tmp_path / "wt")} | ({"target": k.get("target"), "run": k.get("run")})
+        ),
+    )
+    captured = {}
+
+    def fake_window(session, window, workdir, launch_command="x"):  # noqa: ARG001
+        captured["target"] = f"{session}:{window}"
+        return f"{session}:{window}"
+
+    monkeypatch.setattr("lumbergh.routers.bill.create_tmux_window", fake_window, raising=False)
+    monkeypatch.setattr(
+        "lumbergh.routers.bill._deliver_brief",
+        lambda *a, **k: bill.DeliveryResult(True, ""),  # noqa: ARG005
+    )
+    stored = {}
+    monkeypatch.setattr("lumbergh.routers.bill._store_session", lambda **k: stored.update(k))
+
+    body = bill.SpawnBody(
+        repo=str(tmp_path / "repo"),
+        branch="kb-644",
+        kind="ship",
+        brief_path=str(brief),
+        name="fleet-644",
+        into="port",
+        run="batch-9",
+    )
+    resp = bill.spawn(body)
+    assert resp["session"] == "port:fleet-644"
+    assert captured["target"] == "port:fleet-644"
+    assert stored == {}  # window workers are NOT written to the session store
