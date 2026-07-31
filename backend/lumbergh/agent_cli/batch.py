@@ -28,6 +28,7 @@ def run(flags: dict) -> int:
         "kind": flags["--kind"],
         "base": flags.get("--base"),
         "session": flags.get("--session"),
+        "delivery": flags.get("--delivery"),
     }
     resp = _request("POST", "/api/bill/batch", json=body)
     if resp.status_code >= 400:

@@ -2,9 +2,10 @@
 name: ship
 description: >
   Execute a delegated implementation task in an isolated worktree and deliver it as
-  reviewed work — run the project's own validation gate, then push and open a PR (or leave a
-  validated branch). Use when you were spawned into a worktree with a brief to make a code
-  change and hand it back. Ends with the required DELIVERED:/FAILED: status line.
+  reviewed work — run the project's own validation gate, then deliver in the mode the task
+  message names (open a PR, push a branch, or commit and stop). Use when you were spawned
+  into a worktree with a brief to make a code change and hand it back. Ends with the required
+  DELIVERED:/FAILED: status line.
 ---
 
 # ship — implement a delegated task and deliver it
@@ -27,13 +28,20 @@ Look, in order, for what the project already defines:
 Run the lint/format and the test suite it specifies. Don't invent commands the project
 already documents, and don't skip the gate because the change "looks small."
 
-## Deliver
-Check whether the project has a GitHub remote (`git remote -v`) — don't assume.
-- **Remote present:** commit on a branch (never the default branch), push, and open a PR with
-  `gh pr create`. Report the full `https://…` URL and whether checks are green.
-- **No remote:** leave a validated branch off the default branch, ready to fast-forward.
+## Deliver — in the mode your task message names
+The message that handed you this task names your delivery MODE. Repos differ — some use
+PRs, some never do — so do **exactly** the mode you were given and nothing more. Always
+commit on a branch, never the default branch, and never merge or land yourself.
+- **pr** — push your branch and open a PR (`gh pr create`); report the full `https://…` URL
+  and whether checks are green. Deliver `DELIVERED: <pr-url>`.
+- **branch** — push your branch; do **not** open a PR. Deliver `DELIVERED: <branch>`.
+- **commit** — commit locally and **STOP**: never push, never open a PR, never merge/rebase.
+  The overseer assembles and lands your work. Deliver `DELIVERED: <sha>`.
+
+If — and only if — no mode was named, default to **commit** (commit and stop; never push
+or open a PR on your own).
 
 ## Finish
-End your final message with exactly one line, nothing after it:
-`DELIVERED: <pr-url-or-branch>`   or   `FAILED: <reason>`
+End your final message with exactly one line, nothing after it — the shape your mode calls for:
+`DELIVERED: <pr-url | branch | sha>`   or   `FAILED: <reason>`
 That line is the contract the fleet reads to know how your task ended.

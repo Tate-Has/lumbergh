@@ -49,8 +49,10 @@ FLAGS = {
         "--new",
         "--into",
         "--run",
+        "--delivery",
     },
-    "batch": {"--repo", "--run", "--briefs", "--kind", "--base", "--session"},
+    "batch": {"--repo", "--run", "--briefs", "--kind", "--base", "--session", "--delivery"},
+    "init": {"--repo", "--delivery", "--smoke"},
     "land": {"--run", "--onto", "--push", "--smoke", "--skip-smoke"},
     "teardown": {"--run", "--force"},
 }
@@ -92,14 +94,15 @@ _COMMAND_HELP = {
     "spawn": (
         "lb spawn --repo <path> --branch <b> --kind ship|scout --brief <file> "
         "[--new] [--base <b>] [--name <n>] [--agent <provider>] [--intent '...'] "
-        "[--into <session>] [--run <id>]"
+        "[--into <session>] [--run <id>] [--delivery pr|branch|commit]"
     ),
     "batch": (
         "lb batch --repo <path> --run <id> --briefs <dir|a.md,b.md> --kind ship|scout "
-        "[--base <b>] [--session <n>]"
+        "[--base <b>] [--session <n>] [--delivery pr|branch|commit]"
     ),
     "land": "lb land --run <id> [--onto <base>] [--push] [--smoke '<cmd>'] [--skip-smoke]",
     "teardown": "lb teardown --run <id> [--force]",
+    "init": "lb init --repo <path> [--delivery pr|branch|commit] [--smoke '<cmd>']",
 }
 
 
@@ -189,6 +192,7 @@ def main(argv=None) -> int:
         "batch": lambda: _cmd_batch(flags),
         "land": lambda: _cmd_land(flags),
         "teardown": lambda: _cmd_teardown(flags),
+        "init": lambda: _cmd_init(flags),
     }
     handler = dispatch.get(command)
     if handler is None:
@@ -419,6 +423,12 @@ def _cmd_teardown(flags) -> int:
     from lumbergh.agent_cli import teardown as teardown_cli
 
     return teardown_cli.run(flags)
+
+
+def _cmd_init(flags) -> int:
+    from lumbergh.agent_cli import init as init_cli
+
+    return init_cli.run(flags)
 
 
 if __name__ == "__main__":

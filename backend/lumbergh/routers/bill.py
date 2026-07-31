@@ -373,6 +373,7 @@ class SpawnBody(BaseModel):
     task_intent: str | None = None
     into: str | None = None
     run: str | None = None
+    delivery: str | None = None
 
 
 def _fail(stage: str, error: str, help_text: str, **extra: str) -> HTTPException:
@@ -482,17 +483,41 @@ def _resolve_brief(brief_path: str) -> Path:
     return brief if brief.is_absolute() else bill_bundle.home() / brief
 
 
-def _brief_delivery(brief: Path, kind: str, name: str) -> str:
-    report = f"Write your report to {bill_bundle.home() / 'reports' / f'{name}.md'}. "
-    return (
-        f"Read your brief at {brief} and follow it. "
-        + (report if kind == "scout" else "")
-        + "Finish your final message with exactly one line: "
-        "`DELIVERED: <pr-url-or-branch>` or `FAILED: <reason>`."
-    )
+# The per-mode delivery clause the worker is handed at spawn. This is where a repo's
+# `[delivery] mode` (or a `--delivery` override) becomes a concrete instruction — the `ship`
+# skill states all three modes and defers to whichever this names, so the skill stays global
+# (see ensure_worker_skills) and there is no conflicting-instructions problem.
+_DELIVERY_CLAUSE = {
+    "pr": (
+        "Deliver in PR mode: commit on a branch, push, and open a PR (`gh pr create`); "
+        "report the URL. Final line: `DELIVERED: <pr-url>`"
+    ),
+    "branch": (
+        "Deliver in BRANCH mode: commit on a branch and push it — do NOT open a PR. "
+        "Final line: `DELIVERED: <branch>`"
+    ),
+    "commit": (
+        "Deliver in COMMIT mode: commit on a branch and STOP — never push, never open "
+        "a PR, never merge or rebase; the overseer lands your work. "
+        "Final line: `DELIVERED: <sha>`"
+    ),
+}
 
 
-def _deliver_brief(name: str, brief: Path, kind: str) -> DeliveryResult:
+def _brief_delivery(brief: Path, kind: str, name: str, mode: str = "commit") -> str:
+    intro = f"Read your brief at {brief} and follow it. "
+    if kind == "scout":
+        report = f"Write your report to {bill_bundle.home() / 'reports' / f'{name}.md'}. "
+        deliver = (
+            "Finish with exactly one line: `DELIVERED: <where the report is>` "
+            "or `FAILED: <reason>`."
+        )
+        return intro + report + deliver
+    clause = _DELIVERY_CLAUSE.get(mode, _DELIVERY_CLAUSE["commit"])
+    return intro + clause + ", or `FAILED: <reason>` if it did not work."
+
+
+def _deliver_brief(name: str, brief: Path, kind: str, mode: str = "commit") -> DeliveryResult:
     """Hand the worker its brief once it can actually receive it.
 
     A fresh worker is not ready the instant its session exists: the harness boots
@@ -502,7 +527,7 @@ def _deliver_brief(name: str, brief: Path, kind: str) -> DeliveryResult:
     rather than firing once and trusting that tmux accepting the keystrokes means
     the agent consumed them.
     """
-    return deliver_when_ready(name, _brief_delivery(brief, kind, name))
+    return deliver_when_ready(name, _brief_delivery(brief, kind, name, mode))
 
 
 def _checked_request(body: SpawnBody) -> tuple[Path, Path, str]:
@@ -640,7 +665,8 @@ def spawn(body: SpawnBody):
             )
 
     try:
-        delivery = _deliver_brief(target, brief, body.kind)
+        mode = body.delivery or worktrees.read_delivery_mode(repo)
+        delivery = _deliver_brief(target, brief, body.kind, mode)
     except Exception as e:
         raise _unwind_and_fail(
             "delivery",
@@ -690,6 +716,67 @@ def write_brief(body: BriefBody):
     return {"path": str(target)}
 
 
+class InitBody(BaseModel):
+    repo: str
+    delivery: str | None = None
+    smoke: str | None = None
+
+
+_INIT_HEADER = (
+    "# Lumbergh project config. Declares how `lb` treats this repo so the tool imposes\n"
+    "# no pattern — see `lb init --help`.\n"
+)
+
+
+@router.post("/init")
+def init(body: InitBody):
+    """Scaffold or extend a repo's .lumbergh.toml — declare its delivery policy once.
+
+    Never clobbers: an existing table is reported and left as-is; only missing tables
+    are appended. So it's safe for an agent to run on any repo.
+    """
+    import tomllib
+
+    repo = Path(body.repo).expanduser()
+    if not (repo / ".git").exists():
+        raise _fail("repo", f"{repo} is not a git repository", "pass the repo's root path")
+    mode = body.delivery or "commit"
+    if mode not in worktrees.DELIVERY_MODES:
+        raise _fail("delivery", f"unknown delivery mode `{mode}`", "use pr | branch | commit")
+
+    dotfile = repo / ".lumbergh.toml"
+    existing = tomllib.loads(dotfile.read_text()) if dotfile.is_file() else {}
+
+    blocks, added, present = [], [], []
+    if "delivery" in existing:
+        present.append(f"[delivery] mode = {existing['delivery'].get('mode')!r}")
+    else:
+        blocks.append(
+            f'[delivery]\nmode = "{mode}"  # pr (push + gh pr create) | branch (push, no PR) | commit (commit + stop)\n'
+        )
+        added.append("delivery")
+    if body.smoke:
+        if "land" in existing:
+            present.append(f"[land] smoke = {existing['land'].get('smoke')!r}")
+        else:
+            blocks.append(f'[land]\nsmoke = "{body.smoke}"\n')
+            added.append("land")
+
+    if blocks:
+        if dotfile.is_file():
+            body_text = dotfile.read_text().rstrip("\n") + "\n\n" + "\n".join(blocks)
+        else:
+            body_text = _INIT_HEADER + "\n" + "\n".join(blocks)
+        dotfile.write_text(body_text)
+
+    return {
+        "path": str(dotfile),
+        "created": not existing and bool(blocks),
+        "added": added,
+        "unchanged": present,
+    }
+
+
 class BatchBody(BaseModel):
     repo: str
     run: str
@@ -697,6 +784,7 @@ class BatchBody(BaseModel):
     kind: str
     base: str | None = None
     session: str | None = None
+    delivery: str | None = None
 
 
 @router.post("/batch")
@@ -725,6 +813,7 @@ def batch(body: BatchBody):
                         base_branch=body.base,
                         into=session,
                         run=body.run,
+                        delivery=body.delivery,
                     )
                 )
             )

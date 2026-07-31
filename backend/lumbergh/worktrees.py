@@ -79,6 +79,25 @@ def parse_worktree_config(repo: Path) -> WorktreeProjectConfig:
     )
 
 
+DELIVERY_MODES = ("pr", "branch", "commit")
+
+
+def read_delivery_mode(repo: Path) -> str:
+    """The repo's ship-delivery policy from `[delivery] mode` in .lumbergh.toml.
+
+    `commit` (commit locally and STOP — the overseer lands) is the DEFAULT: lb imposes
+    no delivery pattern, so it never pushes or opens a PR unless a repo opts in. `pr`
+    (commit+push+`gh pr create`) and `branch` (push, no PR) are the opt-ins. An
+    unrecognized value falls back to the safe `commit` default rather than failing a spawn.
+    """
+    dotfile = repo / ".lumbergh.toml"
+    if not dotfile.is_file():
+        return "commit"
+    data = tomllib.loads(dotfile.read_text())
+    mode = data.get("delivery", {}).get("mode")
+    return mode if mode in DELIVERY_MODES else "commit"
+
+
 def read_land_smoke(repo: Path) -> str | None:
     dotfile = repo / ".lumbergh.toml"
     if not dotfile.is_file():
