@@ -240,7 +240,11 @@ class IdleMonitor:
         live_session_names = set(await loop.run_in_executor(None, _live_session_names))
         await self._reap_dead_targets(set(targets), live_session_names)
 
-        session_identity.prune({parse_target(t)[0] for t in targets})
+        # Identity files are keyed by the full session:window target (that's what
+        # each pane's LUMBERGH_SESSION is set to), so prune with full targets —
+        # reducing to bare session names would delete every window worker's
+        # identity each poll and force outcome reads onto the cwd-guess fallback.
+        session_identity.prune(set(targets))
 
         await asyncio.gather(
             *(self._check_session(target) for target in targets),
