@@ -164,8 +164,9 @@ class DiffCache:
             await asyncio.sleep(self.POLL_INTERVAL)
 
     async def _compute_all(self) -> None:
-        from lumbergh.routers.sessions import get_session_workdir
+        from lumbergh.routers.sessions import get_session_path_map, get_session_workdir
 
+        session_paths = get_session_path_map()
         for session_name in self._active_sessions():
             try:
                 workdir = get_session_workdir(session_name)
@@ -189,7 +190,7 @@ class DiffCache:
             # Compute graph
             try:
                 limit = self._graph_limits.get(session_name, 100)
-                result = await asyncio.to_thread(get_graph_log, workdir, limit)
+                result = await asyncio.to_thread(get_graph_log, workdir, limit, session_paths)
                 self._graph_cache[session_name] = result
             except Exception as e:
                 logger.warning(f"Graph cache: failed for {session_name}: {e}")

@@ -1215,6 +1215,24 @@ def get_session_workdir(name: str) -> Path:
     raise HTTPException(status_code=404, detail=f"Session '{name}' not found or has no workdir")
 
 
+def get_session_path_map() -> dict[str, str]:
+    """Map each session's resolved workdir path to its name.
+
+    Used to annotate git-graph worktrees with the owning session. Only the slow-moving
+    path→name mapping lives here; live agent state is overlaid client-side.
+    """
+    result: dict[str, str] = {}
+    for name, meta in get_stored_sessions().items():
+        workdir = meta.get("workdir")
+        if not workdir:
+            continue
+        try:
+            result[str(Path(workdir).resolve())] = name
+        except (OSError, ValueError):
+            continue
+    return result
+
+
 @router.get("/{name}/git/status")
 async def session_git_status(name: str):
     """Get git status for a session's workdir."""
@@ -1287,7 +1305,7 @@ async def session_git_graph(name: str, limit: int = 100):
     # Cache miss (first request before background loop runs) — compute inline
     workdir = get_session_workdir(name)
     try:
-        return await _run_git(get_graph_log, workdir, limit)
+        return await _run_git(get_graph_log, workdir, limit, get_session_path_map())
     except HTTPException:
         raise
     except Exception as e:

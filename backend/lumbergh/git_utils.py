@@ -452,15 +452,48 @@ def _stash_entry_to_node(entry: dict) -> dict:
     }
 
 
-def get_graph_log(cwd: Path, limit: int = 100) -> dict:
-    """Get commit graph data for metro-style visualization."""
+def _build_graph_worktrees(cwd: Path, session_paths: dict[str, str] | None) -> list[dict]:
+    """Structural worktree annotations for the graph — no live agent state.
+
+    ``headHash`` is a 7-char short hash so it matches a commit node's ``shortHash``.
+    """
+    try:
+        cwd_resolved = str(Path(cwd).resolve())
+    except (OSError, ValueError):
+        cwd_resolved = str(cwd)
+
+    entries = []
+    for wt in list_worktrees(cwd):
+        try:
+            wt_resolved = str(Path(wt.path).resolve())
+        except (OSError, ValueError):
+            wt_resolved = wt.path
+        entries.append(
+            {
+                "branch": wt.branch,
+                "headHash": wt.commit,
+                "path": wt.path,
+                "isMain": wt.is_main,
+                "isCurrent": wt_resolved == cwd_resolved,
+                "sessionName": (session_paths or {}).get(wt_resolved),
+            }
+        )
+    return entries
+
+
+def get_graph_log(cwd: Path, limit: int = 100, session_paths: dict[str, str] | None = None) -> dict:
+    """Get commit graph data for metro-style visualization.
+
+    ``session_paths`` maps a resolved worktree path to the owning session name; it
+    is supplied by the caller so this module stays free of session-store coupling.
+    """
     try:
         repo = get_repo(cwd)
     except InvalidGitRepositoryError:
-        return {"commits": [], "branches": [], "head": None}
+        return {"commits": [], "branches": [], "head": None, "worktrees": []}
 
     if not repo.head.is_valid():
-        return {"commits": [], "branches": [], "head": None}
+        return {"commits": [], "branches": [], "head": None, "worktrees": []}
 
     # Build ref maps
     raw_refs = _build_raw_refs(repo)
@@ -543,6 +576,7 @@ def get_graph_log(cwd: Path, limit: int = 100) -> dict:
         "branches": branches,
         "head": {"hash": head_hash, "branch": head_branch},
         "workingChanges": working_changes,
+        "worktrees": _build_graph_worktrees(cwd, session_paths),
     }
 
 
