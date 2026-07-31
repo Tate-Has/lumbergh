@@ -59,6 +59,38 @@ def _branch_exists(repo, branch) -> bool:
     )
 
 
+def test_teardown_kills_a_bare_session_worker(monkeypatch, tmp_path):
+    members = [
+        {
+            "target": "issue-668",  # a standalone worker → bare session, no window
+            "branch": "issue-668",
+            "parent_repo": str(tmp_path),
+            "path": str(tmp_path / "wt"),
+            "run": "port-668",
+        }
+    ]
+    monkeypatch.setattr("lumbergh.routers.bill.run_members", lambda _run: members)
+    monkeypatch.setattr("lumbergh.worktrees.reap", lambda _p, **_k: {"status": "removed"})
+    monkeypatch.setattr("lumbergh.land.delete_batch", lambda *_a: True)
+
+    killed_sessions = []
+    monkeypatch.setattr(
+        "lumbergh.routers.bill.kill_tmux_session",
+        lambda s: killed_sessions.append(s) or True,
+    )
+
+    def _no_window_kill(target):
+        raise AssertionError(f"a bare session must not be torn down as a window: {target}")
+
+    monkeypatch.setattr("lumbergh.routers.bill.kill_tmux_window", _no_window_kill)
+
+    resp = bill.teardown(bill.TeardownBody(run="port-668"))
+
+    assert killed_sessions == ["issue-668"]
+    assert resp["results"][0]["killed"] is True
+    assert resp["refused"] == []
+
+
 def test_no_push_land_leaves_a_durable_batch_branch(monkeypatch, repo_with_run):
     repo = repo_with_run
     members = [

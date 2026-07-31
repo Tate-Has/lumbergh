@@ -920,8 +920,13 @@ def teardown(body: TeardownBody):
     for m in members:
         target = m.get("target")
         killed = False
-        if target and parse_target(target)[1] is not None:
-            killed = kill_tmux_window(target)
+        if target:
+            session, window = parse_target(target)
+            # A batch worker is one window of a shared session — kill just its
+            # window. A standalone worker owns its whole session (a bare target),
+            # so kill the session; otherwise it lingers in the list pointing at a
+            # worktree that no longer exists.
+            killed = kill_tmux_window(target) if window is not None else kill_tmux_session(session)
         reap = worktrees.reap(Path(m["path"]), force=body.force, rm_branch=True)
         if reap.get("status") != "removed":
             refused.append(target)

@@ -1746,6 +1746,31 @@ def count_unpushed_commits(cwd: Path) -> int:
         return 0
 
 
+def head_tree_matches_a_remote(cwd: Path) -> bool:
+    """True if HEAD's tree is byte-identical to some remote-tracking branch tip.
+
+    The reap guard's ``count_unpushed_commits`` check is pure sha ancestry, so a
+    commit that was rebased or cherry-picked when it landed reads as "unpushed" —
+    its sha was rewritten and the original is an ancestor of no remote. But if the
+    worktree's *tree* already matches a remote branch (the base it landed onto),
+    the content is live and reaping loses nothing. Falls back to False on error,
+    so a genuine never-pushed worktree stays protected.
+    """
+    try:
+        repo = get_repo(cwd)
+    except InvalidGitRepositoryError:
+        return False
+    try:
+        head_tree = repo.head.commit.tree.hexsha
+        for remote in repo.remotes:
+            for ref in remote.refs:
+                if ref.commit.tree.hexsha == head_tree:
+                    return True
+    except (GitCommandError, ValueError):
+        return False
+    return False
+
+
 def remove_worktree(repo_path: Path, worktree_path: Path, force: bool = False) -> dict:
     """
     Remove a git worktree.

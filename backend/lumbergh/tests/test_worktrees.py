@@ -36,6 +36,67 @@ def _git(cwd: Path, *args: str) -> None:
     subprocess.run(["git", "-C", str(cwd), *args], check=True, capture_output=True)
 
 
+@pytest.mark.usefixtures("worktrees_db")
+def test_reap_allows_worktree_whose_commits_landed_via_rebase(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "master")
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
+    (repo / "base.txt").write_text("base")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "base")
+    origin = tmp_path / "origin.git"
+    _git(repo, "clone", "--bare", "-q", str(repo), str(origin))
+    _git(repo, "remote", "add", "origin", str(origin))
+    _git(repo, "fetch", "-q", "origin")
+
+    wt = tmp_path / "wt"
+    _git(repo, "worktree", "add", "-q", "-b", "worker", str(wt), "master")
+    (wt / "work.txt").write_text("done")
+    _git(wt, "add", ".")
+    _git(wt, "commit", "-qm", "work")
+
+    # Land-by-rebase: the same content reaches origin under a rewritten sha (amend
+    # forces a distinct sha, same tree), so the worker's original commit is on no
+    # remote, yet origin/master's tree now equals the worktree's tree. Pure ancestry
+    # calls this "unpushed"; nothing is actually at risk.
+    _git(repo, "cherry-pick", "worker")
+    _git(repo, "commit", "--amend", "-qm", "work (landed)")
+    _git(repo, "push", "-q", "origin", "master")
+
+    result = worktrees.reap(wt, force=False, rm_branch=True)
+
+    assert result.get("status") == "removed", result
+
+
+@pytest.mark.usefixtures("worktrees_db")
+def test_reap_still_refuses_genuinely_unpushed_work(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "master")
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
+    (repo / "base.txt").write_text("base")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "base")
+    origin = tmp_path / "origin.git"
+    _git(repo, "clone", "--bare", "-q", str(repo), str(origin))
+    _git(repo, "remote", "add", "origin", str(origin))
+    _git(repo, "fetch", "-q", "origin")
+
+    wt = tmp_path / "wt"
+    _git(repo, "worktree", "add", "-q", "-b", "worker", str(wt), "master")
+    (wt / "novel.txt").write_text("never pushed anywhere")
+    _git(wt, "add", ".")
+    _git(wt, "commit", "-qm", "work")
+
+    # Content lives on no remote — reaping would truly lose it, so refuse.
+    result = worktrees.reap(wt, force=False)
+
+    assert result.get("reason") == "unpushed", result
+
+
 def test_apply_links_excludes_symlinked_dir_so_status_stays_clean(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

@@ -22,6 +22,7 @@ from lumbergh.git_utils import (
     get_porcelain_status,
     get_repo,
     get_worktree_container_path,
+    head_tree_matches_a_remote,
     list_worktrees,
     sanitize_branch_for_path,
 )
@@ -336,7 +337,11 @@ def reap(worktree: Path, *, force: bool = False, rm_branch: bool = False) -> dic
     if not force:
         if get_porcelain_status(worktree):
             return {"error": "worktree has uncommitted changes", "reason": "dirty"}
-        if count_unpushed_commits(worktree) > 0:
+        # Ancestry alone cries wolf after a rebase/cherry-pick land: the landed
+        # commits have rewritten shas, so the originals are ancestors of no remote
+        # even though their content is live. Only refuse if the tree isn't already
+        # on a remote — that's the difference between "unpushed" and "just rebased".
+        if count_unpushed_commits(worktree) > 0 and not head_tree_matches_a_remote(worktree):
             return {"error": "worktree has unpushed commits", "reason": "unpushed"}
     entry = get_entry(worktree)
     parent = Path(entry["parent_repo"]) if entry else parent_repo_of(worktree)
