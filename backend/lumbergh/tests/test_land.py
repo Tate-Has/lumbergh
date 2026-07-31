@@ -33,6 +33,30 @@ def repo_with_two_branches(tmp_path):
     return repo
 
 
+def test_assemble_applies_worktree_links_so_smoke_has_its_deps(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "master")
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
+    (repo / ".gitignore").write_text(".venv\n")
+    (repo / ".lumbergh.toml").write_text('[worktree]\nlinks = [".venv"]\n')
+    (repo / ".venv").mkdir()
+    (repo / ".venv" / "marker").write_text("dep")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "base")
+    origin = tmp_path / "origin.git"
+    _git(repo, "clone", "--bare", "-q", str(repo), str(origin))
+    _git(repo, "remote", "add", "origin", str(origin))
+    _git(repo, "fetch", "-q", "origin")
+
+    result = land.assemble(repo, "r1", "master", [])
+    assert result["ok"] is True
+    wt = Path(result["worktree"])
+    assert (wt / ".venv" / "marker").read_text() == "dep"  # gitignored dep is available to smoke
+    land.cleanup_assembly(repo, result["worktree"], result["batch"])
+
+
 def test_assemble_cherry_picks_both_branches(repo_with_two_branches):
     repo = repo_with_two_branches
     result = land.assemble(repo, "r1", "master", ["feat-a", "feat-b"])

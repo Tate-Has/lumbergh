@@ -9,6 +9,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from lumbergh import worktrees
+
 
 def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
@@ -40,6 +42,13 @@ def assemble(repo: Path, run_id: str, base: str, member_branches: list[str]) -> 
     if add.returncode != 0:
         worktree.rmdir()
         return {"ok": False, "stage": "worktree", "error": add.stderr.strip()}
+
+    # Link the repo's gitignored deps (.venv, node_modules, .env, …) into the assembly
+    # worktree exactly as `lb spawn`/`worktree create` do, so `[land] smoke` runs against a
+    # usable checkout. Links only — `post_create` is for a workspace a human/agent develops
+    # in and could be slow/interactive; assembly is throwaway.
+    cfg = worktrees.parse_worktree_config(repo)
+    worktrees.apply_links(repo, worktree, worktrees.plan_links(repo, worktree, cfg))
 
     picked: dict[str, list[str]] = {}
     for branch in member_branches:
