@@ -30,6 +30,8 @@ def run(flags: dict) -> int:
         ("pushed", "true" if d["pushed"] else "false"),
         ("smoke", d["smoke"]),
     ]
+    if d.get("sha"):
+        pairs.append(("sha", d["sha"]))
     if d.get("next"):
         pairs.append(("next", d["next"]))
     _emit(render_object(pairs))

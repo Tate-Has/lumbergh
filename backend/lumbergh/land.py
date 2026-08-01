@@ -70,6 +70,42 @@ def assemble(repo: Path, run_id: str, base: str, member_branches: list[str]) -> 
     return {"ok": True, "worktree": str(worktree), "batch": batch, "picked": picked}
 
 
+def batch_exists(repo: Path, batch_branch: str) -> bool:
+    return _git(repo, "rev-parse", "--verify", "--quiet", batch_branch).returncode == 0
+
+
+def head_sha(repo: Path, ref: str) -> str:
+    return _git(repo, "rev-parse", ref).stdout.strip()
+
+
+def stale_members(
+    repo: Path, base: str, batch_branch: str, member_branches: list[str]
+) -> list[str]:
+    """Member branches whose commits are not all represented (by patch-id) in the
+    batch branch — the worker moved since the batch was assembled, so landing the
+    batch as-is would silently drop that worker's newer commits. ``git cherry``
+    marks each ``base..branch`` commit ``+`` when no patch-equivalent is in the
+    batch; any ``+`` means the branch has work the batch never picked up."""
+    base_ref = f"origin/{base}"
+    moved = []
+    for branch in member_branches:
+        r = _git(repo, "cherry", batch_branch, branch, base_ref)
+        if r.returncode != 0 or any(line.startswith("+") for line in r.stdout.splitlines()):
+            moved.append(branch)
+    return moved
+
+
+def checkout_batch(repo: Path, batch_branch: str) -> Path:
+    """Throwaway worktree detached at an existing batch branch, with the repo's
+    gitignored deps linked in, so ``[land] smoke`` can run against the exact tree
+    a ``--push`` is about to land."""
+    worktree = Path(tempfile.mkdtemp(prefix=f"lb-{batch_branch}-"))
+    _git(repo, "worktree", "add", "--force", "--detach", str(worktree), batch_branch)
+    cfg = worktrees.parse_worktree_config(repo)
+    worktrees.apply_links(repo, worktree, worktrees.plan_links(repo, worktree, cfg))
+    return worktree
+
+
 def run_smoke(worktree: Path, cmd: str) -> dict:
     # The smoke command is an operator-configured shell string (`[land].smoke` /
     # `--smoke`), like fleet's DEFAULT_SMOKE — shell=True is the intended contract.
@@ -77,8 +113,10 @@ def run_smoke(worktree: Path, cmd: str) -> dict:
     return {"ok": result.returncode == 0, "returncode": result.returncode}
 
 
-def push_batch(worktree: Path, batch_branch: str, base: str) -> dict:
-    r = _git(Path(worktree), "push", "origin", f"{batch_branch}:{base}")
+def push_batch(cwd: Path, batch_branch: str, base: str) -> dict:
+    # cwd is any checkout of the repo — the assembly worktree for a single-shot
+    # land, or the main checkout when pushing an already-assembled batch ref.
+    r = _git(Path(cwd), "push", "origin", f"{batch_branch}:{base}")
     if r.returncode != 0:
         return {"ok": False, "error": r.stderr.strip()}
     return {"ok": True}

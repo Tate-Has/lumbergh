@@ -1,6 +1,7 @@
 import subprocess
 
 import pytest
+from fastapi import HTTPException
 
 from lumbergh.routers import bill
 from lumbergh.runs import run_members
@@ -89,6 +90,91 @@ def test_teardown_kills_a_bare_session_worker(monkeypatch, tmp_path):
     assert killed_sessions == ["issue-668"]
     assert resp["results"][0]["killed"] is True
     assert resp["refused"] == []
+
+
+def test_push_lands_commits_added_to_the_assembled_batch_branch(monkeypatch, repo_with_run):
+    repo = repo_with_run
+    origin = repo.parent / "origin.git"
+    members = [
+        {"target": "sprint:feat-a", "branch": "feat-a", "parent_repo": str(repo), "run": "sprint"},
+        {"target": "sprint:feat-b", "branch": "feat-b", "parent_repo": str(repo), "run": "sprint"},
+    ]
+    monkeypatch.setattr("lumbergh.worktrees.all_entries", lambda: members)
+
+    # Step 1: assemble (no push) — leaves batch-sprint in place for inspection.
+    bill.land_run(bill.LandBody(run="sprint", onto="master", push=False, skip_smoke=True))
+
+    # Step 2: add a commit to the assembled batch branch — a config fix that belongs
+    # with this batch, exactly as the `next:` message invites ("inspect it, then --push").
+    wt = repo.parent / "inspect-wt"
+    _git(repo, "worktree", "add", "-q", str(wt), "batch-sprint")
+    (wt / "config-fix.txt").write_text("belongs with this batch")
+    _git(wt, "add", ".")
+    _git(wt, "commit", "-qm", "chore: config fix that belongs with the batch")
+    _git(repo, "worktree", "remove", "--force", str(wt))
+
+    # Step 3: push. The tree that gets landed must be the branch we inspected — the
+    # manually-added commit must not be silently discarded by a re-assembly.
+    resp = bill.land_run(bill.LandBody(run="sprint", onto="master", push=True, skip_smoke=True))
+    assert resp["pushed"] is True
+
+    landed = subprocess.run(
+        ["git", "-C", str(origin), "log", "--format=%s", "master"],
+        capture_output=True,
+        encoding="utf-8",
+    ).stdout
+    assert "chore: config fix that belongs with the batch" in landed
+
+
+def test_push_refuses_when_a_worker_moved_after_assembly(monkeypatch, repo_with_run):
+    repo = repo_with_run
+    origin = repo.parent / "origin.git"
+    members = [
+        {"target": "sprint:feat-a", "branch": "feat-a", "parent_repo": str(repo), "run": "sprint"},
+        {"target": "sprint:feat-b", "branch": "feat-b", "parent_repo": str(repo), "run": "sprint"},
+    ]
+    monkeypatch.setattr("lumbergh.worktrees.all_entries", lambda: members)
+
+    bill.land_run(bill.LandBody(run="sprint", onto="master", push=False, skip_smoke=True))
+
+    # A worker gains a new commit after the batch was assembled — a normal step when
+    # an overseer nudges it to fix a review finding. The stale batch must not land.
+    wt = repo.parent / "worker-wt"
+    _git(repo, "worktree", "add", "-q", str(wt), "feat-a")
+    (wt / "feat-a.txt").write_text("feat-a revised after review")
+    _git(wt, "add", ".")
+    _git(wt, "commit", "-qm", "fix: address review on feat-a")
+    _git(repo, "worktree", "remove", "--force", str(wt))
+
+    with pytest.raises(HTTPException) as exc:
+        bill.land_run(bill.LandBody(run="sprint", onto="master", push=True, skip_smoke=True))
+    assert exc.value.detail["stage"] == "stale"
+    assert "feat-a" in exc.value.detail["error"]
+
+    landed = subprocess.run(
+        ["git", "-C", str(origin), "log", "--format=%s", "master"],
+        capture_output=True,
+        encoding="utf-8",
+    ).stdout
+    assert landed.strip() == "base"  # nothing was pushed
+
+
+def test_push_reports_the_landed_sha(monkeypatch, repo_with_run):
+    repo = repo_with_run
+    members = [
+        {"target": "sprint:feat-a", "branch": "feat-a", "parent_repo": str(repo), "run": "sprint"},
+    ]
+    monkeypatch.setattr("lumbergh.worktrees.all_entries", lambda: members)
+
+    bill.land_run(bill.LandBody(run="sprint", onto="master", push=False, skip_smoke=True))
+    batch_sha = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "batch-sprint"],
+        capture_output=True,
+        encoding="utf-8",
+    ).stdout.strip()
+
+    resp = bill.land_run(bill.LandBody(run="sprint", onto="master", push=True, skip_smoke=True))
+    assert resp["sha"] == batch_sha  # the response names exactly what was landed
 
 
 def test_no_push_land_leaves_a_durable_batch_branch(monkeypatch, repo_with_run):

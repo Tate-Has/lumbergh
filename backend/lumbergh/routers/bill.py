@@ -892,6 +892,55 @@ class LandBody(BaseModel):
     skip_smoke: bool = False
 
 
+def _land_existing_batch(body: LandBody, repo: Path, base: str, batch_branch: str, member_branches):
+    """Land the batch branch a prior no-push `land` left in place — push *that*
+    ref, never a fresh re-assembly. Rebuilding here would discard any commit the
+    overseer added to the inspected branch and could push a tree that smoke never
+    saw. Refuse instead if a worker moved since assembly, so the batch's newer
+    work isn't silently dropped either."""
+    stale = land.stale_members(repo, base, batch_branch, member_branches)
+    if stale:
+        raise _fail(
+            "stale",
+            f"workers moved since `{batch_branch}` was assembled: {', '.join(stale)}",
+            f"re-assemble with `lb land --run {body.run}` (no --push), then --push",
+        )
+
+    smoke_state = "skipped"
+    if not body.skip_smoke:
+        cmd = body.smoke or worktrees.read_land_smoke(repo)
+        if not cmd:
+            raise _fail(
+                "smoke",
+                "no smoke command configured",
+                "add [land].smoke to .lumbergh.toml, or pass --smoke/--skip-smoke",
+            )
+        worktree = land.checkout_batch(repo, batch_branch)
+        smoke = land.run_smoke(worktree, cmd)
+        land.remove_worktree(repo, worktree)
+        if not smoke["ok"]:
+            raise _fail(
+                "smoke",
+                f"smoke failed (exit {smoke['returncode']})",
+                f"batch branch {batch_branch} left in place; fix and re-push",
+            )
+        smoke_state = "passed"
+
+    sha = land.head_sha(repo, batch_branch)
+    push = land.push_batch(repo, batch_branch, base)
+    if not push["ok"]:
+        raise _fail("push", push.get("error", "push failed"), "check the remote and retry")
+    land.delete_batch(repo, batch_branch)
+    return {
+        "run": body.run,
+        "batch": batch_branch,
+        "base": base,
+        "pushed": True,
+        "sha": sha,
+        "smoke": smoke_state,
+    }
+
+
 @router.post("/land")
 def land_run(body: LandBody):
     """Assemble a run's branches, smoke-test, and (only on explicit go) single-push."""
@@ -904,8 +953,15 @@ def land_run(body: LandBody):
         raise _fail("run", "run spans multiple repos (or a member has no repo)", "land per repo")
     repo = Path(repo_path)
     base = body.onto or "main"
+    member_branches = [m["branch"] for m in members]
+    batch_branch = f"batch-{body.run}"
 
-    result = land.assemble(repo, body.run, base, [m["branch"] for m in members])
+    # `--push` against a batch a prior `land` already assembled lands that exact
+    # branch — the one the overseer was told to inspect — rather than rebuilding.
+    if body.push and land.batch_exists(repo, batch_branch):
+        return _land_existing_batch(body, repo, base, batch_branch, member_branches)
+
+    result = land.assemble(repo, body.run, base, member_branches)
     if not result["ok"]:
         raise _fail(
             result["stage"],
@@ -938,8 +994,8 @@ def land_run(body: LandBody):
 
     if not body.push:
         # Keep the batch branch (drop only the throwaway worktree): the response
-        # advertises it, so it must be a real ref the overseer can inspect. `land
-        # --push` re-assembles deterministically from the members; `lb teardown`
+        # advertises it, so it must be a real ref the overseer can inspect. A later
+        # `land --push` lands this exact branch (not a re-assembly); `lb teardown`
         # drops it.
         land.remove_worktree(repo, worktree)
         return {
@@ -955,6 +1011,7 @@ def land_run(body: LandBody):
             ),
         }
 
+    sha = land.head_sha(worktree, "HEAD")
     push = land.push_batch(worktree, batch_branch, base)
     land.cleanup_assembly(repo, worktree, batch_branch)
     if not push["ok"]:
@@ -964,6 +1021,7 @@ def land_run(body: LandBody):
         "batch": batch_branch,
         "base": base,
         "pushed": True,
+        "sha": sha,
         "picked": result["picked"],
         "smoke": smoke_state,
     }
