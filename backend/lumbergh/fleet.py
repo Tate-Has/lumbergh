@@ -178,15 +178,13 @@ def _as_tree(overseers: list[dict], workers: list[dict]) -> list[dict]:
 
 
 def needs_attention(row: dict) -> bool:
-    """Whether this row should pull Bill in.
+    """Whether this row has an unhandled action for whoever watches it.
 
-    Bill watches his **overseers**; a worker is its own overseer's concern, never
-    Bill's. An overseer needs him when it is stuck (blocked/error) or has finished a
-    chunk while he was away (idle+unseen — surfaced once, see ``bill._overseer_acked``).
-    A working overseer is left alone.
+    Intrinsic to the row: it is stuck (blocked/error) or finished a chunk unseen
+    (idle+unseen). *Which* watcher it wakes — Bill for an overseer, an overseer for
+    its own worker — is a scoping decision the caller makes (see ``bill._direct_reports``),
+    not something baked in here.
     """
-    if row.get("role") != "overseer":
-        return False
     if row["state"] in ATTENTION_STATES:
         return True
     return row["state"] == "idle" and bool(row.get("unseen"))

@@ -365,8 +365,9 @@ def test_snapshot_filters_by_origin(tmp_path, monkeypatch):
 @pytest.mark.parametrize(
     ("state", "unseen", "expected"),
     [
-        # Bill watches overseers: stuck (blocked/error) always wakes him; a done-unseen
-        # (idle+unseen) overseer surfaces once; a working overseer is left alone.
+        # Intrinsic (role-agnostic): a row has an unhandled action when it is stuck
+        # (blocked/error) or finished a chunk unseen (idle+unseen). WHICH watcher it wakes
+        # is decided by scope (bill._direct_reports), not here.
         ("blocked", False, True),
         ("error", False, True),
         ("idle", True, True),
@@ -375,21 +376,14 @@ def test_snapshot_filters_by_origin(tmp_path, monkeypatch):
         ("working", True, False),
     ],
 )
-def test_needs_attention_for_overseers(state, unseen, expected):
-    assert fleet.needs_attention({"role": "overseer", "state": state, "unseen": unseen}) is expected
-
-
-@pytest.mark.parametrize("state", ["blocked", "error", "idle", "working", "dead"])
-def test_workers_never_wake_bill(state):
-    # A worker is its overseer's concern, never Bill's — regardless of state/unseen.
-    assert fleet.needs_attention({"role": "worker", "state": state, "unseen": True}) is False
+def test_needs_attention(state, unseen, expected):
+    assert fleet.needs_attention({"state": state, "unseen": unseen}) is expected
 
 
 def test_any_needs_attention():
-    calm = [{"role": "overseer", "state": "working", "unseen": False}]
+    calm = [{"state": "working", "unseen": False}]
     assert fleet.any_needs_attention(calm) is False
-    both = [*calm, {"role": "overseer", "state": "blocked", "unseen": False}]
-    assert fleet.any_needs_attention(both) is True
+    assert fleet.any_needs_attention([*calm, {"state": "blocked", "unseen": False}]) is True
 
 
 def test_parse_outcome_finds_a_delivered_line():

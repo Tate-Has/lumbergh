@@ -52,15 +52,41 @@ BILL_PROVIDER = "pi"
 BILL_ORIGIN = "bill"
 
 
-def bill_woke(rows: list[dict]) -> bool:
-    """True when an overseer needs Bill now, skipping done-unseen episodes he has seen."""
-    for row in rows:
+def _direct_reports(rows: list[dict], viewer: str) -> list[dict]:
+    """The rows ``viewer`` is responsible for. Bill's direct reports are his overseers —
+    plus any *orphan* worker no overseer owns (its repo has no live overseer), so a worker
+    he spawns directly never falls through the cracks. An overseer's reports are its own
+    workers (nested under it). Each watches only its own layer."""
+    if viewer == BILL_SESSION:
+        return [
+            r
+            for r in rows
+            if r.get("role") == "overseer" or (r.get("role") == "worker" and not r.get("parent"))
+        ]
+    return [r for r in rows if r.get("role") == "worker" and r.get("parent") == viewer]
+
+
+def viewer_woke(rows: list[dict], viewer: str) -> bool:
+    """True when one of ``viewer``'s direct reports needs action now.
+
+    A done-unseen overseer is de-duplicated by Bill's private ack (so it wakes once
+    without clearing the user's overlay); a done worker de-dupes through its own
+    ``unseen`` flag, which ``_mark_seen`` clears when its overseer views it."""
+    for row in _direct_reports(rows, viewer):
         if not fleet.needs_attention(row):
             continue
-        if row["state"] == "idle" and row.get("task") in _overseer_acked:
+        if (
+            row["state"] == "idle"
+            and row.get("role") == "overseer"
+            and row.get("task") in _overseer_acked
+        ):
             continue
         return True
     return False
+
+
+def bill_woke(rows: list[dict]) -> bool:
+    return viewer_woke(rows, BILL_SESSION)
 
 
 def _outcome_of(session: str) -> str | None:
@@ -118,34 +144,27 @@ def _fleet_rows(origin: str | None, with_outcome: bool = False) -> list[dict]:
     return _add_outcomes(rows) if with_outcome else rows
 
 
-def _mark_seen(rows: list[dict]) -> None:
-    """Bill has been shown these tasks, so ones he can't act on should stop waking him.
+def _mark_seen(rows: list[dict], viewer: str) -> None:
+    """``viewer`` has been shown its direct reports, so a done-unseen one stops re-waking it.
 
-    A finished worker goes idle+unseen, and ``needs_attention`` reads idle+unseen as
-    "surface this once". Nothing but a human opening the session in the web UI ever
-    cleared that flag, so a delivered-but-unlanded task — a completely normal state
-    while the user decides whether to land it — re-woke ``lb fleet --wait`` and the
-    nudge on every poll, forever. Surfacing the fleet to Bill *is* him seeing it.
+    A finished report goes idle+unseen, which ``needs_attention`` reads as "surface once".
+    Nothing but a human opening the session ever cleared that, so a delivered-but-unlanded
+    task re-woke ``lb fleet --wait`` and the nudge on every poll, forever. Being shown the
+    fleet *is* the watcher seeing it — but scoped to the watcher's own layer:
 
-    A ``dead`` task (its session gone — the user killed it, or it crashed) has no live
-    session to hold that flag, so it is acknowledged by path in ``_dead_acked`` instead.
-    Same "surface once then quiet" contract; without it a dead task the user is driving
-    (whose ``reap`` refuses because of their uncommitted work) nagged Bill with no exit
-    but a destructive force-reap. ``_dead_acked`` is then pruned back to the dead tasks
-    still present, so a reaped-and-recreated path surfaces afresh and it never leaks.
+    - an **overseer** report is acked in Bill's *private* ``_overseer_acked``, never by
+      clearing the user's own dashboard "unseen" overlay on that session;
+    - a **worker** report is acked by clearing its ``unseen`` flag (its overseer owns it),
+      or by path in ``_dead_acked`` when its session is gone (``dead``).
 
-    Clearing every shown live row (not just idle ones) is safe: a worker that still needs
-    action is blocked/error, and those wake on their state, not on unseen — so Bill can
-    never miss one just because it was marked seen.
+    The ack sets are pruned against the whole tree so a report that moved on (worked again,
+    or was reaped) surfaces afresh, and they never leak.
     """
-    for row in rows:
+    for row in _direct_reports(rows, viewer):
         if row.get("role") == "overseer":
-            # Ack a done-unseen overseer *privately* — so it wakes Bill once per episode
-            # without clearing the user's own dashboard "unseen" overlay on that session.
             if row["state"] == "idle" and row.get("unseen"):
                 _overseer_acked.add(row["task"])
-            continue
-        if row.get("session"):
+        elif row.get("session"):
             session_attention.clear_unseen(row.get("target") or row["session"])
         elif row.get("state") == "dead":
             _dead_acked.add(row["path"])
@@ -158,17 +177,22 @@ def _mark_seen(rows: list[dict]) -> None:
 
 
 @router.get("/fleet")
-async def get_fleet(origin: str | None = None):
+async def get_fleet(origin: str | None = None, as_session: str | None = None):
     loop = asyncio.get_running_loop()
     rows = await loop.run_in_executor(None, _fleet_rows, origin, True)
-    _mark_seen(rows)
+    _mark_seen(rows, as_session or BILL_SESSION)
     await session_attention.persist()
     return {"total": len(rows), "tasks": rows}
 
 
 @router.get("/fleet/wait")
-async def wait_fleet(timeout: float = 300.0, origin: str | None = None):
-    """Block until any task needs Bill, so supervision costs no tokens while idle.
+async def wait_fleet(
+    timeout: float = 300.0, origin: str | None = None, as_session: str | None = None
+):
+    """Block until a direct report of the caller needs it, so supervision costs no tokens.
+
+    ``as_session`` is who is waiting: Bill (the default) wakes on his overseers; an
+    overseer passing its own name wakes on its own workers. Each watches only its layer.
 
     The current snapshot is checked before the first sleep, so a worker that went
     blocked before the call arrived still wakes it — no lost wakeup.
@@ -182,19 +206,19 @@ async def wait_fleet(timeout: float = 300.0, origin: str | None = None):
     every poll, for the same reason.
     """
     timeout = min(max(timeout, 0.0), _MAX_WAIT_TIMEOUT)
+    viewer = as_session or BILL_SESSION
     loop = asyncio.get_running_loop()
     deadline = time.monotonic() + timeout
     start = time.monotonic()
     while True:
         rows = await loop.run_in_executor(None, _fleet_rows, origin)
-        woke = bill_woke(rows)
+        woke = viewer_woke(rows, viewer)
         if woke or time.monotonic() >= deadline:
             if woke:
-                # This wake has now surfaced the finished work to Bill; without
-                # marking it seen the same idle+unseen task re-wakes instantly on
-                # his next `--wait`, the loop the user hit. Blocked/error/dead keep
-                # waking on their state (see _mark_seen).
-                _mark_seen(rows)
+                # This wake has now surfaced the finished work to the watcher; without
+                # marking it seen the same idle+unseen report re-wakes instantly on the
+                # next `--wait`, the loop the user hit. Blocked/error keep waking on state.
+                _mark_seen(rows, viewer)
                 await session_attention.persist()
             return {
                 "woke": woke,

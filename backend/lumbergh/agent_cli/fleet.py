@@ -1,6 +1,7 @@
 """`lb fleet` — the whole crew in one table, with a token-free long poll."""
 
 import json
+import os
 
 from lumbergh.agent_cli.main import _COMMAND_HELP, _emit, _err, _request
 from lumbergh.agent_cli.toon import render_collection, render_object
@@ -24,15 +25,7 @@ _COLS = [
 _HELP = _COMMAND_HELP["fleet"]
 
 
-def run(flags: dict) -> int:
-    timeout_flag = flags.get("--timeout")
-    if timeout_flag is not None:
-        try:
-            float(timeout_flag)
-        except ValueError:
-            return _err("--timeout must be a number", _HELP, 2)
-
-    waiting = "--wait" in flags
+def _params(flags: dict, waiting: bool) -> dict:
     params = {}
     origin = flags.get("--origin")
     # Supervision watches only Bill's own crew by default: a hand-off the user drives
@@ -43,11 +36,27 @@ def run(flags: dict) -> int:
         origin = "bill"
     if origin and origin != "all":
         params["origin"] = origin
+    # Who is watching: Bill wakes on his overseers; an overseer running this wakes on its
+    # own workers. The caller's session is its identity in the tree, so pass it through.
+    caller = os.environ.get("LUMBERGH_SESSION")
+    if caller:
+        params["as_session"] = caller
     if waiting:
-        params["timeout"] = timeout_flag or "300"
-        path = "/api/bill/fleet/wait"
-    else:
-        path = "/api/bill/fleet"
+        params["timeout"] = flags.get("--timeout") or "300"
+    return params
+
+
+def run(flags: dict) -> int:
+    timeout_flag = flags.get("--timeout")
+    if timeout_flag is not None:
+        try:
+            float(timeout_flag)
+        except ValueError:
+            return _err("--timeout must be a number", _HELP, 2)
+
+    waiting = "--wait" in flags
+    params = _params(flags, waiting)
+    path = "/api/bill/fleet/wait" if waiting else "/api/bill/fleet"
 
     resp = _request("GET", path, params=params, timeout=_client_timeout(params))
     if resp.status_code >= 400:

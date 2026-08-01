@@ -10,8 +10,8 @@ def _overseer(state, unseen=False, task="port"):
     return {"role": "overseer", "task": task, "state": state, "unseen": unseen}
 
 
-def _worker(state, unseen=False, task="w"):
-    return {"role": "worker", "task": task, "state": state, "unseen": unseen}
+def _worker(state, unseen=False, task="w", parent="port"):
+    return {"role": "worker", "task": task, "parent": parent, "state": state, "unseen": unseen}
 
 
 @pytest.mark.parametrize(

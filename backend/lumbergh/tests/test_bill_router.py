@@ -255,22 +255,31 @@ def attention(monkeypatch):
     session_attention.reset()
 
 
-def test_fleet_marks_a_finished_task_seen_so_it_stops_waking(client, monkeypatch, attention):
-    # A delivered worker sits idle+unseen. `needs_attention` treats idle+unseen as
-    # "wake Bill once"; nothing but a human opening the web UI ever cleared it, so it
-    # nagged `lb fleet --wait` and the nudge forever. Showing Bill the fleet is him
-    # seeing it.
-    attention.mark_attention("w-done", "idle")
-    assert attention.is_unseen("w-done")
+def test_overseer_viewing_marks_its_own_workers_seen_but_bill_does_not(
+    client, monkeypatch, attention
+):
+    # A delivered worker sits idle+unseen. It is its overseer's report, not Bill's — so
+    # the overseer viewing the fleet clears it, while Bill viewing leaves it alone.
+    attention.mark_attention("port-697", "idle")
+    assert attention.is_unseen("port-697")
     monkeypatch.setattr(
         bill,
         "_fleet_rows",
         lambda origin, with_outcome=False: [  # noqa: ARG005
-            {"task": "w-done", "session": "w-done", "state": "idle", "unseen": True}
+            {
+                "role": "worker",
+                "task": "port-697",
+                "session": "port-697",
+                "parent": "port",
+                "state": "idle",
+                "unseen": True,
+            }
         ],
     )
-    client.get("/api/bill/fleet")
-    assert not attention.is_unseen("w-done")
+    client.get("/api/bill/fleet", params={"as_session": "bill"})
+    assert attention.is_unseen("port-697"), "Bill must not clear a worker's unseen"
+    client.get("/api/bill/fleet", params={"as_session": "port"})
+    assert not attention.is_unseen("port-697"), "its overseer clears it"
 
 
 def test_fleet_wait_acks_a_done_unseen_overseer_privately(client, monkeypatch, attention):
@@ -326,13 +335,92 @@ def test_fleet_wait_never_wakes_on_worker_state(client, monkeypatch):
                 "role": "worker",
                 "task": "port-697",
                 "session": "port-697",
+                "parent": "port",
                 "state": "blocked",
                 "unseen": True,
             },
-            {"role": "worker", "task": "port-698", "state": "dead", "unseen": True},
+            {
+                "role": "worker",
+                "task": "port-698",
+                "parent": "port",
+                "state": "dead",
+                "unseen": True,
+            },
         ],
     )
-    assert client.get("/api/bill/fleet/wait", params={"timeout": 0.1}).json()["woke"] is False
+    body = client.get("/api/bill/fleet/wait", params={"timeout": 0.1, "as_session": "bill"}).json()
+    assert body["woke"] is False
+
+
+def test_fleet_wait_wakes_an_overseer_on_its_own_worker(client, monkeypatch):
+    # An overseer supervising its own crew: a blocked worker under `port` wakes `port`.
+    monkeypatch.setattr(bill, "_POLL_INTERVAL", 0.01)
+    monkeypatch.setattr(
+        bill,
+        "_fleet_rows",
+        lambda origin, with_outcome=False: [  # noqa: ARG005
+            {
+                "role": "overseer",
+                "task": "port",
+                "session": "port",
+                "state": "idle",
+                "unseen": False,
+            },
+            {
+                "role": "worker",
+                "task": "port-697",
+                "session": "port-697",
+                "parent": "port",
+                "state": "blocked",
+                "unseen": False,
+            },
+        ],
+    )
+    body = client.get("/api/bill/fleet/wait", params={"timeout": 1, "as_session": "port"}).json()
+    assert body["woke"] is True
+
+
+def test_fleet_wait_scopes_an_overseer_to_its_own_workers(client, monkeypatch):
+    # `port` must not be woken by `aio`'s worker — each overseer watches only its own crew.
+    monkeypatch.setattr(bill, "_POLL_INTERVAL", 0.01)
+    monkeypatch.setattr(
+        bill,
+        "_fleet_rows",
+        lambda origin, with_outcome=False: [  # noqa: ARG005
+            {
+                "role": "worker",
+                "task": "aio-12",
+                "session": "aio-12",
+                "parent": "aio",
+                "state": "blocked",
+                "unseen": True,
+            },
+        ],
+    )
+    body = client.get("/api/bill/fleet/wait", params={"timeout": 0.1, "as_session": "port"}).json()
+    assert body["woke"] is False
+
+
+def test_fleet_wait_wakes_bill_on_an_orphan_worker(client, monkeypatch):
+    # A worker for a repo with no live overseer has no parent — nobody else can watch it,
+    # so it is Bill's own direct report and must wake him.
+    monkeypatch.setattr(bill, "_POLL_INTERVAL", 0.01)
+    monkeypatch.setattr(
+        bill,
+        "_fleet_rows",
+        lambda origin, with_outcome=False: [  # noqa: ARG005
+            {
+                "role": "worker",
+                "task": "solo-1",
+                "session": "solo-1",
+                "parent": None,
+                "state": "blocked",
+                "unseen": True,
+            },
+        ],
+    )
+    body = client.get("/api/bill/fleet/wait", params={"timeout": 1, "as_session": "bill"}).json()
+    assert body["woke"] is True
 
 
 def test_fleet_rows_carry_target_and_run(monkeypatch):
