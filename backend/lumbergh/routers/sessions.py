@@ -94,6 +94,7 @@ GIT_WRITE_TIMEOUT = 30  # seconds — push, pull, rebase, commit
 
 # Auto-cleanup gating: only check stale scratch sessions once per hour
 _last_scratch_cleanup: float = 0.0
+_last_dead_reap: float = 0.0
 
 
 async def _run_git(fn: Callable[..., T], *args, timeout: float = GIT_READ_TIMEOUT, **kwargs) -> T:
@@ -462,10 +463,46 @@ def _cleanup_stale_scratch() -> None:
             _remove_scratch_session(name, meta, live)
 
 
+def _is_dead_worktree_orphan(name: str, meta: dict, live_names: set[str]) -> bool:
+    """True when a stored session is a spent worker/run record safe to drop.
+
+    Teardown (and a crash, or a force-kill) leaves the stored session record behind
+    even though its tmux session is gone and its worktree has been reaped — so dead
+    worktree sessions accumulate in the list. One is reapable only when it is *not*
+    live AND its workdir no longer exists AND it is worktree-ish (a `worktree`-type
+    session, or one living under a repo's `-worktrees/` container — which is every
+    worker and batch-container session). A durable direct session on a real repo is
+    never touched, and a plain repo path that is merely missing is left alone in case
+    the repo is only transiently unmounted.
+    """
+    if name in live_names:
+        return False
+    workdir = meta.get("workdir")
+    if not workdir:
+        return False
+    worktreeish = meta.get("type") == "worktree" or "-worktrees/" in f"{workdir}/"
+    return worktreeish and not Path(workdir).exists()
+
+
+def _reap_dead_worktree_sessions() -> None:
+    """Drop stored records for torn-down/crashed workers whose worktree is gone."""
+    global _last_dead_reap
+    now = time.time()
+    if now - _last_dead_reap < 60:
+        return
+    _last_dead_reap = now
+
+    live_names = set(get_live_sessions())
+    for name, meta in get_stored_sessions().items():
+        if _is_dead_worktree_orphan(name, meta, live_names):
+            sessions_table.remove(Query().name == name)
+
+
 @router.get("")
 async def list_sessions():
     """List all sessions (merge TinyDB metadata + live tmux state)."""
     _cleanup_stale_scratch()
+    _reap_dead_worktree_sessions()
     live = get_live_sessions()
     stored = get_stored_sessions()
 
