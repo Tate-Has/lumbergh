@@ -6,19 +6,32 @@ from lumbergh import bill_nudge
 from lumbergh.idle_monitor import IdleMonitor
 
 
+def _overseer(state, unseen=False, task="port"):
+    return {"role": "overseer", "task": task, "state": state, "unseen": unseen}
+
+
+def _worker(state, unseen=False, task="w"):
+    return {"role": "worker", "task": task, "state": state, "unseen": unseen}
+
+
 @pytest.mark.parametrize(
     ("bill_state", "rows", "expected"),
     [
-        ("idle", [{"state": "working", "unseen": False}], True),
-        ("idle", [{"state": "blocked", "unseen": False}], True),
-        ("idle", [{"state": "idle", "unseen": True}], True),
+        # Bill is re-armed only when an overseer needs him.
+        ("idle", [_overseer("blocked")], True),
+        ("idle", [_overseer("idle", unseen=True)], True),
+        ("idle", [_overseer("working")], False),  # a busy overseer is not Bill's cue
+        ("idle", [_overseer("idle", unseen=False)], False),
+        ("idle", [_worker("blocked", unseen=True)], False),  # workers never nudge Bill
         ("idle", [], False),
-        ("idle", [{"state": "idle", "unseen": False}], False),
-        ("working", [{"state": "blocked", "unseen": False}], False),
-        ("blocked", [{"state": "working", "unseen": False}], False),
+        ("working", [_overseer("blocked")], False),  # Bill isn't idle
+        ("blocked", [_overseer("blocked")], False),
     ],
 )
 def test_should_nudge(bill_state, rows, expected):
+    from lumbergh.routers.bill import _overseer_acked
+
+    _overseer_acked.clear()
     assert bill_nudge.should_nudge(bill_state, rows) is expected
 
 
@@ -73,7 +86,9 @@ def _bypass_sweep_throttle(monitor: _StubMonitor) -> None:
 
 
 async def test_maybe_nudge_bill_fires_once_per_idle_stretch(sent_nudges, stub_fleet_rows):
-    stub_fleet_rows["rows"] = [{"state": "blocked", "unseen": False}]
+    stub_fleet_rows["rows"] = [
+        {"role": "overseer", "task": "port", "state": "blocked", "unseen": False}
+    ]
     monitor = _StubMonitor("idle")
     loop = asyncio.get_event_loop()
 
@@ -87,7 +102,9 @@ async def test_maybe_nudge_bill_fires_once_per_idle_stretch(sent_nudges, stub_fl
 
 
 async def test_maybe_nudge_bill_rearms_after_bill_becomes_active(sent_nudges, stub_fleet_rows):
-    stub_fleet_rows["rows"] = [{"state": "blocked", "unseen": False}]
+    stub_fleet_rows["rows"] = [
+        {"role": "overseer", "task": "port", "state": "blocked", "unseen": False}
+    ]
     monitor = _StubMonitor("idle")
     loop = asyncio.get_event_loop()
 
@@ -125,7 +142,9 @@ async def test_maybe_nudge_bill_throttles_the_sweep_itself(stub_fleet_rows):
     """The expensive sweep (tmux + TinyDB + per-repo git) must not re-run on every
     poll while Bill sits idle — only the latch-reset-triggering test helper above
     should be able to force a fresh sweep within the throttle window."""
-    stub_fleet_rows["rows"] = [{"state": "blocked", "unseen": False}]
+    stub_fleet_rows["rows"] = [
+        {"role": "overseer", "task": "port", "state": "blocked", "unseen": False}
+    ]
     monitor = _StubMonitor("idle")
     loop = asyncio.get_event_loop()
 
@@ -148,7 +167,9 @@ async def test_maybe_nudge_bill_retries_after_a_failed_send(stub_fleet_rows, mon
         return False
 
     monkeypatch.setattr(bill_nudge, "nudge", failing_nudge)
-    stub_fleet_rows["rows"] = [{"state": "blocked", "unseen": False}]
+    stub_fleet_rows["rows"] = [
+        {"role": "overseer", "task": "port", "state": "blocked", "unseen": False}
+    ]
     monitor = _StubMonitor("idle")
     loop = asyncio.get_event_loop()
 
@@ -174,7 +195,8 @@ async def test_maybe_nudge_bill_filters_the_sweep_by_origin_not_by_session_name(
         bill_router,
         "_fleet_rows",
         lambda origin, **_kwargs: (
-            captured.append(origin) or [{"state": "blocked", "unseen": False}]
+            captured.append(origin)
+            or [{"role": "overseer", "task": "port", "state": "blocked", "unseen": False}]
         ),
     )
     monkeypatch.setattr(bill_nudge, "BILL_SESSION", "bill-renamed")
@@ -201,7 +223,9 @@ async def test_maybe_nudge_bill_keeps_the_tmux_send_off_the_event_loop(
         return True
 
     monkeypatch.setattr(bill_nudge, "nudge", recording_nudge)
-    stub_fleet_rows["rows"] = [{"state": "blocked", "unseen": False}]
+    stub_fleet_rows["rows"] = [
+        {"role": "overseer", "task": "port", "state": "blocked", "unseen": False}
+    ]
 
     await _StubMonitor("idle")._maybe_nudge_bill(asyncio.get_event_loop())
 

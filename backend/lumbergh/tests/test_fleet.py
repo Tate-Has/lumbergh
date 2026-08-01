@@ -365,29 +365,31 @@ def test_snapshot_filters_by_origin(tmp_path, monkeypatch):
 @pytest.mark.parametrize(
     ("state", "unseen", "expected"),
     [
+        # Bill watches overseers: stuck (blocked/error) always wakes him; a done-unseen
+        # (idle+unseen) overseer surfaces once; a working overseer is left alone.
         ("blocked", False, True),
         ("error", False, True),
-        # A worker Bill cannot resolve — the user killed its session, or it crashed —
-        # goes `dead`. It must surface once (so Bill can report it) and then stay quiet:
-        # Bill's only lever on a dead task is `reap`, which the user gates. Waking on it
-        # every poll is the loop the user hit, so `dead` follows the once-while-unseen
-        # rule, not the always-wake rule of blocked/error.
-        ("dead", True, True),
-        ("dead", False, False),
         ("idle", True, True),
         ("idle", False, False),
         ("working", False, False),
         ("working", True, False),
     ],
 )
-def test_needs_attention(state, unseen, expected):
-    assert fleet.needs_attention({"state": state, "unseen": unseen}) is expected
+def test_needs_attention_for_overseers(state, unseen, expected):
+    assert fleet.needs_attention({"role": "overseer", "state": state, "unseen": unseen}) is expected
+
+
+@pytest.mark.parametrize("state", ["blocked", "error", "idle", "working", "dead"])
+def test_workers_never_wake_bill(state):
+    # A worker is its overseer's concern, never Bill's — regardless of state/unseen.
+    assert fleet.needs_attention({"role": "worker", "state": state, "unseen": True}) is False
 
 
 def test_any_needs_attention():
-    calm = [{"state": "working", "unseen": False}]
+    calm = [{"role": "overseer", "state": "working", "unseen": False}]
     assert fleet.any_needs_attention(calm) is False
-    assert fleet.any_needs_attention([*calm, {"state": "blocked", "unseen": False}]) is True
+    both = [*calm, {"role": "overseer", "state": "blocked", "unseen": False}]
+    assert fleet.any_needs_attention(both) is True
 
 
 def test_parse_outcome_finds_a_delivered_line():

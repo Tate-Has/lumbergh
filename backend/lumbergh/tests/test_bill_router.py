@@ -25,6 +25,15 @@ def _no_real_skill_writes(monkeypatch):
     monkeypatch.setattr(skill, "ensure_worker_skills", list)
 
 
+@pytest.fixture(autouse=True)
+def _reset_bill_acks():
+    """Bill's private ack sets are module globals; clear them so one test's wake can't
+    silence the next test's overseer."""
+    bill._overseer_acked.clear()
+    bill._dead_acked.clear()
+    return
+
+
 def test_fleet_returns_rows(client, monkeypatch):
     monkeypatch.setattr(
         bill,
@@ -70,14 +79,14 @@ def test_fleet_wait_checks_the_fleet_before_its_first_sleep(client, monkeypatch)
 
     def rows(origin, with_outcome=False):  # noqa: ARG001
         calls["n"] += 1
-        return [{"state": "blocked", "unseen": False, "task": "w-a"}]
+        return [{"role": "overseer", "state": "blocked", "unseen": False, "task": "port"}]
 
     monkeypatch.setattr(bill, "_fleet_rows", rows)
     started = time.monotonic()
     body = client.get("/api/bill/fleet/wait", params={"timeout": 5}).json()
     elapsed = time.monotonic() - started
     assert body["woke"] is True
-    assert body["tasks"][0]["task"] == "w-a"
+    assert body["tasks"][0]["task"] == "port"
     assert calls["n"] == 1
     assert elapsed < 0.5
     assert bill._POLL_INTERVAL > 1.0, (
@@ -100,13 +109,13 @@ def test_fleet_wait_times_out_on_a_calm_fleet(client, monkeypatch):
 
 
 @pytest.mark.usefixtures("fast_poll")
-def test_fleet_wait_wakes_when_a_worker_becomes_blocked(client, monkeypatch):
+def test_fleet_wait_wakes_when_an_overseer_becomes_blocked(client, monkeypatch):
     calls = {"n": 0}
 
     def rows(origin, with_outcome=False):  # noqa: ARG001
         calls["n"] += 1
         state = "blocked" if calls["n"] > 2 else "working"
-        return [{"state": state, "unseen": False, "task": "w-a"}]
+        return [{"role": "overseer", "state": state, "unseen": False, "task": "port"}]
 
     monkeypatch.setattr(bill, "_fleet_rows", rows)
     body = client.get("/api/bill/fleet/wait", params={"timeout": 10}).json()
@@ -137,7 +146,22 @@ def test_fleet_wait_takes_the_blocking_work_off_the_event_loop(client, monkeypat
 
     def rows(origin, with_outcome=False):  # noqa: ARG001
         on_loop.append(("snapshot", _has_running_loop()))
-        return [{"state": "blocked", "unseen": False, "session": "w-a", "task": "w-a"}]
+        return [
+            {
+                "role": "overseer",
+                "state": "blocked",
+                "unseen": False,
+                "session": "port",
+                "task": "port",
+            },
+            {
+                "role": "worker",
+                "state": "idle",
+                "unseen": False,
+                "session": "port-697",
+                "task": "port-697",
+            },
+        ]
 
     def outcome_of(name):  # noqa: ARG001
         on_loop.append(("outcome", _has_running_loop()))
@@ -152,18 +176,33 @@ def test_fleet_wait_takes_the_blocking_work_off_the_event_loop(client, monkeypat
 
 
 @pytest.mark.usefixtures("fast_poll")
-def test_fleet_wait_enriches_outcomes_once_on_the_way_out(client, monkeypatch):
-    """A finished worker produces the most common wake, and Bill is told the OUTCOME
-    column already holds its final line — so wait must carry outcomes too. Reading
-    them per poll would put transcript reads back in the hot loop, so this also pins
-    that the read happens exactly once, no matter how many polls it took."""
+def test_fleet_wait_enriches_worker_outcomes_once_on_the_way_out(client, monkeypatch):
+    """The wake is on an overseer, but the payload carries its nested workers with their
+    OUTCOME line filled in — so wait must enrich too. Reading transcripts per poll would
+    put them back in the hot loop, so this pins that the read happens exactly once, and
+    only for the worker (an overseer has no contracted outcome)."""
     calls = {"rows": 0, "outcomes": 0}
 
     def rows(origin, with_outcome=False):  # noqa: ARG001
         calls["rows"] += 1
         state = "idle" if calls["rows"] > 2 else "working"
         unseen = calls["rows"] > 2
-        return [{"state": state, "unseen": unseen, "session": "w-a", "task": "w-a"}]
+        return [
+            {
+                "role": "overseer",
+                "state": state,
+                "unseen": unseen,
+                "session": "port",
+                "task": "port",
+            },
+            {
+                "role": "worker",
+                "state": "idle",
+                "unseen": False,
+                "session": "port-697",
+                "task": "port-697",
+            },
+        ]
 
     def outcome_of(name):  # noqa: ARG001
         calls["outcomes"] += 1
@@ -174,10 +213,13 @@ def test_fleet_wait_enriches_outcomes_once_on_the_way_out(client, monkeypatch):
 
     body = client.get("/api/bill/fleet/wait", params={"timeout": 10}).json()
 
+    worker = next(t for t in body["tasks"] if t["role"] == "worker")
+    overseer = next(t for t in body["tasks"] if t["role"] == "overseer")
     assert body["woke"] is True
-    assert body["tasks"][0]["outcome"] == "DELIVERED: https://example.test/pull/7"
+    assert worker["outcome"] == "DELIVERED: https://example.test/pull/7"
+    assert overseer["outcome"] is None  # overseers have no contracted outcome
     assert calls["rows"] == 3
-    assert calls["outcomes"] == 1
+    assert calls["outcomes"] == 1  # only the worker, once
 
 
 def test_fleet_wait_clamps_an_absurd_timeout(client, monkeypatch):
@@ -231,72 +273,66 @@ def test_fleet_marks_a_finished_task_seen_so_it_stops_waking(client, monkeypatch
     assert not attention.is_unseen("w-done")
 
 
-def test_fleet_wait_marks_a_finished_task_seen_on_the_wake(client, monkeypatch, attention):
-    attention.mark_attention("w-done", "idle")
-    monkeypatch.setattr(
-        bill,
-        "_fleet_rows",
-        lambda origin, with_outcome=False: [  # noqa: ARG005
-            {"task": "w-done", "session": "w-done", "state": "idle", "unseen": True}
-        ],
-    )
-    body = client.get("/api/bill/fleet/wait", params={"timeout": 1}).json()
-    assert body["woke"] is True
-    assert not attention.is_unseen("w-done")
-
-
-def test_fleet_wait_still_wakes_on_a_blocked_task_after_it_was_seen(client, monkeypatch, attention):
-    # Marking seen must not silence a worker that still needs action: a blocked task
-    # wakes on its state, not on unseen, so Bill can never miss it.
-    attention.mark_attention("w-blocked", "blocked")
+def test_fleet_wait_acks_a_done_unseen_overseer_privately(client, monkeypatch, attention):
+    # A done-unseen overseer (finished a chunk while Bill was away) wakes him once, then
+    # is acked so it can't re-wake in a loop — WITHOUT clearing the user's own dashboard
+    # "unseen" overlay on that session, which is theirs, not Bill's.
+    attention.mark_attention("port", "idle")
     monkeypatch.setattr(bill, "_POLL_INTERVAL", 0.01)
     monkeypatch.setattr(
         bill,
         "_fleet_rows",
         lambda origin, with_outcome=False: [  # noqa: ARG005
-            {"task": "w-blocked", "session": "w-blocked", "state": "blocked", "unseen": True}
+            {"role": "overseer", "task": "port", "session": "port", "state": "idle", "unseen": True}
         ],
     )
-    assert client.get("/api/bill/fleet/wait", params={"timeout": 1}).json()["woke"] is True
-    assert not attention.is_unseen("w-blocked")
-    assert client.get("/api/bill/fleet/wait", params={"timeout": 1}).json()["woke"] is True
-
-
-@pytest.mark.usefixtures("attention")
-def test_fleet_wait_stops_waking_on_a_dead_task_the_user_left(client, monkeypatch):
-    # The exact loop the user hit: they killed a worker's session, leaving a `dead`
-    # worktree with their own uncommitted changes that `reap` refuses to remove. `dead`
-    # used to wake Bill on every `lb fleet --wait` with no safe exit (only a destructive
-    # `reap --force`). It must surface once, then stay quiet until the task changes or is
-    # reaped. Driven through the real `_fleet_rows`, so the dead_acked plumbing is exercised.
-    from lumbergh import worktrees
-    from lumbergh.routers import worktrees as worktrees_router
-
-    path = "/wt/aio-work"
-    monkeypatch.setattr(bill, "_dead_acked", set())
-    monkeypatch.setattr(bill, "_POLL_INTERVAL", 0.01)
-    monkeypatch.setattr(worktrees_router, "_live_sessions", dict)
-    monkeypatch.setattr(
-        worktrees,
-        "reconcile_all",
-        lambda live: [{"path": path, "repo": "aio", "branch": "aio-work", "session": None}],  # noqa: ARG005
-    )
-    monkeypatch.setattr(
-        worktrees,
-        "get_entry",
-        lambda p: {  # noqa: ARG005
-            "target": "aio-scout",
-            "parent_repo": "/repo/aio",
-            "kind": "scout",
-            "origin": None,
-        },
-    )
-
     first = client.get("/api/bill/fleet/wait", params={"timeout": 1}).json()
-    second = client.get("/api/bill/fleet/wait", params={"timeout": 0.1}).json()
-    assert first["tasks"][0]["state"] == "dead"
     assert first["woke"] is True
-    assert second["woke"] is False
+    assert attention.is_unseen("port"), "the user's own overlay must survive Bill seeing it"
+    assert "port" in bill._overseer_acked
+    second = client.get("/api/bill/fleet/wait", params={"timeout": 0.1}).json()
+    assert second["woke"] is False  # acked -> no re-wake loop
+
+
+def test_fleet_wait_still_wakes_on_a_blocked_overseer(client, monkeypatch):
+    # A stuck overseer wakes on its state every time, never silenced by an ack.
+    monkeypatch.setattr(bill, "_POLL_INTERVAL", 0.01)
+    monkeypatch.setattr(
+        bill,
+        "_fleet_rows",
+        lambda origin, with_outcome=False: [  # noqa: ARG005
+            {
+                "role": "overseer",
+                "task": "port",
+                "session": "port",
+                "state": "blocked",
+                "unseen": True,
+            }
+        ],
+    )
+    assert client.get("/api/bill/fleet/wait", params={"timeout": 1}).json()["woke"] is True
+    assert client.get("/api/bill/fleet/wait", params={"timeout": 1}).json()["woke"] is True
+
+
+def test_fleet_wait_never_wakes_on_worker_state(client, monkeypatch):
+    # Workers are their overseer's concern, never Bill's: a blocked or dead worker must
+    # not wake his supervise loop, no matter how unseen.
+    monkeypatch.setattr(bill, "_POLL_INTERVAL", 0.01)
+    monkeypatch.setattr(
+        bill,
+        "_fleet_rows",
+        lambda origin, with_outcome=False: [  # noqa: ARG005
+            {
+                "role": "worker",
+                "task": "port-697",
+                "session": "port-697",
+                "state": "blocked",
+                "unseen": True,
+            },
+            {"role": "worker", "task": "port-698", "state": "dead", "unseen": True},
+        ],
+    )
+    assert client.get("/api/bill/fleet/wait", params={"timeout": 0.1}).json()["woke"] is False
 
 
 def test_fleet_rows_carry_target_and_run(monkeypatch):

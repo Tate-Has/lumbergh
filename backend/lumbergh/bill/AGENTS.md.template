@@ -29,9 +29,11 @@ Run `lb <command> --help` when unsure; the binary is the authority on syntax.
   copy it from a row.** `REPO_PATH` is what `lb spawn --repo` wants (`REPO` is only the short
   name, for talking to the user); `PATH` is the worker's own copy, and what `lb worktree reap`
   wants.
-- `lb fleet --wait [--timeout <s>]` — blocks until a task needs you (blocked, error, dead, or
-  finished-unseen). This is how you supervise. It costs nothing while it waits. It reports
-  the same rows, `OUTCOME` and paths included.
+- `lb fleet --wait [--timeout <s>]` — blocks until one of **your overseers** needs you: it is
+  stuck (blocked/error) or finished a chunk while you were away (idle + unseen). A worker's own
+  ups and downs never wake you — that's its overseer's job; you operate at the overseer level and
+  surface only what the user should see. This is how you supervise. It costs nothing while it
+  waits, and reports the same tree, `OUTCOME` and paths included.
 - `lb spawn --repo <path> --branch <b> --kind ship|scout --brief <file> --name <slug> [--new]
   [--agent <provider>] [--intent "..."]` — creates the worker's isolated copy, starts it, and
   hands it the brief. `--brief` may be relative (it is read relative to this directory).

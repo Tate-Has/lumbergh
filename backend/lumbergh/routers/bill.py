@@ -39,9 +39,28 @@ _OUTCOME_TAIL_EVENTS = 15
 # because `_mark_seen` prunes it back to the dead tasks still in the fleet.
 _dead_acked: set[str] = set()
 
+# Overseer sessions Bill has already been shown in their current done-unseen (idle+unseen)
+# episode. This is Bill's *private* seen-marker: unlike a worker, an overseer's `unseen`
+# flag is the user's own dashboard "done while you were away" overlay, which Bill must not
+# clear by supervising. Blocked/error overseers wake every time (not acked here); only the
+# soft idle+unseen case is deduplicated. Pruned by `_mark_seen` to overseers still idle+
+# unseen, so a new episode (overseer worked, then went idle again) surfaces afresh.
+_overseer_acked: set[str] = set()
+
 BILL_SESSION = "bill"
 BILL_PROVIDER = "pi"
 BILL_ORIGIN = "bill"
+
+
+def bill_woke(rows: list[dict]) -> bool:
+    """True when an overseer needs Bill now, skipping done-unseen episodes he has seen."""
+    for row in rows:
+        if not fleet.needs_attention(row):
+            continue
+        if row["state"] == "idle" and row.get("task") in _overseer_acked:
+            continue
+        return True
+    return False
 
 
 def _outcome_of(session: str) -> str | None:
@@ -121,14 +140,21 @@ def _mark_seen(rows: list[dict]) -> None:
     """
     for row in rows:
         if row.get("role") == "overseer":
-            # Overseers are shown, not managed-by-viewing: their unseen flag is the
-            # user's own "done while you were away" overlay, not Bill's to clear.
+            # Ack a done-unseen overseer *privately* — so it wakes Bill once per episode
+            # without clearing the user's own dashboard "unseen" overlay on that session.
+            if row["state"] == "idle" and row.get("unseen"):
+                _overseer_acked.add(row["task"])
             continue
         if row.get("session"):
             session_attention.clear_unseen(row.get("target") or row["session"])
         elif row.get("state") == "dead":
             _dead_acked.add(row["path"])
     _dead_acked.intersection_update(r["path"] for r in rows if r.get("state") == "dead")
+    _overseer_acked.intersection_update(
+        r["task"]
+        for r in rows
+        if r.get("role") == "overseer" and r["state"] == "idle" and r.get("unseen")
+    )
 
 
 @router.get("/fleet")
@@ -161,7 +187,7 @@ async def wait_fleet(timeout: float = 300.0, origin: str | None = None):
     start = time.monotonic()
     while True:
         rows = await loop.run_in_executor(None, _fleet_rows, origin)
-        woke = fleet.any_needs_attention(rows)
+        woke = bill_woke(rows)
         if woke or time.monotonic() >= deadline:
             if woke:
                 # This wake has now surfaced the finished work to Bill; without

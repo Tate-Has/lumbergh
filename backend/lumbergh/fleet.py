@@ -178,16 +178,18 @@ def _as_tree(overseers: list[dict], workers: list[dict]) -> list[dict]:
 
 
 def needs_attention(row: dict) -> bool:
-    # Overseers are shown for visibility only; waking Bill on overseer state is the
-    # next (escalation) step, deliberately not wired yet — so they never wake --wait.
-    if row.get("role") == "overseer":
+    """Whether this row should pull Bill in.
+
+    Bill watches his **overseers**; a worker is its own overseer's concern, never
+    Bill's. An overseer needs him when it is stuck (blocked/error) or has finished a
+    chunk while he was away (idle+unseen — surfaced once, see ``bill._overseer_acked``).
+    A working overseer is left alone.
+    """
+    if row.get("role") != "overseer":
         return False
     if row["state"] in ATTENTION_STATES:
         return True
-    # A finished worker (`idle`) and one Bill cannot resolve (`dead`) both surface once,
-    # then go quiet: showing Bill the fleet clears `unseen`. Waking on `dead` every poll
-    # was the reap-refused loop the user hit.
-    return row["state"] in ("idle", "dead") and bool(row.get("unseen"))
+    return row["state"] == "idle" and bool(row.get("unseen"))
 
 
 def any_needs_attention(rows: list[dict]) -> bool:
