@@ -16,6 +16,8 @@ import {
 } from 'lucide-react'
 import { getApiBase } from '../config'
 import SessionCard from '../components/SessionCard'
+import OverseerCard from '../components/OverseerCard'
+import BillHeroCard from '../components/BillHeroCard'
 import CreateSessionModal from '../components/CreateSessionModal'
 import SettingsModal from '../components/SettingsModal'
 import WorktreePanel from '../components/WorktreePanel'
@@ -24,7 +26,8 @@ import Banner from '../components/ui/Banner'
 import { useTheme } from '../hooks/useTheme'
 
 import type { SessionBase } from '../utils/sessionStatus'
-import { sessionUrgencyRank } from '../utils/sessionStatus'
+import { sessionUrgencyRank, sessionNeedsAttention } from '../utils/sessionStatus'
+import { groupSessions } from '../utils/sessionGroups'
 
 interface Session extends SessionBase {
   workdir: string | null
@@ -43,6 +46,8 @@ interface Session extends SessionBase {
   cloudEnabled?: boolean
   theOne?: boolean
   scratch?: boolean
+  role?: 'bill' | 'worker' | 'session'
+  parent?: string | null
 }
 
 interface PlanInfo {
@@ -80,26 +85,44 @@ function SessionGrid({
     if (rank !== 0) return rank
     return (b.lastUsedAt || '').localeCompare(a.lastUsedAt || '')
   }
-  const alive = sessions.filter((s) => s.alive && !s.paused).sort(sortSessions)
+  const alive = sessions.filter((s) => s.alive && !s.paused)
   const dead = sessions.filter((s) => !s.alive || s.paused).sort(sortSessions)
+
+  const { bill, items } = groupSessions(alive)
+  const supervised = alive.filter((s) => s.role !== 'bill')
+  const needAttention = supervised.filter(sessionNeedsAttention).length
 
   return (
     <>
-      {alive.length > 0 && (
+      {bill && (
+        <BillHeroCard bill={bill} watching={supervised.length} needAttention={needAttention} />
+      )}
+      {items.length > 0 && (
         <section className="mb-8">
           <h2 className="text-sm font-medium text-text-tertiary mb-3 uppercase tracking-wide">
             Active Sessions
           </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {alive.map((session) => (
-              <div key={session.name} data-testid={`session-card-${session.name}`}>
-                <SessionCard
-                  session={session}
-                  onDelete={onDelete}
-                  onUpdate={onUpdate}
-                  onReset={onReset}
-                  cloudAtLimit={cloudAtLimit}
-                />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-start">
+            {items.map(({ parent, workers }) => (
+              <div key={parent.name} data-testid={`session-card-${parent.name}`}>
+                {workers.length > 0 ? (
+                  <OverseerCard
+                    parent={parent}
+                    workers={workers}
+                    onDelete={onDelete}
+                    onUpdate={onUpdate}
+                    onReset={onReset}
+                    cloudAtLimit={cloudAtLimit}
+                  />
+                ) : (
+                  <SessionCard
+                    session={parent}
+                    onDelete={onDelete}
+                    onUpdate={onUpdate}
+                    onReset={onReset}
+                    cloudAtLimit={cloudAtLimit}
+                  />
+                )}
               </div>
             ))}
           </div>

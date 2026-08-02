@@ -2,9 +2,26 @@
 
 import httpx
 from playwright.sync_api import Page, expect
-from pytest_bdd import parsers, scenarios, then, when
+from pytest_bdd import given, parsers, scenarios, then, when
 
 scenarios("features/dashboard.feature")
+
+
+@given("a bill session exists")
+def ensure_bill_session(_ensure_bill_session):
+    """Relies on the session-scoped fixture from conftest."""
+    pass
+
+
+@then("I should see the Bill hero")
+def see_bill_hero(page: Page):
+    hero = page.locator('[data-testid="bill-hero"]')
+    expect(hero).to_be_visible(timeout=10000)
+
+
+@when("I open the Bill hero")
+def open_bill_hero(page: Page):
+    page.locator('[data-testid="bill-hero"]').click()
 
 
 # Steps shared with dashboard_extended.feature live in conftest.py - see the

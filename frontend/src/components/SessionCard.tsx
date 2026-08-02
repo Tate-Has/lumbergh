@@ -19,7 +19,7 @@ import GlassPanel from './ui/GlassPanel'
 import type { SessionBase } from '../utils/sessionStatus'
 import { getSessionStatus as getBaseStatus, statusColorClasses } from '../utils/sessionStatus'
 
-interface Session extends SessionBase {
+export interface Session extends SessionBase {
   workdir: string | null
   description: string | null
   attached: boolean

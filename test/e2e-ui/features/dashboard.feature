@@ -20,3 +20,10 @@ Feature: Dashboard
     And a session "e2e-ui-created" exists
     When I delete the session "e2e-ui-created"
     Then I should not see the session card for "e2e-ui-created"
+
+  Scenario: Bill is promoted to a first-class hero
+    Given a bill session exists
+    And I am on the dashboard
+    Then I should see the Bill hero
+    When I open the Bill hero
+    Then I should be on the session page for "bill"

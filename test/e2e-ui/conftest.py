@@ -106,6 +106,24 @@ def _ensure_test_session(base_url, repo_dir):
 
 
 @pytest.fixture(scope="session")
+def _ensure_bill_session(base_url, repo_dir):
+    """Create a session literally named 'bill' so the dashboard treats it as the fleet
+    manager (role == 'bill') and renders the hero, without invoking the summon flow."""
+    with httpx.Client(base_url=base_url, timeout=30.0) as client:
+        client.delete("/api/sessions/bill")
+
+        r = client.post(
+            "/api/sessions",
+            json={"name": "bill", "workdir": f"{repo_dir}/test-repo"},
+        )
+        assert r.status_code == 200, f"Failed to create bill session: {r.text}"
+
+        yield "bill"
+
+        client.delete("/api/sessions/bill")
+
+
+@pytest.fixture(scope="session")
 def _ensure_second_session(base_url, repo_dir):
     """Create a second test session for multi-session UI tests."""
     session_name = "e2e-ui-session-2"

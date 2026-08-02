@@ -37,7 +37,9 @@ export default function WorktreePanel() {
     try {
       const data = await apiGet<{ worktrees: WorktreeRow[] }>('/worktrees')
       if (mountedRef.current) {
-        setWorktrees(data.worktrees || [])
+        // Only orphans need a reap affordance here — a worktree backing a live session
+        // is already represented by that session's card, so it would just be clutter.
+        setWorktrees((data.worktrees || []).filter((w) => w.state === 'orphan'))
         setError(null)
       }
     } catch (err) {

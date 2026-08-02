@@ -23,6 +23,7 @@ from fastapi.responses import FileResponse
 from tinydb import Query
 
 from lumbergh import session_attention, worktrees
+from lumbergh.bill_nudge import BILL_SESSION
 from lumbergh.constants import IGNORE_DIRS, REPO_SEARCH_SKIP_DIRS, SCRATCH_DIR, TMUX_CMD
 from lumbergh.db_utils import (
     get_project_db,
@@ -498,6 +499,46 @@ def _reap_dead_worktree_sessions() -> None:
             sessions_table.remove(Query().name == name)
 
 
+def _resolved_path(path: str | None) -> str | None:
+    if not path:
+        return None
+    try:
+        return str(Path(path).resolve())
+    except (OSError, ValueError):
+        return path
+
+
+def _annotate_hierarchy(sessions: list[dict]) -> None:
+    """Set ``role`` and ``parent`` on each session row, in place.
+
+    ``role`` is ``bill`` for Bill, ``worker`` for a worktree-backed sub-session, and
+    ``session`` otherwise. A worker's ``parent`` is the name of the session whose working
+    directory is the worker's parent repo — the same resolved-repo-path match ``fleet``
+    uses to nest a worker under its overseer. Everything is derived from the rows already
+    built here: no subprocess and no transcript read, so it stays cheap enough for the
+    dashboard's poll (unlike ``fleet.snapshot``, which reads worker transcripts). A worker
+    whose repo has no live session gets ``parent: None`` and surfaces as a top-level card.
+
+    "Overseer" is deliberately not a role: a session is presented as one only because a
+    worker points at it, which the frontend derives from ``parent``.
+    """
+    overseer_by_path: dict[str, str] = {}
+    for s in sessions:
+        if s.get("type") != "worktree":
+            resolved = _resolved_path(s.get("workdir"))
+            if resolved:
+                overseer_by_path[resolved] = s["name"]
+    for s in sessions:
+        if s["name"] == BILL_SESSION:
+            s["role"] = "bill"
+        elif s.get("type") == "worktree":
+            s["role"] = "worker"
+        else:
+            s["role"] = "session"
+        parent_key = _resolved_path(s.get("worktreeParentRepo")) if s["role"] == "worker" else None
+        s["parent"] = overseer_by_path.get(parent_key) if parent_key else None
+
+
 @router.get("")
 async def list_sessions():
     """List all sessions (merge TinyDB metadata + live tmux state)."""
@@ -575,6 +616,7 @@ async def list_sessions():
                 }
             )
 
+    _annotate_hierarchy(sessions)
     return {"sessions": sessions}
 
 

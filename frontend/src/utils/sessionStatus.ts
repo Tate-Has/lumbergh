@@ -8,6 +8,23 @@ export interface SessionBase {
   paused?: boolean
   displayName: string | null
   theOne?: boolean
+  role?: 'bill' | 'worker' | 'session'
+  parent?: string | null
+}
+
+/** Whether a session has an unhandled action for the user: it is stuck
+ * (blocked/error), has a pending question, or finished a chunk unseen
+ * (idle + "while you were away"). Mirrors the backend's `fleet.needs_attention`
+ * so the dashboard rollups match Bill's own supervision cues. */
+export function sessionNeedsAttention(
+  session: Pick<SessionBase, 'idleState' | 'unseen' | 'needsAnswer'>
+): boolean {
+  return (
+    session.idleState === 'blocked' ||
+    session.idleState === 'error' ||
+    (session.idleState === 'idle' && !!session.unseen) ||
+    !!session.needsAnswer
+  )
 }
 
 /** Normalize the `/sessions` payload into a session array.
