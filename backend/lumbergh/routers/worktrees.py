@@ -4,7 +4,7 @@ from pathlib import Path
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from lumbergh import worktrees
+from lumbergh import git_utils, land, worktrees
 from lumbergh.routers.sessions import get_stored_sessions
 from lumbergh.routers.settings import get_settings
 from lumbergh.targets import parse_target
@@ -99,6 +99,37 @@ def link(body: PathBody):
     repo = worktrees.parent_repo_of(wt)
     cfg = worktrees.parse_worktree_config(repo)
     return {"linked": worktrees.apply_links(repo, wt, worktrees.plan_links(repo, wt, cfg))}
+
+
+class DepsBody(BaseModel):
+    path: str
+    base: str | None = None
+
+
+@router.post("/deps")
+def deps(body: DepsBody):
+    """Whether this worktree's linked dependency dirs still match what its code declares.
+
+    The base defaults to the branch the worktree was created from, falling back to the
+    remote's default branch — the same comparison `lb land` makes before it smokes.
+    """
+    wt = Path(body.path).expanduser()
+    repo = worktrees.parent_repo_of(wt)
+    entry = worktrees.get_entry(wt) or {}
+    base = (
+        body.base
+        or git_utils.resolve_base_ref(wt, entry.get("base_branch"))
+        or git_utils.default_base_ref(wt)
+    )
+    drift = worktrees.dep_drift(
+        wt, land.changed_paths(wt, base), worktrees.configured_link_paths(repo)
+    )
+    return {
+        "path": str(wt),
+        "base": base,
+        "drift": drift,
+        "dep_sync": worktrees.read_dep_sync(repo),
+    }
 
 
 @router.post("/unlink")

@@ -39,6 +39,32 @@ def test_land_without_push_sends_push_false(monkeypatch):
     assert captured["json"]["skip_smoke"] is False
 
 
+def test_land_prints_the_worker_to_commit_mapping(monkeypatch, capsys):
+    """Every worker in the batch has to be visible in the output with its commit
+    count, so "did all five land?" is answerable by reading, not by counting."""
+    monkeypatch.setattr(
+        land_cli,
+        "_request",
+        lambda _m, _p, **_kw: _Resp(
+            {
+                "run": "r",
+                "batch": "batch-r",
+                "base": "main",
+                "pushed": True,
+                "smoke": "passed",
+                "picked": {"feat-a": ["aaa1", "aaa2"], "feat-b": ["bbb1"], "feat-c": []},
+            }
+        ),
+    )
+    rc = land_cli.run({"--run": "r", "--push": True})
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert "workers[3]" in out
+    assert "feat-a,2" in out
+    assert "feat-c,0" in out  # a worker that contributed nothing is still listed
+
+
 def test_land_push_and_skip_smoke_flags(monkeypatch):
     captured = {}
 

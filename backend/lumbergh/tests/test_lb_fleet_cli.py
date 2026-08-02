@@ -224,3 +224,29 @@ def test_fleet_table_shows_a_dash_for_a_row_with_no_registered_repo_path(monkeyp
     assert fleet_cli.run({}) == 0
     cells = capsys.readouterr().out.splitlines()[1].strip().split(",")
     assert cells[fleet_cli._COLS.index("repo_path")] == "-"
+
+
+def test_wait_names_the_tasks_that_woke_it(monkeypatch, capsys):
+    """`waited: 0.0s` reads as a broken poll until you can see what it woke for.
+    The `needs` column already carries it; the wake line has to say it outright."""
+    monkeypatch.setattr(
+        fleet_cli,
+        "_request",
+        lambda *_a, **_kw: _Resp(
+            {
+                "woke": True,
+                "waited": 0.0,
+                "tasks": [
+                    {"task": "issue-770", "state": "idle", "attention": True},
+                    {"task": "issue-771", "state": "working", "attention": False},
+                ],
+            }
+        ),
+    )
+
+    rc = fleet_cli.run({"--wait": True})
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert "issue-770" in out.split("fleet[")[0]  # named in the wake line, above the table
+    assert "issue-771" not in out.split("fleet[")[0]

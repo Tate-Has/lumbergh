@@ -565,6 +565,12 @@ class SpawnBody(BaseModel):
     delivery: str | None = None
 
 
+_DEP_SYNC_HELP = (
+    'add [worktree] dep_sync = "<install command>" to .lumbergh.toml so lb can give the '
+    "batch its own environment, or re-run with --skip-smoke if you are gating by hand"
+)
+
+
 def _fail(stage: str, error: str, help_text: str, **extra: str) -> HTTPException:
     """Build the 400 every failure stage raises.
 
@@ -909,6 +915,7 @@ class InitBody(BaseModel):
     repo: str
     delivery: str | None = None
     smoke: str | None = None
+    dep_sync: str | None = None
 
 
 _INIT_HEADER = (
@@ -950,6 +957,16 @@ def init(body: InitBody):
         else:
             blocks.append(f'[land]\nsmoke = "{body.smoke}"\n')
             added.append("land")
+    if body.dep_sync:
+        if "worktree" in existing:
+            present.append(f"[worktree] dep_sync = {existing['worktree'].get('dep_sync')!r}")
+        else:
+            blocks.append(
+                f"[worktree]\n# Install a worktree's own dependencies once its link to the\n"
+                f"# shared checkout is broken, so a dependency change gates honestly.\n"
+                f'dep_sync = "{body.dep_sync}"\n'
+            )
+            added.append("worktree")
 
     if blocks:
         if dotfile.is_file():
@@ -1043,6 +1060,10 @@ def _land_existing_batch(body: LandBody, repo: Path, base: str, batch_branch: st
                 "add [land].smoke to .lumbergh.toml, or pass --smoke/--skip-smoke",
             )
         worktree = land.checkout_batch(repo, batch_branch)
+        deps = land.prepare_deps(repo, worktree, base)
+        if not deps["ok"]:
+            land.remove_worktree(repo, worktree)
+            raise _fail("deps", deps["error"], _DEP_SYNC_HELP)
         smoke = land.run_smoke(worktree, cmd)
         land.remove_worktree(repo, worktree)
         if not smoke["ok"]:
@@ -1053,6 +1074,7 @@ def _land_existing_batch(body: LandBody, repo: Path, base: str, batch_branch: st
             )
         smoke_state = "passed"
 
+    picked = land.commits_by_branch(repo, base, member_branches)
     sha = land.head_sha(repo, batch_branch)
     push = land.push_batch(repo, batch_branch, base)
     if not push["ok"]:
@@ -1064,6 +1086,7 @@ def _land_existing_batch(body: LandBody, repo: Path, base: str, batch_branch: st
         "base": base,
         "pushed": True,
         "sha": sha,
+        "picked": picked,
         "smoke": smoke_state,
     }
 
@@ -1083,11 +1106,27 @@ def land_run(body: LandBody):
     member_branches = [m["branch"] for m in members]
     batch_branch = f"batch-{body.run}"
 
+    # Membership, not name matching, decides who is in a batch — so a member whose
+    # branch can't be resolved is a hard error naming the worker, never a silent
+    # omission that produces output indistinguishable from a complete land.
+    missing = [m for m in members if not land.branch_exists(repo, m["branch"])]
+    if missing:
+        named = ", ".join(f"{m.get('target') or '?'} (branch `{m['branch']}`)" for m in missing)
+        raise _fail(
+            "members",
+            f"run members whose branch does not exist: {named}",
+            "the worker's branch was renamed or never created — fix the registry entry "
+            "(`lb worktree ls`) or drop the member, then re-run",
+        )
+
     # `--push` against a batch a prior `land` already assembled lands that exact
     # branch — the one the overseer was told to inspect — rather than rebuilding.
     if body.push and land.batch_exists(repo, batch_branch):
         return _land_existing_batch(body, repo, base, batch_branch, member_branches)
+    return _assemble_and_land(body, repo, base, member_branches)
 
+
+def _assemble_and_land(body: LandBody, repo: Path, base: str, member_branches: list[str]) -> dict:
     result = land.assemble(repo, body.run, base, member_branches)
     if not result["ok"]:
         raise _fail(
@@ -1101,6 +1140,7 @@ def land_run(body: LandBody):
     batch_branch = result["batch"]
 
     smoke_state = "skipped"
+    resynced: list[str] = []
     if not body.skip_smoke:
         cmd = body.smoke or worktrees.read_land_smoke(repo)
         if not cmd:
@@ -1110,6 +1150,11 @@ def land_run(body: LandBody):
                 "no smoke command configured",
                 "add [land].smoke to .lumbergh.toml, or pass --smoke/--skip-smoke",
             )
+        deps = land.prepare_deps(repo, worktree, base)
+        if not deps["ok"]:
+            land.cleanup_assembly(repo, worktree, batch_branch)
+            raise _fail("deps", deps["error"], _DEP_SYNC_HELP)
+        resynced = deps["resynced"]
         smoke = land.run_smoke(worktree, cmd)
         if not smoke["ok"]:
             raise _fail(
@@ -1131,6 +1176,7 @@ def land_run(body: LandBody):
             "base": base,
             "pushed": False,
             "picked": result["picked"],
+            "deps": resynced,
             "smoke": smoke_state,
             "next": (
                 f"batch branch `{batch_branch}` is assembled and left in place — inspect it, "
@@ -1150,6 +1196,7 @@ def land_run(body: LandBody):
         "pushed": True,
         "sha": sha,
         "picked": result["picked"],
+        "deps": resynced,
         "smoke": smoke_state,
     }
 
@@ -1176,8 +1223,19 @@ def teardown(body: TeardownBody):
             killed = kill_tmux_window(target) if window is not None else kill_tmux_session(session)
         reap = worktrees.reap(Path(m["path"]), force=body.force, rm_branch=True)
         if reap.get("status") != "removed":
-            refused.append(target)
-        results.append({"target": target, "killed": killed, "reaped": reap.get("status")})
+            # Two refusals with one message is how `--force` became reflex: say which.
+            refused.append({"target": target, "reason": reap.get("reason", "error")})
+        results.append(
+            {
+                "target": target,
+                "killed": killed,
+                "reaped": reap.get("status"),
+                # Whether this worker's work reached a remote. Torn down with
+                # `landed: false` is the signal a repo needs to put the worker's
+                # tracking issue back on its board — lb knows nothing about boards.
+                "landed": reap.get("landed"),
+            }
+        )
     # Drop the batch branch a prior no-push `land` left behind (a no-op if there
     # was none, or if a member's repo has no such branch).
     for repo_path in {m.get("parent_repo") for m in members}:

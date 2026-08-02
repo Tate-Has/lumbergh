@@ -16,6 +16,7 @@ def run(flags: dict) -> int:
         "repo": str(Path(flags["--repo"]).expanduser().resolve()),
         "delivery": flags.get("--delivery"),
         "smoke": flags.get("--smoke"),
+        "dep_sync": flags.get("--dep-sync"),
     }
     resp = _request("POST", "/api/bill/init", json=body)
     if resp.status_code >= 400:

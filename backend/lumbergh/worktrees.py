@@ -10,35 +10,61 @@ import shutil
 import subprocess
 import tomllib
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Literal
+from pathlib import Path, PurePosixPath
+from typing import TYPE_CHECKING, Literal
 
 from git.exc import GitCommandError
 from tinydb import Query
 
 from lumbergh.db_utils import get_worktrees_db
 from lumbergh.git_utils import (
-    count_unpushed_commits,
+    create_worktree as _git_create_worktree,
+)
+from lumbergh.git_utils import (
     get_porcelain_status,
     get_repo,
     get_worktree_container_path,
-    head_tree_matches_a_remote,
+    head_work_is_on_a_remote,
     list_worktrees,
     sanitize_branch_for_path,
-)
-from lumbergh.git_utils import (
-    create_worktree as _git_create_worktree,
 )
 from lumbergh.git_utils import (
     remove_worktree as _git_remove_worktree,
 )
 from lumbergh.providers import DEFAULT_PROVIDER
 
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
 # NOTE: do not import get_settings here. The core stays free of the settings/router
 # layer; the caller passes `global_base_dir` in (the router reads the setting).
 
 LinkMode = Literal["symlink", "copy"]
 DEFAULT_LINKS = [".venv", "node_modules", ".env", ".env.local", ".direnv"]
+
+# Which files declare the contents of a linked dependency directory. A change to one
+# of these means the shared environment the link points at no longer matches the code,
+# so anything gating against it is testing the wrong versions.
+DEP_MANIFESTS: dict[str, tuple[str, ...]] = {
+    ".venv": (
+        "pyproject.toml",
+        "uv.lock",
+        "requirements.txt",
+        "requirements.in",
+        "poetry.lock",
+        "Pipfile",
+        "Pipfile.lock",
+        "setup.py",
+        "setup.cfg",
+    ),
+    "node_modules": (
+        "package.json",
+        "package-lock.json",
+        "yarn.lock",
+        "pnpm-lock.yaml",
+        "bun.lockb",
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -97,6 +123,48 @@ def read_delivery_mode(repo: Path) -> str:
     data = tomllib.loads(dotfile.read_text())
     mode = data.get("delivery", {}).get("mode")
     return mode if mode in DELIVERY_MODES else "commit"
+
+
+def read_dep_sync(repo: Path) -> str | None:
+    """The repo's `[worktree] dep_sync` command — how to install a worktree's own
+    dependencies once its link to the shared environment has been broken."""
+    dotfile = repo / ".lumbergh.toml"
+    if not dotfile.is_file():
+        return None
+    data = tomllib.loads(dotfile.read_text())
+    cmd = data.get("worktree", {}).get("dep_sync")
+    return cmd if isinstance(cmd, str) and cmd else None
+
+
+def configured_link_paths(repo: Path) -> list[str]:
+    """Every link path the repo's config asks for, whether or not it was applied.
+    Unlike ``plan_links`` this doesn't skip paths that already exist in a worktree —
+    the callers below are asking about links that are already in place."""
+    cfg = parse_worktree_config(repo)
+    specs = cfg.links if cfg.links is not None else [LinkSpec(p) for p in DEFAULT_LINKS]
+    return [spec.path for spec in specs]
+
+
+def dep_drift(
+    worktree: Path, changed_paths: Iterable[str], link_paths: Iterable[str]
+) -> list[dict]:
+    """Linked dependency directories whose manifests this worktree changed.
+
+    Each hit is a place where a gate would run green against dependencies the code no
+    longer declares. A manifest counts only when it sits beside the directory it
+    describes, so a sibling project's `pyproject.toml` doesn't implicate `backend/.venv`.
+    """
+    changed = {PurePosixPath(p) for p in changed_paths}
+    drift = []
+    for link in link_paths:
+        rel = PurePosixPath(link)
+        manifests = DEP_MANIFESTS.get(rel.name)
+        if not manifests or not (worktree / link).is_symlink():
+            continue
+        hits = sorted(str(c) for c in changed if c.parent == rel.parent and c.name in manifests)
+        if hits:
+            drift.append({"link": link, "manifests": hits})
+    return drift
 
 
 def read_land_smoke(repo: Path) -> str | None:
@@ -215,6 +283,7 @@ def record_worktree(
     origin: str | None = None,
     target: str | None = None,
     run: str | None = None,
+    base_branch: str | None = None,
 ) -> dict:
     resolved_target = target if target is not None else session
     row = {
@@ -228,6 +297,9 @@ def record_worktree(
         "kind": kind,
         "origin": origin,
         "run": run,
+        # What this worktree branched from, so a later dependency-drift check knows
+        # which base to diff against instead of guessing at the repo's default.
+        "base_branch": base_branch,
     }
     db = get_worktrees_db()
     db.upsert(row, Query().path == row["path"])
@@ -329,19 +401,21 @@ def create(
         origin=origin,
         target=target,
         run=run,
+        base_branch=base_branch,
     )
     return {"path": str(wt), "links_applied": applied}
 
 
 def reap(worktree: Path, *, force: bool = False, rm_branch: bool = False) -> dict:
+    # Answer "did this work land?" up front and report it either way: a forced reap
+    # still owes the caller that flag, because a torn-down-but-unlanded worker is the
+    # one whose tracking issue has to go back on the board (nothing here knows or
+    # cares what a board is — it only exposes the fact).
+    landed = head_work_is_on_a_remote(worktree) if worktree.exists() else None
     if not force:
         if get_porcelain_status(worktree):
             return {"error": "worktree has uncommitted changes", "reason": "dirty"}
-        # Ancestry alone cries wolf after a rebase/cherry-pick land: the landed
-        # commits have rewritten shas, so the originals are ancestors of no remote
-        # even though their content is live. Only refuse if the tree isn't already
-        # on a remote — that's the difference between "unpushed" and "just rebased".
-        if count_unpushed_commits(worktree) > 0 and not head_tree_matches_a_remote(worktree):
+        if not landed:
             return {"error": "worktree has unpushed commits", "reason": "unpushed"}
     entry = get_entry(worktree)
     parent = Path(entry["parent_repo"]) if entry else parent_repo_of(worktree)
@@ -354,7 +428,12 @@ def reap(worktree: Path, *, force: bool = False, rm_branch: bool = False) -> dic
         # registry entry rather than leaving an un-reapable ghost behind.
         if not worktree.exists():
             remove_entry(worktree)
-            return {"status": "removed", "path": str(worktree), "note": "already absent"}
+            return {
+                "status": "removed",
+                "path": str(worktree),
+                "landed": landed,
+                "note": "already absent",
+            }
         return result
     remove_entry(worktree)
     if rm_branch and branch:
@@ -362,7 +441,7 @@ def reap(worktree: Path, *, force: bool = False, rm_branch: bool = False) -> dic
             get_repo(parent).git.branch("-D", branch)
         except GitCommandError:
             pass
-    return {"status": "removed", "path": str(worktree)}
+    return {"status": "removed", "path": str(worktree), "landed": landed}
 
 
 def parent_repo_of(worktree: Path) -> Path:

@@ -21,11 +21,18 @@ def run(flags: dict) -> int:
     d = resp.json()
     _emit(render_object([("run", d["run"]), ("refused", str(len(d["refused"])))]))
     if d["results"]:
-        _emit(render_collection("results", d["results"], ["target", "killed", "reaped"]))
+        _emit(render_collection("results", d["results"], ["target", "killed", "reaped", "landed"]))
+    unlanded = [r["target"] for r in d["results"] if r.get("landed") is False]
+    if unlanded:
+        _emit(
+            "unlanded: "
+            + ", ".join(unlanded)
+            + " — torn down without landing; whatever tracks this work is now stale"
+        )
     if d["refused"]:
         _emit(
             "note: "
-            + ", ".join(d["refused"])
-            + " left running — dirty/unpushed work; commit+push or pass --force"
+            + ", ".join(f"{r['target']} ({r.get('reason', 'error')})" for r in d["refused"])
+            + " left running — commit+push or pass --force"
         )
     return 0

@@ -1,7 +1,7 @@
 """`lb land` — assemble a run's branches, smoke-test, and (on --push) single-push."""
 
 from lumbergh.agent_cli.main import _COMMAND_HELP, _emit, _err, _request
-from lumbergh.agent_cli.toon import render_object
+from lumbergh.agent_cli.toon import render_collection, render_object
 
 _HELP = _COMMAND_HELP["land"]
 
@@ -35,4 +35,10 @@ def run(flags: dict) -> int:
     if d.get("next"):
         pairs.append(("next", d["next"]))
     _emit(render_object(pairs))
+    picked = d.get("picked")
+    if picked is not None:
+        # Every member of the run, with what it contributed — including the zeros.
+        # Reading this replaces counting commits against the worker list by hand.
+        rows = [{"worker": b, "commits": len(shas)} for b, shas in sorted(picked.items())]
+        _emit(render_collection("workers", rows, ["worker", "commits"]))
     return 0

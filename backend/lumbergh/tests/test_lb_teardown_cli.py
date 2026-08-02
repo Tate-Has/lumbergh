@@ -37,7 +37,7 @@ def test_teardown_surfaces_refused(monkeypatch, capsys):
             {
                 "run": "r",
                 "results": [{"target": "r:a", "killed": True, "reaped": "refused"}],
-                "refused": ["r:a"],
+                "refused": [{"target": "r:a", "reason": "dirty"}],
             }
         ),
     )
@@ -45,4 +45,30 @@ def test_teardown_surfaces_refused(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert rc == 0
     assert "r:a" in out
+    assert "dirty" in out
     assert "force" in out
+
+
+def test_teardown_shows_which_workers_went_down_unlanded(monkeypatch, capsys):
+    """A worker torn down without landing is the one whose tracking issue is now
+    stranded — the operator has to see that without going to look for it."""
+    monkeypatch.setattr(
+        teardown_cli,
+        "_request",
+        lambda _m, _p, **_kw: _Resp(
+            {
+                "run": "r",
+                "results": [
+                    {"target": "r:a", "killed": True, "reaped": "removed", "landed": True},
+                    {"target": "r:b", "killed": True, "reaped": "removed", "landed": False},
+                ],
+                "refused": [],
+            }
+        ),
+    )
+    rc = teardown_cli.run({"--run": "r"})
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert "landed" in out
+    assert "r:b" in out.split("unlanded")[1]  # called out explicitly, not just tabulated

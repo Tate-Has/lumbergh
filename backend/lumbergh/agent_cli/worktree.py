@@ -9,7 +9,7 @@ from lumbergh.agent_cli.toon import render_collection, render_object
 _COLS = ["path", "repo", "branch", "session", "agent", "state"]
 # Named so a drift test can check the subcommands Bill's AGENTS.md tells him to run
 # against the ones this module actually dispatches.
-SUBCOMMANDS = ("ls", "create", "reap", "adopt", "link", "unlink")
+SUBCOMMANDS = ("ls", "create", "reap", "adopt", "link", "unlink", "deps")
 
 
 def run(sub: str, flags: dict, positional: list) -> int:
@@ -23,6 +23,8 @@ def run(sub: str, flags: dict, positional: list) -> int:
         return _adopt(flags, positional)
     if sub in ("link", "unlink"):
         return _linkop(sub, positional)
+    if sub == "deps":
+        return _deps(flags, positional)
     return _err(
         f"unknown worktree subcommand `{sub}`",
         f"lb worktree {'|'.join(SUBCOMMANDS)}",
@@ -146,6 +148,37 @@ def _adopt(flags, positional) -> int:
         render_object([("adopted", d.get("path", positional[0])), ("branch", d.get("branch", "-"))])
     )
     return 0
+
+
+def _deps(flags, positional) -> int:
+    """Report whether this worktree's gate would run against the right dependencies.
+
+    Exits 1 on drift so a worker can chain it in front of its own lint/test run: a
+    green gate against the shared checkout's packages is worse than no gate at all.
+    """
+    if not positional:
+        return _err("worktree path is required", "lb worktree deps <path> [--base <ref>]", 2)
+    body = {"path": positional[0], "base": flags.get("--base")}
+    d = _request("POST", "/api/worktrees/deps", json=body).json()
+    drift = d.get("drift", [])
+    if not drift:
+        _emit(render_object([("deps", "ok"), ("path", positional[0])]))
+        return 0
+    _emit(
+        render_collection(
+            "drift",
+            [{"link": r["link"], "manifests": " ".join(r["manifests"])} for r in drift],
+            ["link", "manifests"],
+        )
+    )
+    sync = d.get("dep_sync")
+    fix = f"run `{sync}` in this worktree" if sync else "install this worktree's own dependencies"
+    _emit(
+        f"note: these are symlinked to the shared checkout, so lint and tests would pass "
+        f"against dependencies this branch no longer declares — "
+        f"`lb worktree unlink {positional[0]}`, then {fix}"
+    )
+    return 1
 
 
 def _linkop(sub, positional) -> int:

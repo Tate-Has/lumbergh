@@ -56,6 +56,12 @@ one per task, so reach for these when adopting or cleaning up.
 - `lb worktree reap <path> [--force] [--rm-branch]` — remove a worktree once its work has
   landed. It **refuses** while the worktree has uncommitted changes or unpushed commits;
   that refusal means work would be lost, so report it rather than reaching for `--force`.
+  Work that landed by rebase or cherry-pick counts as landed (it is matched by patch, not
+  by sha), so a refusal after a green batch is a real finding, not noise.
+- `lb worktree deps <path> [--base <ref>]` — does this worktree's gate test what its code
+  declares? Exits non-zero when it changed a dependency manifest while `.venv`/
+  `node_modules` still points at the shared checkout, which makes lint and tests pass
+  against versions the branch no longer uses.
 - `lb worktree adopt <path> [--session <name>]` — start tracking a worktree that git already
   knows about but Lumbergh doesn't.
 - `lb worktree link <path>` / `lb worktree unlink <path>` — re-apply or remove the project's

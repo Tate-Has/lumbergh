@@ -52,7 +52,7 @@ FLAGS = {
         "--delivery",
     },
     "batch": {"--repo", "--run", "--briefs", "--kind", "--base", "--session", "--delivery"},
-    "init": {"--repo", "--delivery", "--smoke"},
+    "init": {"--repo", "--delivery", "--smoke", "--dep-sync"},
     "land": {"--run", "--onto", "--push", "--smoke", "--skip-smoke"},
     "teardown": {"--run", "--force"},
     "babysit": {"--session", "--stop", "--list", "--refresh"},
@@ -92,7 +92,8 @@ _COMMAND_HELP = {
         "lb worktree ls --repo <path> [--json] | create --repo <path> --branch <b> [--new] "
         "[--base <b>] [--agent <provider> [--session <name>]] [--intent '...'] "
         "| reap <path> [--force] [--rm-branch] "
-        "| adopt <path> [--session <name>] | link <path> | unlink <path>"
+        "| adopt <path> [--session <name>] | link <path> | unlink <path> "
+        "| deps <path> [--base <ref>]"
     ),
     "fleet": "lb fleet [--wait] [--timeout <s>] [--origin bill] [--json]",
     "spawn": (
@@ -106,7 +107,10 @@ _COMMAND_HELP = {
     ),
     "land": "lb land --run <id> [--onto <base>] [--push] [--smoke '<cmd>'] [--skip-smoke]",
     "teardown": "lb teardown --run <id> [--force]",
-    "init": "lb init --repo <path> [--delivery pr|branch|commit] [--smoke '<cmd>']",
+    "init": (
+        "lb init --repo <path> [--delivery pr|branch|commit] [--smoke '<cmd>'] "
+        "[--dep-sync '<install cmd>']"
+    ),
     "babysit": (
         "lb babysit --session <name> | --refresh --session <name> | "
         "--stop --session <name> | --list"
@@ -133,6 +137,15 @@ def _request(method: str, path: str, **kwargs):
     headers = {"X-Lumbergh-Agent-Token": agent_token.read_token() or ""}
     timeout = kwargs.pop("timeout", 320)
     return httpx.request(method, f"{BASE}{path}", headers=headers, timeout=timeout, **kwargs)
+
+
+def _server_is_reachable() -> bool:
+    """Is the server answering right now? Deliberately short and unauthenticated —
+    this only ever runs to explain a failure that already happened."""
+    try:
+        return httpx.get(f"{BASE}/api/health", timeout=3).status_code < 500
+    except httpx.HTTPError:
+        return False
 
 
 def _parse(argv):
@@ -210,6 +223,23 @@ def main(argv=None) -> int:
         return handler()
     except httpx.ConnectError:
         return _err("Lumbergh server is not running", "start it with `lumbergh`, then retry", 1)
+    except httpx.TimeoutException:
+        # A long poll (`lb fleet --wait`) outliving a Lumbergh restart looks exactly
+        # like a server that failed. Ask whether it is answering *now* — the two cases
+        # want opposite responses, and guessing wrong costs a debugging session.
+        if _server_is_reachable():
+            return _err(
+                "request timed out, but the Lumbergh server is still up",
+                "the call ran longer than its client timeout — retry, "
+                "or give it longer with --timeout",
+                1,
+            )
+        return _err(
+            "the Lumbergh server went away mid-request",
+            "it is not answering now — usually a restart underneath a long poll; "
+            "wait for it to come back and retry",
+            1,
+        )
 
 
 def _need_session(session) -> int | None:

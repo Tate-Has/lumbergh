@@ -63,6 +63,10 @@ def test_land_without_push_assembles_smokes_and_stops(monkeypatch):
             {"parent_repo": "/repo/port", "branch": "feat-b", "target": "sprint:feat-b"},
         ],
     )
+    monkeypatch.setattr("lumbergh.routers.bill.land.branch_exists", lambda *_a: True)
+    monkeypatch.setattr(
+        "lumbergh.routers.bill.land.prepare_deps", lambda *_a: {"ok": True, "resynced": []}
+    )
     monkeypatch.setattr(
         "lumbergh.routers.bill.land.assemble",
         lambda _repo, run, _base, _branches: {
@@ -120,4 +124,4 @@ def test_teardown_kills_windows_and_reaps_members(monkeypatch):
 
     resp = bill.teardown(bill.TeardownBody(run="sprint"))
     assert set(killed) == {"sprint:a", "sprint:b"}
-    assert resp["refused"] == ["sprint:b"]
+    assert resp["refused"] == [{"target": "sprint:b", "reason": "dirty"}]

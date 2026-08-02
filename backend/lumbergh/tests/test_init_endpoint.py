@@ -3,6 +3,7 @@ import tomllib
 import pytest
 from fastapi import HTTPException
 
+from lumbergh import worktrees
 from lumbergh.routers import bill
 
 
@@ -56,3 +57,28 @@ def test_init_rejects_non_repo(tmp_path):
 def test_init_rejects_bad_delivery_mode(tmp_path):
     with pytest.raises(HTTPException):
         bill.init(bill.InitBody(repo=str(_repo(tmp_path)), delivery="yeet"))
+
+
+def test_init_records_a_dep_sync_command(tmp_path):
+    """The one thing that lets `lb land` recover from dependency drift instead of
+    refusing — so `lb init` has to be able to write it."""
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+
+    bill.init(bill.InitBody(repo=str(repo), dep_sync="uv sync --project backend"))
+
+    text = (repo / ".lumbergh.toml").read_text()
+    assert "[worktree]" in text
+    assert 'dep_sync = "uv sync --project backend"' in text
+    assert worktrees.read_dep_sync(repo) == "uv sync --project backend"
+
+
+def test_init_leaves_an_existing_worktree_table_alone(tmp_path):
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    (repo / ".lumbergh.toml").write_text('[worktree]\ndep_sync = "make deps"\n')
+
+    resp = bill.init(bill.InitBody(repo=str(repo), dep_sync="something else"))
+
+    assert worktrees.read_dep_sync(repo) == "make deps"
+    assert any("worktree" in u for u in resp["unchanged"])

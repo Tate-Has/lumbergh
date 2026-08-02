@@ -70,12 +70,20 @@ def run(flags: dict) -> int:
 
     if waiting:
         woke = d.get("woke")
+        # A wake that returns in 0.0s is normal — a report was already waiting — but it
+        # reads as a broken poll unless the line says which one, so name them here.
+        woken_by = [r.get("task") for r in rows if r.get("attention")]
         _emit(
             render_object(
                 [
                     ("woke", "true" if woke else "false"),
                     ("waited", f"{d.get('waited', 0)}s"),
-                    ("note", "" if woke else "no task needs you yet — re-run to keep waiting"),
+                    (
+                        "note",
+                        f"needs you: {', '.join(woken_by)}"
+                        if woke
+                        else "no task needs you yet — re-run to keep waiting",
+                    ),
                 ]
             )
         )

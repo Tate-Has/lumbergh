@@ -92,6 +92,107 @@ def test_teardown_kills_a_bare_session_worker(monkeypatch, tmp_path):
     assert resp["refused"] == []
 
 
+def test_land_refuses_when_a_members_branch_cannot_be_resolved(monkeypatch, repo_with_run):
+    """A member whose branch name doesn't resolve contributed zero commits, and the
+    land output was byte-identical to a complete one. Silence is the bug: refuse,
+    and name the worker."""
+    repo = repo_with_run
+    members = [
+        {"target": "sprint:feat-a", "branch": "feat-a", "parent_repo": str(repo), "run": "sprint"},
+        {
+            "target": "sprint:issue-710",
+            "branch": "710",  # spawned as `--branch 710`, the branch is `issue-710`
+            "parent_repo": str(repo),
+            "run": "sprint",
+        },
+    ]
+    monkeypatch.setattr("lumbergh.worktrees.all_entries", lambda: members)
+
+    with pytest.raises(HTTPException) as exc:
+        bill.land_run(bill.LandBody(run="sprint", onto="master", push=False, skip_smoke=True))
+
+    assert exc.value.detail["stage"] == "members"
+    assert "sprint:issue-710" in exc.value.detail["error"]
+    assert "710" in exc.value.detail["error"]
+    assert not _branch_exists(repo, "batch-sprint")  # nothing half-assembled left behind
+
+
+def test_land_reports_the_worker_to_commit_mapping_on_push(monkeypatch, repo_with_run):
+    """The count has to be verifiable from the land output itself, without git
+    archaeology — on the --push path as much as the assembly path."""
+    repo = repo_with_run
+    members = [
+        {"target": "sprint:feat-a", "branch": "feat-a", "parent_repo": str(repo), "run": "sprint"},
+        {"target": "sprint:feat-b", "branch": "feat-b", "parent_repo": str(repo), "run": "sprint"},
+    ]
+    monkeypatch.setattr("lumbergh.worktrees.all_entries", lambda: members)
+
+    bill.land_run(bill.LandBody(run="sprint", onto="master", push=False, skip_smoke=True))
+    resp = bill.land_run(bill.LandBody(run="sprint", onto="master", push=True, skip_smoke=True))
+
+    assert set(resp["picked"]) == {"feat-a", "feat-b"}
+    assert all(len(shas) == 1 for shas in resp["picked"].values())
+
+
+def test_teardown_reports_whether_each_worker_landed(monkeypatch, tmp_path):
+    """Teardown is the only thing that knows a run was torn down *without* landing.
+    It stays repo-agnostic — it exposes the fact and leaves board semantics alone."""
+    members = [
+        {
+            "target": "sprint:landed",
+            "branch": "landed",
+            "parent_repo": str(tmp_path),
+            "path": str(tmp_path / "wt-landed"),
+            "run": "sprint",
+        },
+        {
+            "target": "sprint:abandoned",
+            "branch": "abandoned",
+            "parent_repo": str(tmp_path),
+            "path": str(tmp_path / "wt-abandoned"),
+            "run": "sprint",
+        },
+    ]
+    monkeypatch.setattr("lumbergh.routers.bill.run_members", lambda _run: members)
+    monkeypatch.setattr(
+        "lumbergh.worktrees.reap",
+        lambda p, **_k: {"status": "removed", "landed": "landed" in str(p)},
+    )
+    monkeypatch.setattr("lumbergh.land.delete_batch", lambda *_a: True)
+    monkeypatch.setattr("lumbergh.routers.bill.kill_tmux_window", lambda _t: True)
+
+    resp = bill.teardown(bill.TeardownBody(run="sprint", force=True))
+
+    by_target = {r["target"]: r for r in resp["results"]}
+    assert by_target["sprint:landed"]["landed"] is True
+    assert by_target["sprint:abandoned"]["landed"] is False
+
+
+def test_teardown_refusal_names_its_reason(monkeypatch, tmp_path):
+    """`--force` stops being read the moment every refusal looks the same. A refusal
+    must say which of the two things it is."""
+    members = [
+        {
+            "target": "sprint:dirty",
+            "branch": "dirty",
+            "parent_repo": str(tmp_path),
+            "path": str(tmp_path / "wt"),
+            "run": "sprint",
+        }
+    ]
+    monkeypatch.setattr("lumbergh.routers.bill.run_members", lambda _run: members)
+    monkeypatch.setattr(
+        "lumbergh.worktrees.reap",
+        lambda _p, **_k: {"error": "worktree has uncommitted changes", "reason": "dirty"},
+    )
+    monkeypatch.setattr("lumbergh.land.delete_batch", lambda *_a: True)
+    monkeypatch.setattr("lumbergh.routers.bill.kill_tmux_window", lambda _t: True)
+
+    resp = bill.teardown(bill.TeardownBody(run="sprint"))
+
+    assert resp["refused"] == [{"target": "sprint:dirty", "reason": "dirty"}]
+
+
 def test_push_lands_commits_added_to_the_assembled_batch_branch(monkeypatch, repo_with_run):
     repo = repo_with_run
     origin = repo.parent / "origin.git"

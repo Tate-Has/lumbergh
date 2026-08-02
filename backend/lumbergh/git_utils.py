@@ -1771,6 +1771,84 @@ def head_tree_matches_a_remote(cwd: Path) -> bool:
     return False
 
 
+def resolve_base_ref(cwd: Path, name: str | None) -> str | None:
+    """Turn a recorded base branch name into a ref that exists, preferring the remote
+    copy — a stale local `dev` would understate what a branch actually changed."""
+    if not name:
+        return None
+    for candidate in (f"origin/{name}", name):
+        verify = subprocess.run(
+            ["git", "-C", str(cwd), "rev-parse", "--verify", "--quiet", candidate],
+            capture_output=True,
+        )
+        if verify.returncode == 0:
+            return candidate
+    return None
+
+
+def default_base_ref(cwd: Path) -> str:
+    """The ref a worktree's work is most likely branched from, for callers that need a
+    base and weren't told one. Prefers what the remote itself calls default, then the
+    conventional names, and finally ``HEAD`` (which makes a diff against it empty —
+    the safe way to be wrong)."""
+    result = subprocess.run(
+        ["git", "-C", str(cwd), "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    if result.returncode == 0 and result.stdout.strip():
+        return result.stdout.strip()
+    for candidate in ("origin/main", "origin/master", "origin/dev"):
+        verify = subprocess.run(
+            ["git", "-C", str(cwd), "rev-parse", "--verify", "--quiet", candidate],
+            capture_output=True,
+        )
+        if verify.returncode == 0:
+            return candidate
+    return "HEAD"
+
+
+def head_commits_landed_on_a_remote(cwd: Path) -> bool:
+    """True if every commit this worktree added is present on some remote by PATCH,
+    even though its sha was rewritten getting there.
+
+    ``head_tree_matches_a_remote`` only recognizes a worker whose landed tree is the
+    whole remote tip, which a batch land never produces: `lb land` cherry-picks every
+    member onto the base, so each worker's tree is missing its peers' work and matches
+    nothing. Patch equivalence is what survives that — ``git cherry`` marks a commit
+    ``-`` when the upstream already contains an equivalent patch and ``+`` when it does
+    not, so a ref with no ``+`` lines contains all of this worktree's work.
+
+    Falls back to False on error, so a genuine never-pushed worktree stays protected.
+    """
+    try:
+        repo = get_repo(cwd)
+    except InvalidGitRepositoryError:
+        return False
+    try:
+        for remote in repo.remotes:
+            for ref in remote.refs:
+                out = repo.git.cherry(ref.name, "HEAD")
+                if not any(line.startswith("+") for line in out.splitlines()):
+                    return True
+    except (GitCommandError, ValueError):
+        return False
+    return False
+
+
+def head_work_is_on_a_remote(cwd: Path) -> bool:
+    """Whether reaping this worktree would lose anything — the reap guard's whole
+    question, and the ``landed`` signal `lb teardown` reports per worker.
+
+    Three ways the work can already be safe, cheapest first: it is an ancestor of a
+    remote (never rebased), its tree matches a remote tip (a solo land), or its patches
+    are on a remote under rewritten shas (a batch land)."""
+    if count_unpushed_commits(cwd) == 0:
+        return True
+    return head_tree_matches_a_remote(cwd) or head_commits_landed_on_a_remote(cwd)
+
+
 def remove_worktree(repo_path: Path, worktree_path: Path, force: bool = False) -> dict:
     """
     Remove a git worktree.

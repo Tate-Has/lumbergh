@@ -70,6 +70,69 @@ def test_reap_allows_worktree_whose_commits_landed_via_rebase(tmp_path):
     assert result.get("status") == "removed", result
 
 
+def _repo_with_origin(tmp_path: Path) -> Path:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "master")
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
+    (repo / "base.txt").write_text("base")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "base")
+    origin = tmp_path / "origin.git"
+    _git(repo, "clone", "--bare", "-q", str(repo), str(origin))
+    _git(repo, "remote", "add", "origin", str(origin))
+    _git(repo, "fetch", "-q", "origin")
+    return repo
+
+
+@pytest.mark.usefixtures("worktrees_db")
+def test_reap_allows_a_worker_whose_batch_landed_alongside_other_workers(tmp_path):
+    """The real shape of a landed batch: `lb land` cherry-picks EVERY worker onto
+    the base, so no single worker's tree ever equals the landed tree — only its
+    patch does. Tree comparison alone refuses every worker of every green batch."""
+    repo = _repo_with_origin(tmp_path)
+
+    worktrees_by_name = {}
+    for name in ("worker-a", "worker-b"):
+        wt = tmp_path / name
+        _git(repo, "worktree", "add", "-q", "-b", name, str(wt), "master")
+        (wt / f"{name}.txt").write_text(name)
+        _git(wt, "add", ".")
+        _git(wt, "commit", "-qm", f"{name} work")
+        worktrees_by_name[name] = wt
+
+    # The base moved while the workers ran, so every pick is a genuine rewrite —
+    # this is what makes the landed shas differ from the workers' originals.
+    (repo / "base.txt").write_text("base moved")
+    _git(repo, "commit", "-qam", "base moves on")
+    for name in ("worker-a", "worker-b"):
+        _git(repo, "cherry-pick", name)
+    _git(repo, "push", "-q", "origin", "master")
+
+    result = worktrees.reap(worktrees_by_name["worker-a"], force=False, rm_branch=True)
+
+    assert result.get("status") == "removed", result
+    assert result.get("landed") is True, result
+
+
+@pytest.mark.usefixtures("worktrees_db")
+def test_reap_reports_landed_false_for_unlanded_work_it_is_forced_through(tmp_path):
+    """`lb teardown --force` still has to say whether the work landed — that flag is
+    the only signal a repo has for putting a torn-down worker's issue back on the board."""
+    repo = _repo_with_origin(tmp_path)
+    wt = tmp_path / "wt"
+    _git(repo, "worktree", "add", "-q", "-b", "worker", str(wt), "master")
+    (wt / "novel.txt").write_text("never pushed anywhere")
+    _git(wt, "add", ".")
+    _git(wt, "commit", "-qm", "work")
+
+    result = worktrees.reap(wt, force=True, rm_branch=True)
+
+    assert result.get("status") == "removed", result
+    assert result.get("landed") is False, result
+
+
 @pytest.mark.usefixtures("worktrees_db")
 def test_reap_still_refuses_genuinely_unpushed_work(tmp_path):
     repo = tmp_path / "repo"
