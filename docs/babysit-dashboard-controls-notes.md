@@ -7,6 +7,16 @@ Not an approved spec: run the brainstorming skill before building.
 
 _Written 2026-08-02._
 
+> **UPDATE (2026-08-02, shipped `6e87305`):** the babysit on/off control shipped as a
+> **per-card `Baby` toggle** in each live session card's footer — NOT the per-overseer
+> badge / central panel this doc leans toward below. A first cut as a central "BABYSITTING"
+> checklist panel was rejected by the user ("don't like the checkbox at the top… it should
+> just be on the card itself"). Eligibility + component: `frontend/src/utils/babysit.ts`
+> (`canBabysit`) and `frontend/src/components/BabysitToggle.tsx`. Still open: the
+> **inactive-but-babysat** case (§ below, Q3-adjacent) — currently just keeps a colored
+> toggle on the offline card; and the panel's refresh / stop-all verbs were dropped.
+> The "where does it live" section below is superseded; the endpoint notes still hold.
+
 ## Background — the two fixes that led here
 
 Both shipped to local `main` (unpushed at time of writing):
