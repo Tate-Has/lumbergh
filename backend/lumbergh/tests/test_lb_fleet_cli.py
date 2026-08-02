@@ -39,6 +39,25 @@ def test_fleet_renders_table(monkeypatch, capsys):
     assert "w-a" in out
 
 
+def test_the_needs_column_follows_the_servers_verdict_not_the_unseen_overlay(monkeypatch, capsys):
+    """`unseen` is true for any session the user walked away from mid-thought. Rendering
+    that as the "does this want me?" column is what had Bill supervising sessions nobody
+    handed him, so the column reports the server's per-viewer verdict instead."""
+    rows = [
+        dict(_ROW, task="theirs", state="idle", unseen=True, attention=False),
+        dict(_ROW, task="mine", state="idle", unseen=False, attention=True),
+    ]
+    monkeypatch.setattr(
+        fleet_cli,
+        "_request",
+        lambda m, p, **kw: _Resp({"total": 2, "tasks": rows}),  # noqa: ARG005
+    )
+    fleet_cli.run({})
+    printed = {line.split(",")[0].strip(): line for line in capsys.readouterr().out.splitlines()}
+    assert "yes" not in printed["theirs"]
+    assert "yes" in printed["mine"]
+
+
 def test_fleet_json_emits_raw_rows(monkeypatch, capsys):
     monkeypatch.setattr(
         fleet_cli,

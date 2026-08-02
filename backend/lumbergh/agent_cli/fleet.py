@@ -17,7 +17,7 @@ _COLS = [
     "kind",
     "state",
     "since",
-    "unseen",
+    "needs",
     "outcome",
     "repo_path",
     "path",
@@ -97,7 +97,10 @@ def _display(row: dict) -> dict:
     shown["role"] = row.get("role") or "-"
     shown["since"] = f"{row['since']}s" if row.get("since") is not None else "-"
     shown["kind"] = row.get("kind") or "-"
-    shown["unseen"] = "yes" if row.get("unseen") else ""
+    # `needs`, not the raw `unseen` overlay: a session the *user* left mid-thought is
+    # unseen too, and a table that shows that in the "does this want me?" column is how
+    # Bill ends up supervising sessions nobody handed him. The server decides.
+    shown["needs"] = "yes" if row.get("attention") else ""
     shown["outcome"] = row.get("outcome") or "-"
     # A missing path renders as a visible gap rather than an empty cell: Bill is told to
     # copy these into `lb spawn --repo` / `lb worktree reap`, and "" reads like a value.

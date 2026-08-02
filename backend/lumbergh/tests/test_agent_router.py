@@ -98,6 +98,30 @@ def test_prompt_sends(client, monkeypatch):
     assert sent["s1"] == "go"
 
 
+def test_a_prompt_from_bill_puts_the_session_under_his_watch(client, monkeypatch, tmp_path):
+    """Bill prompting a session *is* the delegate shape, and it is the only signal the
+    server gets that an overseer became his to supervise."""
+    from lumbergh import babysit, bill_watch
+
+    monkeypatch.setattr(bill_watch, "WATCH_PATH", tmp_path / "bill_watch.json")
+    monkeypatch.setattr(babysit, "BABYSITS_PATH", tmp_path / "babysits.json")
+    monkeypatch.setattr(agent, "send_text", lambda n, t: True)  # noqa: ARG005
+    client.post("/api/agent/sessions/s1/prompt", json={"text": "go", "as_session": "bill"})
+    assert bill_watch.watched() == {"s1"}
+
+
+def test_a_prompt_from_anyone_else_watches_nothing(client, monkeypatch, tmp_path):
+    # The user, or an overseer talking to its own worker, hands Bill nothing.
+    from lumbergh import babysit, bill_watch
+
+    monkeypatch.setattr(bill_watch, "WATCH_PATH", tmp_path / "bill_watch.json")
+    monkeypatch.setattr(babysit, "BABYSITS_PATH", tmp_path / "babysits.json")
+    monkeypatch.setattr(agent, "send_text", lambda n, t: True)  # noqa: ARG005
+    client.post("/api/agent/sessions/s1/prompt", json={"text": "go", "as_session": "port"})
+    client.post("/api/agent/sessions/s1/prompt", json={"text": "go"})
+    assert bill_watch.watched() == set()
+
+
 def test_wait_output_matches_existing_snapshot(client, monkeypatch):
     monkeypatch.setattr(agent, "capture_pane_text", lambda _n, lines=None: "BUILD DONE\n$ ")  # noqa: ARG005
     r = client.get("/api/agent/sessions/s1/wait-output?match=BUILD%20DONE&timeout=1").json()

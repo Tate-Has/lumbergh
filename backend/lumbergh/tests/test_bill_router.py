@@ -79,7 +79,15 @@ def test_fleet_wait_checks_the_fleet_before_its_first_sleep(client, monkeypatch)
 
     def rows(origin, with_outcome=False):  # noqa: ARG001
         calls["n"] += 1
-        return [{"role": "overseer", "state": "blocked", "unseen": False, "task": "port"}]
+        return [
+            {
+                "role": "overseer",
+                "state": "blocked",
+                "unseen": False,
+                "task": "port",
+                "watched": True,
+            }
+        ]
 
     monkeypatch.setattr(bill, "_fleet_rows", rows)
     started = time.monotonic()
@@ -115,7 +123,9 @@ def test_fleet_wait_wakes_when_an_overseer_becomes_blocked(client, monkeypatch):
     def rows(origin, with_outcome=False):  # noqa: ARG001
         calls["n"] += 1
         state = "blocked" if calls["n"] > 2 else "working"
-        return [{"role": "overseer", "state": state, "unseen": False, "task": "port"}]
+        return [
+            {"role": "overseer", "state": state, "unseen": False, "task": "port", "watched": True}
+        ]
 
     monkeypatch.setattr(bill, "_fleet_rows", rows)
     body = client.get("/api/bill/fleet/wait", params={"timeout": 10}).json()
@@ -153,6 +163,7 @@ def test_fleet_wait_takes_the_blocking_work_off_the_event_loop(client, monkeypat
                 "unseen": False,
                 "session": "port",
                 "task": "port",
+                "watched": True,
             },
             {
                 "role": "worker",
@@ -194,6 +205,7 @@ def test_fleet_wait_enriches_worker_outcomes_once_on_the_way_out(client, monkeyp
                 "unseen": unseen,
                 "session": "port",
                 "task": "port",
+                "watched": True,
             },
             {
                 "role": "worker",
@@ -292,7 +304,14 @@ def test_fleet_wait_acks_a_done_unseen_overseer_privately(client, monkeypatch, a
         bill,
         "_fleet_rows",
         lambda origin, with_outcome=False: [  # noqa: ARG005
-            {"role": "overseer", "task": "port", "session": "port", "state": "idle", "unseen": True}
+            {
+                "role": "overseer",
+                "task": "port",
+                "session": "port",
+                "state": "idle",
+                "unseen": True,
+                "watched": True,
+            }
         ],
     )
     first = client.get("/api/bill/fleet/wait", params={"timeout": 1}).json()
@@ -316,6 +335,7 @@ def test_fleet_wait_still_wakes_on_a_blocked_overseer(client, monkeypatch):
                 "session": "port",
                 "state": "blocked",
                 "unseen": True,
+                "watched": True,
             }
         ],
     )
@@ -365,6 +385,7 @@ def test_fleet_wait_wakes_an_overseer_on_its_own_worker(client, monkeypatch):
                 "session": "port",
                 "state": "idle",
                 "unseen": False,
+                "watched": True,
             },
             {
                 "role": "worker",
@@ -421,6 +442,206 @@ def test_fleet_wait_wakes_bill_on_an_orphan_worker(client, monkeypatch):
     )
     body = client.get("/api/bill/fleet/wait", params={"timeout": 1, "as_session": "bill"}).json()
     assert body["woke"] is True
+
+
+@pytest.fixture
+def watch_registry(tmp_path, monkeypatch):
+    """Real watch + babysit registries, redirected off the user's real config."""
+    from lumbergh import babysit, bill_watch
+
+    monkeypatch.setattr(bill_watch, "WATCH_PATH", tmp_path / "bill_watch.json")
+    monkeypatch.setattr(babysit, "BABYSITS_PATH", tmp_path / "babysits.json")
+    return bill_watch
+
+
+def _unwatched_overseer(**over):
+    return {
+        "role": "overseer",
+        "task": "scratch-738b3c4e",
+        "session": "scratch-738b3c4e",
+        "state": "idle",
+        "unseen": True,
+        "watched": False,
+        **over,
+    }
+
+
+def test_fleet_wait_ignores_a_session_nobody_handed_bill(client, monkeypatch):
+    """The bug: every live session shows up as an `overseer` row, so a session the *user*
+    opened for themselves — idle and unseen the moment they walked away from it — read to
+    Bill as a report that had delivered work, and he dove into its transcript."""
+    monkeypatch.setattr(bill, "_POLL_INTERVAL", 0.01)
+    monkeypatch.setattr(
+        bill,
+        "_fleet_rows",
+        lambda origin, with_outcome=False: [_unwatched_overseer()],  # noqa: ARG005
+    )
+    body = client.get("/api/bill/fleet/wait", params={"timeout": 0.1}).json()
+    assert body["woke"] is False
+
+
+def test_fleet_wait_ignores_even_a_blocked_session_that_is_not_bills(client, monkeypatch):
+    # The user's own session waiting on the user is not Bill's to answer.
+    monkeypatch.setattr(bill, "_POLL_INTERVAL", 0.01)
+    monkeypatch.setattr(
+        bill,
+        "_fleet_rows",
+        lambda origin, with_outcome=False: [  # noqa: ARG005
+            _unwatched_overseer(state="blocked")
+        ],
+    )
+    assert client.get("/api/bill/fleet/wait", params={"timeout": 0.1}).json()["woke"] is False
+
+
+def test_fleet_still_lists_a_session_that_is_not_bills_but_never_flags_it(client, monkeypatch):
+    # He needs to see it to know the repo already has an overseer to delegate to; he just
+    # must not be told it wants him.
+    monkeypatch.setattr(
+        bill,
+        "_fleet_rows",
+        lambda origin, with_outcome=False: [  # noqa: ARG005
+            _unwatched_overseer(),
+            {
+                "role": "overseer",
+                "task": "port",
+                "session": "port",
+                "state": "idle",
+                "unseen": True,
+                "watched": True,
+            },
+        ],
+    )
+    body = client.get("/api/bill/fleet").json()
+    by_task = {r["task"]: r for r in body["tasks"]}
+    assert by_task["scratch-738b3c4e"]["attention"] is False
+    assert by_task["port"]["attention"] is True
+
+
+def test_fleet_rows_mark_the_overseers_bill_watches(monkeypatch, watch_registry):
+    from lumbergh import babysit
+
+    babysit.start("port", "/repo/port", "2026-08-02T20:00:00+00:00")
+    watch_registry.engage("aio", "2026-08-02T20:00:00+00:00")
+    monkeypatch.setattr(
+        bill.fleet,
+        "snapshot",
+        lambda *a, **k: [  # noqa: ARG005
+            {"role": "overseer", "task": "port", "state": "idle"},
+            {"role": "overseer", "task": "aio", "state": "idle"},
+            {"role": "overseer", "task": "scratch-1", "state": "idle"},
+            {"role": "worker", "task": "port-7", "state": "working"},
+        ],
+    )
+    monkeypatch.setattr("lumbergh.routers.worktrees._live_sessions", dict)
+    rows = {r["task"]: r for r in bill._fleet_rows(None)}
+    assert rows["port"]["watched"] is True, "a babysit is a standing watch"
+    assert rows["aio"]["watched"] is True, "a delegation is a one-shot watch"
+    assert rows["scratch-1"]["watched"] is False
+    assert "watched" not in rows["port-7"], "workers are scoped by their parent, not by watch"
+
+
+@pytest.mark.usefixtures("attention")
+def test_being_shown_the_delivered_chunk_ends_the_delegation(client, monkeypatch, watch_registry):
+    # Bill delegated to `port`; `port` did the work and went idle+unseen. That wake is the
+    # answer he was waiting for, so the engagement is spent — `port` goes back to being the
+    # user's own session until Bill is given it again.
+    watch_registry.engage("port", "2026-08-02T20:00:00+00:00")
+    bill._overseer_acked.clear()
+    monkeypatch.setattr(bill, "_POLL_INTERVAL", 0.01)
+    monkeypatch.setattr(
+        bill,
+        "_fleet_rows",
+        lambda origin, with_outcome=False: [  # noqa: ARG005
+            {
+                "role": "overseer",
+                "task": "port",
+                "session": "port",
+                "state": "idle",
+                "unseen": True,
+                "watched": True,
+            }
+        ],
+    )
+    assert client.get("/api/bill/fleet/wait", params={"timeout": 1}).json()["woke"] is True
+    assert watch_registry.watched() == set(), "the one-shot delegation is spent"
+
+
+@pytest.mark.usefixtures("attention")
+def test_a_babysit_outlives_the_chunk_it_delivers(client, monkeypatch, watch_registry):
+    # A babysit is standing: it keeps waking Bill until the user cancels it.
+    from lumbergh import babysit
+
+    babysit.start("port", "/repo/port", "2026-08-02T20:00:00+00:00")
+    monkeypatch.setattr(bill, "_POLL_INTERVAL", 0.01)
+    monkeypatch.setattr(
+        bill,
+        "_fleet_rows",
+        lambda origin, with_outcome=False: [  # noqa: ARG005
+            {
+                "role": "overseer",
+                "task": "port",
+                "session": "port",
+                "state": "idle",
+                "unseen": True,
+                "watched": True,
+            }
+        ],
+    )
+    client.get("/api/bill/fleet/wait", params={"timeout": 1})
+    assert watch_registry.watched() == {"port"}
+
+
+def test_delegating_to_an_already_idle_session_does_not_read_as_an_instant_answer(
+    client, monkeypatch, attention, watch_registry
+):
+    # Delegation almost always lands on a session that is *already* idle+unseen from
+    # whatever it did last. That stale episode must not wake Bill and burn the engagement
+    # before the overseer has even started on what he asked for.
+    attention.mark_attention("port", "idle")
+    bill._overseer_acked.clear()
+    monkeypatch.setattr(bill, "_POLL_INTERVAL", 0.01)
+    monkeypatch.setattr(
+        bill,
+        "_fleet_rows",
+        lambda origin, with_outcome=False: [  # noqa: ARG005
+            {
+                "role": "overseer",
+                "task": "port",
+                "session": "port",
+                "state": "idle",
+                "unseen": True,
+                "watched": True,
+            }
+        ],
+    )
+    bill.engage_overseer("port")
+    assert client.get("/api/bill/fleet/wait", params={"timeout": 0.1}).json()["woke"] is False
+    assert watch_registry.watched() == {"port"}, "still owed an answer"
+
+
+@pytest.mark.usefixtures("attention", "watch_registry")
+def test_a_delegated_overseer_wakes_bill_once_it_has_actually_worked(client, monkeypatch):
+    # ...and the moment it goes to work, the pre-ack is dropped, so the chunk it then
+    # delivers wakes him normally.
+    bill._overseer_acked.clear()
+    states = iter(["working", "idle", "idle"])
+    monkeypatch.setattr(bill, "_POLL_INTERVAL", 0.01)
+    monkeypatch.setattr(
+        bill,
+        "_fleet_rows",
+        lambda origin, with_outcome=False: [  # noqa: ARG005
+            {
+                "role": "overseer",
+                "task": "port",
+                "session": "port",
+                "state": next(states, "idle"),
+                "unseen": True,
+                "watched": True,
+            }
+        ],
+    )
+    bill.engage_overseer("port")
+    assert client.get("/api/bill/fleet/wait", params={"timeout": 2}).json()["woke"] is True
 
 
 def test_fleet_rows_carry_target_and_run(monkeypatch):

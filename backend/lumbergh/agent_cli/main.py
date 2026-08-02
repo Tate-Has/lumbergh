@@ -366,7 +366,13 @@ def _cmd_prompt(session, positional, flags) -> int:
         return e
     if not positional:
         return _err("prompt text is required", 'lb prompt "<text>" [--wait] [--session <name>]', 2)
-    body = {"text": positional[0], "wait": "--wait" in flags}
+    # The caller's own session travels with the prompt: Bill prompting an overseer is the
+    # delegate shape, and that is what puts it in his supervision set.
+    body = {
+        "text": positional[0],
+        "wait": "--wait" in flags,
+        "as_session": os.environ.get("LUMBERGH_SESSION"),
+    }
     resp = _request("POST", f"/api/agent/sessions/{session}/prompt", json=body)
     if resp.status_code == 404:
         return _session_404(resp)

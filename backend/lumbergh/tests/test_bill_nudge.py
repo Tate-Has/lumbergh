@@ -8,7 +8,7 @@ from lumbergh.idle_monitor import IdleMonitor
 
 
 def _overseer(state, unseen=False, task="port"):
-    return {"role": "overseer", "task": task, "state": state, "unseen": unseen}
+    return {"role": "overseer", "task": task, "state": state, "unseen": unseen, "watched": True}
 
 
 def _worker(state, unseen=False, task="w", parent="port"):
@@ -157,7 +157,7 @@ def _bypass_sweep_throttle(monitor: _StubMonitor) -> None:
 
 async def test_maybe_nudge_bill_fires_once_per_idle_stretch(sent_nudges, stub_fleet_rows):
     stub_fleet_rows["rows"] = [
-        {"role": "overseer", "task": "port", "state": "blocked", "unseen": False}
+        {"role": "overseer", "task": "port", "state": "blocked", "unseen": False, "watched": True}
     ]
     monitor = _StubMonitor("idle")
     loop = asyncio.get_event_loop()
@@ -173,7 +173,7 @@ async def test_maybe_nudge_bill_fires_once_per_idle_stretch(sent_nudges, stub_fl
 
 async def test_maybe_nudge_bill_rearms_after_bill_becomes_active(sent_nudges, stub_fleet_rows):
     stub_fleet_rows["rows"] = [
-        {"role": "overseer", "task": "port", "state": "blocked", "unseen": False}
+        {"role": "overseer", "task": "port", "state": "blocked", "unseen": False, "watched": True}
     ]
     monitor = _StubMonitor("idle")
     loop = asyncio.get_event_loop()
@@ -213,7 +213,7 @@ async def test_maybe_nudge_bill_throttles_the_sweep_itself(stub_fleet_rows):
     poll while Bill sits idle — only the latch-reset-triggering test helper above
     should be able to force a fresh sweep within the throttle window."""
     stub_fleet_rows["rows"] = [
-        {"role": "overseer", "task": "port", "state": "blocked", "unseen": False}
+        {"role": "overseer", "task": "port", "state": "blocked", "unseen": False, "watched": True}
     ]
     monitor = _StubMonitor("idle")
     loop = asyncio.get_event_loop()
@@ -238,7 +238,7 @@ async def test_maybe_nudge_bill_retries_after_a_failed_send(stub_fleet_rows, mon
 
     monkeypatch.setattr(bill_nudge, "nudge", failing_nudge)
     stub_fleet_rows["rows"] = [
-        {"role": "overseer", "task": "port", "state": "blocked", "unseen": False}
+        {"role": "overseer", "task": "port", "state": "blocked", "unseen": False, "watched": True}
     ]
     monitor = _StubMonitor("idle")
     loop = asyncio.get_event_loop()
@@ -266,7 +266,15 @@ async def test_maybe_nudge_bill_filters_the_sweep_by_origin_not_by_session_name(
         "_fleet_rows",
         lambda origin, **_kwargs: (
             captured.append(origin)
-            or [{"role": "overseer", "task": "port", "state": "blocked", "unseen": False}]
+            or [
+                {
+                    "role": "overseer",
+                    "task": "port",
+                    "state": "blocked",
+                    "unseen": False,
+                    "watched": True,
+                }
+            ]
         ),
     )
     monkeypatch.setattr(bill_nudge, "BILL_SESSION", "bill-renamed")
@@ -345,7 +353,7 @@ async def test_maybe_nudge_bill_prefers_the_edge_nudge_over_advancing(
 
     _overseer_acked.clear()
     stub_fleet_rows["rows"] = [
-        {"role": "overseer", "task": "port", "state": "blocked", "unseen": False}
+        {"role": "overseer", "task": "port", "state": "blocked", "unseen": False, "watched": True}
     ]
     monitor = _StubMonitor("idle")
     _babysat_idle(monitor, babysat)
@@ -435,7 +443,7 @@ async def test_maybe_nudge_bill_prefers_the_edge_nudge_over_a_heartbeat(
 
     _overseer_acked.clear()
     stub_fleet_rows["rows"] = [
-        {"role": "overseer", "task": "port", "state": "blocked", "unseen": False}
+        {"role": "overseer", "task": "port", "state": "blocked", "unseen": False, "watched": True}
     ]
     monitor = _StubMonitor("idle")
     _idle_for(monitor, monitor.BILL_HEARTBEAT_INTERVAL_SECONDS * 3)
@@ -484,7 +492,7 @@ async def test_maybe_nudge_bill_keeps_the_tmux_send_off_the_event_loop(
 
     monkeypatch.setattr(bill_nudge, "nudge", recording_nudge)
     stub_fleet_rows["rows"] = [
-        {"role": "overseer", "task": "port", "state": "blocked", "unseen": False}
+        {"role": "overseer", "task": "port", "state": "blocked", "unseen": False, "watched": True}
     ]
 
     await _StubMonitor("idle")._maybe_nudge_bill(asyncio.get_event_loop())

@@ -23,6 +23,7 @@ from lumbergh.tmux_pty import capture_pane_text, send_text
 router = APIRouter(prefix="/api/agent")
 
 _REST = {"idle", "blocked", "error"}
+BILL_SESSION = "bill"
 
 
 def _live_names() -> list[str]:
@@ -195,11 +196,18 @@ async def wait_output(
 class PromptBody(BaseModel):
     text: str
     wait: bool = False
+    # Who is sending. Bill prompting a session *is* the delegate shape, and that is the
+    # only signal the server gets that an overseer is now his to supervise.
+    as_session: str | None = None
 
 
 @router.post("/sessions/{name}/prompt")
 async def prompt(name: str, body: PromptBody):
     _require(name)
+    if body.as_session == BILL_SESSION and name != BILL_SESSION:
+        from lumbergh.routers.bill import engage_overseer
+
+        engage_overseer(name)
     before = _state(name)
     if not send_text(name, body.text):
         raise HTTPException(status_code=500, detail={"error": f"failed to send to {name}"})

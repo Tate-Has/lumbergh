@@ -23,7 +23,7 @@ def test_instructions_treat_an_idle_unseen_overseer_as_a_delivered_chunk():
     and sat on the report instead of relaying it. The bundle must tell him idle+unseen
     is a delivered chunk to report, and that state comes from the row, not read text."""
     body = " ".join(bill.render("professional").lower().split())
-    assert "unseen" in body
+    assert "needs = yes" in body
     assert "delivered a chunk" in body
     assert "never infer state from `lb read`" in body
 

@@ -128,3 +128,18 @@ def test_wait_output_timeout_exit_1(monkeypatch):
     )
     assert code == 1
     assert "timed out" in out
+
+
+def test_prompt_carries_the_callers_own_session(monkeypatch):
+    """Bill prompting an overseer is the delegate shape; the server can only know that
+    from the caller identity riding along with the prompt."""
+    monkeypatch.setenv("LUMBERGH_SESSION", "bill")
+    sent = {}
+
+    def responder(_method, _path, **kw):
+        sent.update(kw["json"])
+        return _Resp({"sent": "go", "state": "working"})
+
+    code, _ = _run(monkeypatch, ["prompt", "--session", "port", "go"], responder)
+    assert code == 0
+    assert sent["as_session"] == "bill"

@@ -29,11 +29,12 @@ authority on syntax — run `lb <command> --help` when unsure.
 - `lb prompt --session <name> "<text>" [--wait]` — send input to a peer; this drives
   another agent, so use it deliberately. `--wait` blocks until its state changes.
 - `lb fleet [--wait] [--timeout <s>] [--origin bill] [--json]` — every task under way: task,
-  repo, branch, kind, state, time in state, whether it finished unseen, its OUTCOME column
+  repo, branch, kind, state, time in state, whether it `needs` you, its OUTCOME column
   (the worker's own final `DELIVERED:`/`FAILED:` line, once it's written one), and the repo
   and worktree paths. Take a path from a row rather than typing one — `repo_path` is what
   `lb spawn --repo` wants, `path` is what `lb worktree reap` wants.
-  `--wait` blocks until a task needs you (`blocked`, `error`, `dead`, or finished unseen) or
+  `--wait` blocks until a task needs you (`blocked`, `error`, `dead`, or a report of yours
+  that finished a chunk — the `needs` column) or
   the timeout elapses — a timeout is a normal return (exit 0), not a failure, so re-run it
   to keep waiting.
 - `lb spawn --repo <path> --branch <b> --kind ship|scout --brief <file> [--new] [--base <b>]

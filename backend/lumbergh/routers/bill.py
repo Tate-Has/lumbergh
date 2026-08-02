@@ -14,7 +14,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from lumbergh import bill as bill_bundle
-from lumbergh import fleet, land, session_attention, worktrees
+from lumbergh import bill_watch, fleet, land, session_attention, worktrees
 from lumbergh.activity.resolve import resolve_adapter
 from lumbergh.activity.resolve import session_meta as _session_meta
 from lumbergh.briefs import enumerate_briefs
@@ -53,25 +53,56 @@ BILL_ORIGIN = "bill"
 
 
 def _direct_reports(rows: list[dict], viewer: str) -> list[dict]:
-    """The rows ``viewer`` is responsible for. Bill's direct reports are his overseers —
-    plus any *orphan* worker no overseer owns (its repo has no live overseer), so a worker
-    he spawns directly never falls through the cracks. An overseer's reports are its own
-    workers (nested under it). Each watches only its own layer."""
+    """The rows ``viewer`` is responsible for. Bill's direct reports are the overseers the
+    user actually put in his hands (``row["watched"]`` — a babysit or a delegation; see
+    ``bill_watch``) — plus any *orphan* worker no overseer owns (its repo has no live
+    overseer), so a worker he spawns directly never falls through the cracks. An overseer's
+    reports are its own workers (nested under it). Each watches only its own layer.
+
+    Every other live session is still *listed*: Bill needs to see that a repo has an
+    overseer before he can delegate to it. It just isn't his to act on."""
     if viewer == BILL_SESSION:
         return [
             r
             for r in rows
-            if r.get("role") == "overseer" or (r.get("role") == "worker" and not r.get("parent"))
+            if (r.get("role") == "overseer" and r.get("watched"))
+            or (r.get("role") == "worker" and not r.get("parent"))
         ]
     return [r for r in rows if r.get("role") == "worker" and r.get("parent") == viewer]
 
 
-def viewer_woke(rows: list[dict], viewer: str) -> bool:
-    """True when one of ``viewer``'s direct reports needs action now.
+def engage_overseer(session: str) -> None:
+    """Bill has delegated to ``session``: it becomes his to watch until it reports back.
+
+    The engagement is pre-acked, because delegation usually lands on a session that is
+    *already* idle+unseen from its last chunk. Without this that stale episode would read
+    as an instant answer to Bill — waking him and releasing the engagement before the
+    overseer has even started. The ack is dropped the moment it goes to work (see
+    ``_prune_overseer_acks``), so the chunk it actually delivers wakes him normally."""
+    bill_watch.engage(session, datetime.now(UTC).isoformat())
+    _overseer_acked.add(session)
+
+
+def _prune_overseer_acks(rows: list[dict]) -> None:
+    """Forget acks for overseers that have moved on, so a *new* done-unseen episode wakes
+    Bill afresh. This runs on every evaluation, not just on a wake: an overseer that worked
+    and finished again between two ``_mark_seen`` calls would otherwise stay silently acked
+    from its previous episode."""
+    _overseer_acked.intersection_update(
+        r["task"]
+        for r in rows
+        if r.get("role") == "overseer" and r["state"] == "idle" and r.get("unseen")
+    )
+
+
+def _needing(rows: list[dict], viewer: str) -> list[dict]:
+    """``viewer``'s direct reports that have an unhandled action for it right now.
 
     A done-unseen overseer is de-duplicated by Bill's private ack (so it wakes once
     without clearing the user's overlay); a done worker de-dupes through its own
     ``unseen`` flag, which ``_mark_seen`` clears when its overseer views it."""
+    _prune_overseer_acks(rows)
+    needing = []
     for row in _direct_reports(rows, viewer):
         if not fleet.needs_attention(row):
             continue
@@ -81,8 +112,25 @@ def viewer_woke(rows: list[dict], viewer: str) -> bool:
             and row.get("task") in _overseer_acked
         ):
             continue
-        return True
-    return False
+        needing.append(row)
+    return needing
+
+
+def viewer_woke(rows: list[dict], viewer: str) -> bool:
+    """True when one of ``viewer``'s direct reports needs action now."""
+    return bool(_needing(rows, viewer))
+
+
+def _stamp_attention(rows: list[dict], viewer: str) -> list[dict]:
+    """Mark each row with whether it needs *this* viewer, so the table says so outright.
+
+    Raw ``unseen`` cannot carry that: it is the user's own dashboard overlay, true for
+    every session they left mid-thought. Reading it as "a report finished something for
+    me" is what had Bill supervising sessions nobody handed him."""
+    needing = {id(r) for r in _needing(rows, viewer)}
+    for row in rows:
+        row["attention"] = id(row) in needing
+    return rows
 
 
 def bill_woke(rows: list[dict]) -> bool:
@@ -141,6 +189,12 @@ def _fleet_rows(origin: str | None, with_outcome: bool = False) -> list[dict]:
         live_targets=set(idle_monitor.live_targets()),
         overseer_exclude={BILL_SESSION},
     )
+    # Stamped here, inside the executor, rather than read per row on the event loop: the
+    # supervise long poll asks for direct reports every 1.5s and the registries are files.
+    watched = bill_watch.watched()
+    for row in rows:
+        if row.get("role") == "overseer":
+            row["watched"] = row["task"] in watched
     return _add_outcomes(rows) if with_outcome else rows
 
 
@@ -162,25 +216,30 @@ def _mark_seen(rows: list[dict], viewer: str) -> None:
     """
     for row in _direct_reports(rows, viewer):
         if row.get("role") == "overseer":
-            if row["state"] == "idle" and row.get("unseen"):
+            if row["state"] == "idle" and row.get("unseen") and row["task"] not in _overseer_acked:
                 _overseer_acked.add(row["task"])
+                # A *new* done-unseen episode on a watched overseer is the chunk it owed
+                # Bill. Having been shown it ends the one-shot delegation; a standing
+                # babysit is untouched, so it keeps waking him until the user cancels it.
+                bill_watch.release(row["task"])
         elif row.get("session"):
             session_attention.clear_unseen(row.get("target") or row["session"])
         elif row.get("state") == "dead":
             _dead_acked.add(row["path"])
     _dead_acked.intersection_update(r["path"] for r in rows if r.get("state") == "dead")
-    _overseer_acked.intersection_update(
-        r["task"]
-        for r in rows
-        if r.get("role") == "overseer" and r["state"] == "idle" and r.get("unseen")
-    )
+    _prune_overseer_acks(rows)
+    bill_watch.prune({r["task"] for r in rows if r.get("role") == "overseer"})
 
 
 @router.get("/fleet")
 async def get_fleet(origin: str | None = None, as_session: str | None = None):
     loop = asyncio.get_running_loop()
     rows = await loop.run_in_executor(None, _fleet_rows, origin, True)
-    _mark_seen(rows, as_session or BILL_SESSION)
+    viewer = as_session or BILL_SESSION
+    # Stamped before `_mark_seen`, or being shown the table would ack away the very thing
+    # the table is meant to be telling the viewer about.
+    _stamp_attention(rows, viewer)
+    _mark_seen(rows, viewer)
     await session_attention.persist()
     return {"total": len(rows), "tasks": rows}
 
@@ -212,7 +271,7 @@ async def wait_fleet(
     start = time.monotonic()
     while True:
         rows = await loop.run_in_executor(None, _fleet_rows, origin)
-        woke = viewer_woke(rows, viewer)
+        woke = any(r["attention"] for r in _stamp_attention(rows, viewer))
         if woke or time.monotonic() >= deadline:
             if woke:
                 # This wake has now surfaced the finished work to the watcher; without

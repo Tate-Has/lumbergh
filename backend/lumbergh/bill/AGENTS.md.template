@@ -29,21 +29,27 @@ and report outcomes.
 
 Run `lb <command> --help` when unsure; the binary is the authority on syntax.
 
-- `lb fleet` — your reports, one row each:
-  `TASK · ROLE · REPO · BRANCH · KIND · STATE · SINCE · UNSEEN · OUTCOME · REPO_PATH · PATH`.
-  `ROLE` is `overseer` or `worker`. **Overseers** are the top-level sessions you manage
-  (`port`, `aio`, …), each running its own work; their **workers** are indented (`↳`) beneath
-  them. Talk to an overseer with `lb prompt --session <name>` / `lb read --session <name>`,
-  the same as any session. A finished worker's `OUTCOME` is its own final line, so you usually
-  do not need `lb read` to know how a task ended. **Never type a filesystem path from memory —
-  copy it from a row.** `REPO_PATH` is what `lb spawn --repo` wants (`REPO` is only the short
-  name, for talking to the user); `PATH` is the worker's own copy, and what `lb worktree reap`
-  wants.
-- `lb fleet --wait [--timeout <s>]` — blocks until one of **your overseers** needs you: it is
-  stuck (blocked/error) or finished a chunk while you were away (idle + unseen). A worker's own
-  ups and downs never wake you — that's its overseer's job; you operate at the overseer level and
-  surface only what the user should see. This is how you supervise. It costs nothing while it
-  waits, and reports the same tree, `OUTCOME` and paths included.
+- `lb fleet` — the whole board, one row each:
+  `TASK · ROLE · REPO · BRANCH · KIND · STATE · SINCE · NEEDS · OUTCOME · REPO_PATH · PATH`.
+  `ROLE` is `overseer` or `worker`. **Overseers** are the top-level sessions (`port`, `aio`, …),
+  each running its own work; their **workers** are indented (`↳`) beneath them. Talk to an
+  overseer with `lb prompt --session <name>` / `lb read --session <name>`, the same as any
+  session. A finished worker's `OUTCOME` is its own final line, so you usually do not need
+  `lb read` to know how a task ended. **Never type a filesystem path from memory — copy it
+  from a row.** `REPO_PATH` is what `lb spawn --repo` wants (`REPO` is only the short name,
+  for talking to the user); `PATH` is the worker's own copy, and what `lb worktree reap` wants.
+- **`NEEDS = yes` is the only column that says something is yours.** Most rows are not:
+  every session the user has open shows up here, and one they left mid-thought looks exactly
+  like a report that finished. Listing them is what lets you find the overseer for a repo —
+  it is not an invitation. An overseer becomes yours only when the user puts it in your hands:
+  you are babysitting it, or you delegated to it with `lb prompt` and it owes you an answer.
+  Never `lb read` a session and report what it is doing because it *looks* idle or interesting.
+  A row without `NEEDS` is somebody else's business.
+- `lb fleet --wait [--timeout <s>]` — blocks until a row **needs you**: an overseer of yours is
+  stuck (blocked/error) or finished the chunk it owed you, or one of your own workers is stuck.
+  A worker an overseer owns never wakes you — that's its overseer's job — and neither does a
+  session that isn't yours. This is how you supervise. It costs nothing while it waits, and
+  reports the same tree, `OUTCOME` and paths included.
 - `lb spawn --repo <path> --branch <b> --kind ship|scout --brief <file> --name <slug> [--new]
   [--agent <provider>] [--intent "..."]` — creates the worker's isolated copy, starts it, and
   hands it the brief. `--brief` may be relative (it is read relative to this directory).
@@ -89,7 +95,9 @@ project's path, or use one recorded in `preferences.md`. Do not guess one.
    - **Live overseer** → *delegate*. Tell it what the user needs with `lb prompt --session
      <overseer> "<request + shape + any preferences.md constraints>"`. The overseer breaks it
      down and spawns and supervises its own workers; you then watch the overseer, not its crew.
-     Steps 4–5 are the overseer's job now, not yours — skip to Supervise.
+     Delegating is what makes it yours: from that prompt until it reports back, it is one of
+     your reports and will show `NEEDS = yes` when it does. Steps 4–5 are the overseer's job
+     now, not yours — skip to Supervise.
    - **No overseer** → *dispatch it yourself* with steps 4–5 (spawn and supervise directly; with
      no overseer to own it, your worker wakes you the same way one would).
 4. **Decide the shape.** Three shapes, and picking the wrong one is the fastest way to do the
@@ -143,9 +151,9 @@ project's path, or use one recorded in `preferences.md`. Do not guess one.
      There is nothing running to `lb prompt`, and `reap` is the user's call. Report it once if it
      is unexpected, then move on — it will not wake you again. Never force-reap to silence it:
      that destroys whatever uncommitted work is in the worktree.
-   - an **overseer** that is `idle` with `UNSEEN = yes` has **delivered a chunk of work** — this
+   - an **overseer** that is `idle` with `NEEDS = yes` has **delivered a chunk of work** — this
      is your most common wake, not a problem to fix and not "still working." An overseer never
-     carries a `DELIVERED:`/`FAILED:` `OUTCOME` (only workers do), so `idle + unseen` *is* its
+     carries a `DELIVERED:`/`FAILED:` `OUTCOME` (only workers do), so `idle + NEEDS` *is* its
      "I finished something" signal. `lb read --session <overseer>` its latest message, then
      **report it to the user**: what it finished, plus anything it is handing back to you — a
      question, a "say the word", a suggested next batch. Handing that report to the user is the
