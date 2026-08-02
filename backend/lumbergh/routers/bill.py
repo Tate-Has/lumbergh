@@ -423,6 +423,41 @@ def summon():
     return {"session": BILL_SESSION, "workdir": str(workdir), "existing": False}
 
 
+class BabysitBody(BaseModel):
+    session: str
+    repo: str | None = None
+
+
+@router.post("/babysit")
+def start_babysit(body: BabysitBody):
+    """Register a keep-alive loop over an overseer. The idle monitor drives it.
+
+    ``repo`` is only needed to read the repo's ``[babysit]`` contract; when omitted it is
+    resolved from the session's own working directory, so ``lb babysit --session port``
+    just works. Defaults apply when a repo has no config, so an unresolvable repo is fine.
+    """
+    from lumbergh import babysit
+
+    repo = body.repo
+    if repo is None:
+        repo = _session_meta(body.session).get("workdir")
+    return babysit.start(body.session, repo, datetime.now(UTC).isoformat())
+
+
+@router.delete("/babysit")
+def stop_babysit(session: str):
+    from lumbergh import babysit
+
+    return {"session": session, "stopped": babysit.stop(session)}
+
+
+@router.get("/babysit")
+def list_babysit():
+    from lumbergh import babysit
+
+    return {"babysits": babysit.list_all()}
+
+
 class SpawnBody(BaseModel):
     repo: str
     branch: str

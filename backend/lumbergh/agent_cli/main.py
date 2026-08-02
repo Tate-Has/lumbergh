@@ -55,6 +55,7 @@ FLAGS = {
     "init": {"--repo", "--delivery", "--smoke"},
     "land": {"--run", "--onto", "--push", "--smoke", "--skip-smoke"},
     "teardown": {"--run", "--force"},
+    "babysit": {"--session", "--stop", "--list"},
 }
 _BOOL_FLAGS = {
     "--full",
@@ -66,6 +67,8 @@ _BOOL_FLAGS = {
     "--json",
     "--push",
     "--skip-smoke",
+    "--stop",
+    "--list",
 }
 
 # One usage line per command, so `lb <command> --help` is a real answer rather than a
@@ -103,6 +106,7 @@ _COMMAND_HELP = {
     "land": "lb land --run <id> [--onto <base>] [--push] [--smoke '<cmd>'] [--skip-smoke]",
     "teardown": "lb teardown --run <id> [--force]",
     "init": "lb init --repo <path> [--delivery pr|branch|commit] [--smoke '<cmd>']",
+    "babysit": "lb babysit --session <name> | --stop --session <name> | --list",
 }
 
 
@@ -193,6 +197,7 @@ def main(argv=None) -> int:
         "land": lambda: _cmd_land(flags),
         "teardown": lambda: _cmd_teardown(flags),
         "init": lambda: _cmd_init(flags),
+        "babysit": lambda: _cmd_babysit(flags),
     }
     handler = dispatch.get(command)
     if handler is None:
@@ -429,6 +434,12 @@ def _cmd_init(flags) -> int:
     from lumbergh.agent_cli import init as init_cli
 
     return init_cli.run(flags)
+
+
+def _cmd_babysit(flags) -> int:
+    from lumbergh.agent_cli import babysit as babysit_cli
+
+    return babysit_cli.run(flags)
 
 
 if __name__ == "__main__":

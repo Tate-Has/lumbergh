@@ -1453,3 +1453,34 @@ def test_spawn_into_creates_window_worker(monkeypatch, tmp_path):
     assert resp["session"] == "port:fleet-644"
     assert captured["target"] == "port:fleet-644"
     assert stored == {}  # window workers are NOT written to the session store
+
+
+class TestBabysitEndpoints:
+    @pytest.fixture(autouse=True)
+    def _isolated_registry(self, tmp_path, monkeypatch):
+        from lumbergh import babysit
+
+        monkeypatch.setattr(babysit, "BABYSITS_PATH", tmp_path / "babysits.json")
+
+    def test_start_resolves_repo_from_session_workdir(self, client, monkeypatch):
+        monkeypatch.setattr(bill, "_session_meta", lambda name: {"workdir": "/repo/port"})
+        resp = client.post("/api/bill/babysit", json={"session": "port"})
+        assert resp.status_code == 200
+        assert resp.json()["repo"] == "/repo/port"
+
+    def test_explicit_repo_wins(self, client, monkeypatch):
+        monkeypatch.setattr(bill, "_session_meta", lambda name: {"workdir": "/wrong"})
+        resp = client.post("/api/bill/babysit", json={"session": "port", "repo": "/right"})
+        assert resp.json()["repo"] == "/right"
+
+    def test_list_then_stop_roundtrip(self, client, monkeypatch):
+        monkeypatch.setattr(bill, "_session_meta", lambda name: {"workdir": "/repo/port"})
+        client.post("/api/bill/babysit", json={"session": "port"})
+        client.post("/api/bill/babysit", json={"session": "aio", "repo": "/repo/aio"})
+
+        listed = client.get("/api/bill/babysit").json()["babysits"]
+        assert {row["session"] for row in listed} == {"port", "aio"}
+
+        stopped = client.request("DELETE", "/api/bill/babysit", params={"session": "port"})
+        assert stopped.json() == {"session": "port", "stopped": True}
+        assert {r["session"] for r in client.get("/api/bill/babysit").json()["babysits"]} == {"aio"}

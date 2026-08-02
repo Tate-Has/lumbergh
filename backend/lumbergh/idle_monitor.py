@@ -372,8 +372,25 @@ class IdleMonitor:
             else:
                 session_attention.clear_unseen(session_name)
             await session_attention.persist()
+            if state == SessionState.IDLE:
+                await self._maybe_drive_babysit(session_name)
 
         self._update_question_detection(session_name, state)
+
+    async def _maybe_drive_babysit(self, session_name: str) -> None:
+        """Let a babysit loop cycle a session that just went idle.
+
+        Fires only on the transition into idle, so a babysat overseer that printed its
+        refresh sentinel is sent the ``/clear`` + restart it can't run for itself before
+        Bill is ever nudged. A blocked/error/plain idle is left alone and flows to Bill's
+        normal supervision. Best-effort: a babysit failure must never stall the monitor.
+        """
+        from lumbergh import babysit
+
+        try:
+            await babysit.on_idle(session_name)
+        except Exception:
+            logger.warning("babysit drive failed for %s", session_name, exc_info=True)
 
     def _update_question_detection(self, session_name: str, state: SessionState) -> None:
         """Schedule a cheap-LLM question check for a sustained-idle session.

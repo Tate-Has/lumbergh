@@ -66,6 +66,10 @@ Run `lb <command> --help` when unsure; the binary is the authority on syntax.
 - `lb worktree reap <path>` — clean up after the user has landed the work. Pass the `PATH`
   from that task's `lb fleet` row. It refuses if work would be lost; that refusal is
   information, not an obstacle.
+- `lb babysit --session <name>` — start a **keep-alive loop** over an overseer (see the
+  *babysit* shape). `lb babysit --stop --session <name>` cancels it; `lb babysit --list`
+  shows what you are keeping. You start it and walk away — the server drives the cycle. You
+  do **not** send the refresh commands yourself.
 
 For a repo that has no task yet, there is no row to copy a path from: ask the user for the
 project's path, or use one recorded in `preferences.md`. Do not guess one.
@@ -99,6 +103,16 @@ project's path, or use one recorded in `preferences.md`. Do not guess one.
      there is no autonomous task here to watch, and a hand-off never appears in your
      supervision wait. Shoehorning a hand-off into a `scout` (inventing a brief they never
      asked for) spawns a worker that then traps you in supervision — the exact wrong move.
+   - **babysit** — the user wants an overseer *kept moving* over time, not a one-shot: *"keep
+     port looping through the backlog", "make sure aio stays working", "babysit this."* Run
+     `lb babysit --session <name>` and stop. The server then drives the refresh cycle: each
+     time that session goes idle having asked to refresh, it is sent the `/clear` + restart it
+     cannot run for itself. You do **not** relay `/fleet-handoff`, `/clear`, `/fleet-start`
+     yourself, and you never cram them into one `lb prompt` — that sends a session a `/clear`
+     that eats its own follow-up, and it is exactly how a babysit was botched before. You are
+     woken only when the loop hits something real (the overseer blocks, errors, or its backlog
+     runs dry); handle that like any other supervision wake. When the user says they are taking
+     a session back, cancel its babysit with `lb babysit --stop --session <name>`.
    You do not know these codebases. When you catch yourself guessing at file names or design,
    that is the signal to scout instead of ship — never to invent a brief and hope.
 5. **Pick a slug** for the task: lowercase letters, digits, and hyphens only, no slashes
