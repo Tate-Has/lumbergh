@@ -43,6 +43,46 @@ def test_unknown_flag_exit_2(monkeypatch):
     assert "unknown flag --bogus" in out
 
 
+def test_babysit_refresh_posts_and_reports(monkeypatch):
+    from lumbergh.agent_cli import babysit as babysit_cli
+
+    captured = {}
+
+    def fake_request(method, path, **kwargs):
+        captured.update(method=method, path=path, json=kwargs.get("json"))
+        return _Resp({"session": "port", "refreshed": True})
+
+    out = []
+    monkeypatch.setattr(babysit_cli, "_request", fake_request)
+    monkeypatch.setattr(babysit_cli, "_emit", out.append)
+    rc = babysit_cli.run({"--refresh": True, "--session": "port"})
+
+    assert rc == 0
+    assert (captured["method"], captured["path"], captured["json"]) == (
+        "POST",
+        "/api/bill/babysit/refresh",
+        {"session": "port"},
+    )
+    assert "refreshed" in "\n".join(out)
+
+
+def test_babysit_refresh_reports_a_refusal(monkeypatch):
+    from lumbergh.agent_cli import babysit as babysit_cli
+
+    def fake_request(*_a, **_k):
+        return _Resp(
+            {"detail": {"error": "port is not being babysat", "help": "start it first"}}, status=400
+        )
+
+    errs = []
+    monkeypatch.setattr(babysit_cli, "_request", fake_request)
+    monkeypatch.setattr(babysit_cli, "_err", lambda msg, _help, code: errs.append(msg) or code)
+    rc = babysit_cli.run({"--refresh": True, "--session": "port"})
+
+    assert rc == 1
+    assert "not being babysat" in errs[0]
+
+
 def test_server_down_exit_1(monkeypatch):
     def boom(*_a, **_k):
         raise httpx.ConnectError("refused")

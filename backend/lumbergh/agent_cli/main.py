@@ -55,7 +55,7 @@ FLAGS = {
     "init": {"--repo", "--delivery", "--smoke"},
     "land": {"--run", "--onto", "--push", "--smoke", "--skip-smoke"},
     "teardown": {"--run", "--force"},
-    "babysit": {"--session", "--stop", "--list"},
+    "babysit": {"--session", "--stop", "--list", "--refresh"},
 }
 _BOOL_FLAGS = {
     "--full",
@@ -69,6 +69,7 @@ _BOOL_FLAGS = {
     "--skip-smoke",
     "--stop",
     "--list",
+    "--refresh",
 }
 
 # One usage line per command, so `lb <command> --help` is a real answer rather than a
@@ -106,7 +107,10 @@ _COMMAND_HELP = {
     "land": "lb land --run <id> [--onto <base>] [--push] [--smoke '<cmd>'] [--skip-smoke]",
     "teardown": "lb teardown --run <id> [--force]",
     "init": "lb init --repo <path> [--delivery pr|branch|commit] [--smoke '<cmd>']",
-    "babysit": "lb babysit --session <name> | --stop --session <name> | --list",
+    "babysit": (
+        "lb babysit --session <name> | --refresh --session <name> | "
+        "--stop --session <name> | --list"
+    ),
 }
 
 

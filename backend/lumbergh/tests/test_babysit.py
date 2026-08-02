@@ -147,3 +147,34 @@ class TestOnIdle:
         action = asyncio.run(babysit.on_idle("not-babysat"))
         assert action == babysit.NONE
         assert sent == []
+
+
+class TestRefresh:
+    """`babysit.refresh` is the manual refresh Bill triggers with `lb babysit --refresh` —
+    the same /clear + restart the sentinel path sends, so it stays the one place that owns
+    the load-bearing gap between the two commands."""
+
+    def _wire(self, babysit, monkeypatch):
+        sent: list[tuple[str, str]] = []
+        cleared: list[str] = []
+        monkeypatch.setattr(babysit, "REFRESH_GAP_SECONDS", 0)
+        monkeypatch.setattr("lumbergh.tmux_pty.send_text", lambda s, t: sent.append((s, t)))
+        monkeypatch.setattr("lumbergh.session_attention.clear_unseen", lambda s: cleared.append(s))
+
+        async def _noop_persist():
+            return None
+
+        monkeypatch.setattr("lumbergh.session_attention.persist", _noop_persist)
+        return sent, cleared
+
+    def test_sends_the_refresh_ritual(self, babysit, monkeypatch):
+        babysit.start("port", None, "t")
+        sent, cleared = self._wire(babysit, monkeypatch)
+        assert asyncio.run(babysit.refresh("port")) is True
+        assert sent == [("port", "/clear"), ("port", "/fleet-start")]
+        assert cleared == ["port"]
+
+    def test_unbabysat_session_refuses(self, babysit, monkeypatch):
+        sent, _ = self._wire(babysit, monkeypatch)
+        assert asyncio.run(babysit.refresh("not-babysat")) is False
+        assert sent == []

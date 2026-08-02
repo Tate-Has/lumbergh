@@ -1484,3 +1484,25 @@ class TestBabysitEndpoints:
         stopped = client.request("DELETE", "/api/bill/babysit", params={"session": "port"})
         assert stopped.json() == {"session": "port", "stopped": True}
         assert {r["session"] for r in client.get("/api/bill/babysit").json()["babysits"]} == {"aio"}
+
+    def test_refresh_runs_the_ritual_for_a_babysat_session(self, client, monkeypatch):
+        monkeypatch.setattr(bill, "_session_meta", lambda _name: {"workdir": "/repo/port"})
+        client.post("/api/bill/babysit", json={"session": "port"})
+
+        called = {}
+
+        async def _fake_refresh(session):
+            called["session"] = session
+            return True
+
+        monkeypatch.setattr("lumbergh.babysit.refresh", _fake_refresh)
+        resp = client.post("/api/bill/babysit/refresh", json={"session": "port"})
+
+        assert resp.status_code == 200
+        assert resp.json() == {"session": "port", "refreshed": True}
+        assert called["session"] == "port"
+
+    def test_refresh_rejects_a_session_that_is_not_babysat(self, client):
+        resp = client.post("/api/bill/babysit/refresh", json={"session": "nope"})
+        assert resp.status_code == 400
+        assert "not being babysat" in resp.json()["detail"]["error"]

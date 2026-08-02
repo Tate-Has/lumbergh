@@ -61,17 +61,40 @@ def test_heartbeat_and_edge_messages_differ():
     assert edge["text"] != beat["text"]
 
 
+def test_advance_nudge_names_the_session_and_the_refresh_verb():
+    sent = {}
+    assert bill_nudge.advance_nudge(
+        "port", send=lambda name, text: sent.update(name=name, text=text) or True
+    )
+    assert sent["name"] == "bill"
+    assert "port" in sent["text"]
+    assert "lb babysit --refresh" in sent["text"]
+    assert "\n" not in sent["text"]
+
+
+def test_advance_message_differs_from_edge_and_heartbeat():
+    adv, edge, beat = {}, {}, {}
+    bill_nudge.advance_nudge("port", send=lambda _n, text: adv.update(text=text) or True)
+    bill_nudge.nudge(send=lambda _n, text: edge.update(text=text) or True)
+    bill_nudge.heartbeat_nudge(send=lambda _n, text: beat.update(text=text) or True)
+    assert adv["text"] not in (edge["text"], beat["text"])
+
+
 class _StubMonitor(IdleMonitor):
-    """An IdleMonitor whose Bill-state lookup is replaced with a fixed fake."""
+    """An IdleMonitor whose Bill-state lookup is a fixed fake; every other session's
+    state comes from the real ``_states`` dict, so a babysat session's state can be set
+    independently of Bill's."""
 
     def __init__(self, state: str):
         super().__init__()
         self._stub_state = state
 
-    def get_state(self, _session_name):
+    def get_state(self, session_name):
         from lumbergh.idle_detector import SessionState
 
-        return SessionState(self._stub_state)
+        if session_name == bill_nudge.BILL_SESSION:
+            return SessionState(self._stub_state)
+        return super().get_state(session_name)
 
 
 @pytest.fixture
@@ -86,6 +109,23 @@ def sent_heartbeats(monkeypatch):
     sent = []
     monkeypatch.setattr(bill_nudge, "heartbeat_nudge", lambda **_kwargs: sent.append(1) or True)
     return sent
+
+
+@pytest.fixture
+def sent_advances(monkeypatch):
+    sent = []
+    monkeypatch.setattr(
+        bill_nudge, "advance_nudge", lambda session, **_kwargs: sent.append(session) or True
+    )
+    return sent
+
+
+@pytest.fixture(autouse=True)
+def babysat(monkeypatch):
+    """Control the babysat set per test so the sweep never reads the real registry."""
+    names: set[str] = set()
+    monkeypatch.setattr("lumbergh.babysit.babysat_sessions", lambda: set(names))
+    return names
 
 
 @pytest.fixture
@@ -236,6 +276,108 @@ async def test_maybe_nudge_bill_filters_the_sweep_by_origin_not_by_session_name(
 
     assert captured == [bill_router.BILL_ORIGIN]
     assert len(sent_nudges) == 1
+
+
+def _babysat_idle(monitor: "_StubMonitor", babysat: set, session: str = "port") -> None:
+    """Set up a babysat overseer sitting plain-idle (the gap that stalled port overnight)."""
+    from lumbergh.idle_detector import SessionState
+
+    babysat.add(session)
+    monitor._states[session] = SessionState.IDLE
+    monitor._state_since[session] = time.time()
+
+
+async def test_maybe_nudge_bill_advances_a_stuck_babysat_idle_session(
+    sent_advances, sent_heartbeats, sent_nudges, stub_fleet_rows, babysat
+):
+    """The overnight bug: a babysat overseer delivered its batch and went plain idle with
+    no sentinel. The edge trigger doesn't see it (it isn't unseen) and the heartbeat is a
+    generic 'all quiet' check-in. Bill must instead get an imperative to advance it."""
+    stub_fleet_rows["rows"] = []  # calm fleet: no edge condition
+    monitor = _StubMonitor("idle")  # Bill freshly idle: no heartbeat either
+    _babysat_idle(monitor, babysat)
+
+    await monitor._maybe_nudge_bill(asyncio.get_event_loop())
+
+    assert sent_advances == ["port"]
+    assert sent_nudges == []
+    assert sent_heartbeats == []
+
+
+async def test_maybe_nudge_bill_advances_once_per_idle_episode(
+    sent_advances, stub_fleet_rows, babysat
+):
+    stub_fleet_rows["rows"] = []
+    monitor = _StubMonitor("idle")
+    loop = asyncio.get_event_loop()
+    _babysat_idle(monitor, babysat)
+
+    await monitor._maybe_nudge_bill(loop)
+    _bypass_sweep_throttle(monitor)
+    await monitor._maybe_nudge_bill(loop)
+    assert sent_advances == ["port"], "the same idle stretch must not re-tap Bill"
+
+    monitor._state_since["port"] = time.time() + 1  # session moved, then idled afresh
+    _bypass_sweep_throttle(monitor)
+    await monitor._maybe_nudge_bill(loop)
+    assert sent_advances == ["port", "port"], "a fresh idle episode re-arms the tap"
+
+
+async def test_maybe_nudge_bill_does_not_advance_a_session_waiting_on_the_user(
+    sent_advances, stub_fleet_rows, babysat
+):
+    stub_fleet_rows["rows"] = []
+    monitor = _StubMonitor("idle")
+    _babysat_idle(monitor, babysat)
+    monitor._needs_answer["port"] = "asked the user to pick a schema"
+
+    await monitor._maybe_nudge_bill(asyncio.get_event_loop())
+
+    assert sent_advances == []
+
+
+async def test_maybe_nudge_bill_prefers_the_edge_nudge_over_advancing(
+    sent_nudges, sent_advances, stub_fleet_rows, babysat
+):
+    """A real blocker outranks a routine advance: the edge nudge fires and the advance
+    tap is never reached."""
+    from lumbergh.routers.bill import _overseer_acked
+
+    _overseer_acked.clear()
+    stub_fleet_rows["rows"] = [
+        {"role": "overseer", "task": "port", "state": "blocked", "unseen": False}
+    ]
+    monitor = _StubMonitor("idle")
+    _babysat_idle(monitor, babysat)
+
+    await monitor._maybe_nudge_bill(asyncio.get_event_loop())
+
+    assert len(sent_nudges) == 1
+    assert sent_advances == []
+
+
+async def test_maybe_nudge_bill_advance_stays_off_the_event_loop(
+    stub_fleet_rows, babysat, monkeypatch
+):
+    """``advance_nudge`` shells out to tmux; like the others it must run in the executor."""
+    ran_on_loop = []
+
+    def recording_advance(_session, **_kwargs):
+        try:
+            asyncio.get_running_loop()
+            ran_on_loop.append(True)
+        except RuntimeError:
+            ran_on_loop.append(False)
+        return True
+
+    monkeypatch.setattr(bill_nudge, "advance_nudge", recording_advance)
+    stub_fleet_rows["rows"] = []
+    monitor = _StubMonitor("idle")
+    _babysat_idle(monitor, babysat)
+
+    await monitor._maybe_nudge_bill(asyncio.get_event_loop())
+
+    assert ran_on_loop == [False]
 
 
 async def test_maybe_nudge_bill_heartbeats_a_calm_long_idle_bill(

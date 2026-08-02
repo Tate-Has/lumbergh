@@ -134,6 +134,11 @@ class IdleMonitor:
         # Last time we contacted Bill by any tap (edge or heartbeat). Shared so the two
         # never double-contact him inside one heartbeat window.
         self._last_bill_nudge_at = 0.0
+        # Per-babysat-session latch for the "advance a stuck babysat overseer" tap: the
+        # _state_since value we last nudged Bill about. Keying on the idle-episode
+        # timestamp re-arms on the session's *next* idle without our having to observe
+        # the working transition (the sweep only runs while Bill himself is idle).
+        self._babysit_nudged_since: dict[str, float] = {}
         self._live_targets: list[str] = []
         # Targets whose agent process went missing but whose terminal is still
         # open — held one poll before being declared exited, so a transient
@@ -272,6 +277,7 @@ class IdleMonitor:
         self._question_checked.discard(target)
         self._question_inflight.discard(target)
         self._exit_pending.discard(target)
+        self._babysit_nudged_since.pop(target, None)
 
     async def _reap_dead_targets(self, targets: set[str], live_sessions: set[str]) -> None:
         """Retire targets we were tracking that are no longer discovered.
@@ -362,6 +368,11 @@ class IdleMonitor:
                 self._last_bill_nudge_at = now
             return
 
+        # No edge, but a babysat overseer may be stuck idle with no sentinel — ranked below
+        # a real blocker, above the generic heartbeat. Returns True once it has tapped Bill.
+        if await self._maybe_advance_babysat(loop, now):
+            return
+
         # Calm fleet: fall through to the heartbeat. It must not touch ``_bill_nudged`` —
         # that latch belongs to the edge, and a heartbeat setting it would suppress a real
         # blocker until Bill next left idle.
@@ -372,6 +383,43 @@ class IdleMonitor:
             return
         if await loop.run_in_executor(None, bill_nudge.heartbeat_nudge):
             self._last_bill_nudge_at = now
+
+    async def _maybe_advance_babysat(self, loop: asyncio.AbstractEventLoop, now: float) -> bool:
+        """Tap Bill at a babysat overseer stuck plain-idle with no sentinel — the gap the
+        sentinel-driven babysit loop deliberately leaves to supervision (babysit.decide's
+        NONE), and the one that stalled port overnight. An imperative to advance *that*
+        session, not a generic check-in he can answer with "all quiet". Latched per idle
+        episode. Returns whether a tap was made, so the caller stops before the heartbeat.
+        """
+        from lumbergh import bill_nudge
+
+        stuck = self._unhandled_babysat_idle()
+        if stuck is None:
+            return False
+        if await loop.run_in_executor(None, bill_nudge.advance_nudge, stuck):
+            self._babysit_nudged_since[stuck] = self._state_since.get(stuck, 0.0)
+            self._last_bill_nudge_at = now
+        return True
+
+    def _unhandled_babysat_idle(self) -> str | None:
+        """A babysat overseer sitting plain-idle that Bill hasn't been pointed at yet.
+
+        Skips one that's blocked/error (a different wake owns that), waiting on the user
+        (``needs_answer``), or already tapped for this idle episode. Returns one such
+        session, or None. Cheap: reads only in-memory state, so it's safe on the loop.
+        """
+        from lumbergh import babysit
+
+        for session in babysit.babysat_sessions():
+            if self.get_state(session) != SessionState.IDLE:
+                continue
+            if self.needs_answer(session):
+                continue
+            since = self._state_since.get(session, 0.0)
+            if self._babysit_nudged_since.get(session) == since:
+                continue
+            return session
+        return None
 
     async def _burst_capture(self, session_name: str) -> list[str]:
         """Take BURST_CAPTURES snapshots with short async gaps between them."""

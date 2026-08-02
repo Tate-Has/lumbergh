@@ -444,6 +444,23 @@ def start_babysit(body: BabysitBody):
     return babysit.start(body.session, repo, datetime.now(UTC).isoformat())
 
 
+@router.post("/babysit/refresh")
+async def refresh_babysit(body: BabysitBody):
+    """Run a babysat session's refresh ritual now — Bill's one-button /clear + restart, so
+    he never has to cram the two into a single prompt (which the /clear would eat)."""
+    from lumbergh import babysit
+
+    if await babysit.refresh(body.session):
+        return {"session": body.session, "refreshed": True}
+    raise HTTPException(
+        status_code=400,
+        detail={
+            "error": f"{body.session} is not being babysat",
+            "help": "start it with `lb babysit --session <name>` first",
+        },
+    )
+
+
 @router.delete("/babysit")
 def stop_babysit(session: str):
     from lumbergh import babysit

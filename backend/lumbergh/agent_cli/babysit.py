@@ -25,6 +25,15 @@ def run(flags: dict) -> int:
     if not session:
         return _err("no session given", "pass --session <name> or set $LUMBERGH_SESSION", 2)
 
+    if "--refresh" in flags:
+        resp = _request("POST", "/api/bill/babysit/refresh", json={"session": session})
+        if resp.status_code >= 400:
+            d = resp.json().get("detail", {})
+            return _err(d.get("error", "could not refresh"), d.get("help"), 1)
+        d = resp.json()
+        _emit(render_object([("session", d["session"]), ("refreshed", "true")]))
+        return 0
+
     if "--stop" in flags:
         resp = _request("DELETE", "/api/bill/babysit", params={"session": session})
         d = resp.json()

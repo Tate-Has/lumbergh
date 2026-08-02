@@ -148,6 +148,41 @@ def last_agent_text(session: str) -> str:
         return ""
 
 
+async def _send_refresh(session: str, config: dict) -> None:
+    """Send the ``on_refresh`` commands, spaced by ``REFRESH_GAP_SECONDS``.
+
+    The gap is load-bearing: the ritual is ``/clear`` then a restart, and a ``/clear``
+    with no gap eats the follow-up crammed in behind it. This is the one place that owns
+    that timing, shared by the sentinel-driven ``on_idle`` and the manual ``refresh``.
+    """
+    import asyncio
+
+    from lumbergh import session_attention
+    from lumbergh.tmux_pty import send_text
+
+    loop = asyncio.get_event_loop()
+    for i, command in enumerate(config["on_refresh"]):
+        if i:
+            await asyncio.sleep(REFRESH_GAP_SECONDS)
+        await loop.run_in_executor(None, send_text, session, command)
+    # Clear the attention overlay so the same idle doesn't also nudge Bill in the window
+    # before the session goes back to working.
+    session_attention.clear_unseen(session)
+    await session_attention.persist()
+
+
+async def refresh(session: str) -> bool:
+    """Run a babysat session's refresh ritual now — Bill's `lb babysit --refresh` button.
+
+    The decision to refresh is Bill's; the fiddly two-step timing stays here. Returns
+    False (a no-op) for a session that isn't babysat, so the caller can report the refusal.
+    """
+    if session not in babysat_sessions():
+        return False
+    await _send_refresh(session, read_config(repo_of(session)))
+    return True
+
+
 async def on_idle(session: str) -> str:
     """Drive one babysat session that just went idle. Returns the action taken.
 
@@ -159,23 +194,13 @@ async def on_idle(session: str) -> str:
     if session not in babysat_sessions():
         return NONE
 
-    from lumbergh import session_attention
-    from lumbergh.tmux_pty import send_text
-
     loop = asyncio.get_event_loop()
     config = read_config(repo_of(session))
     text = await loop.run_in_executor(None, last_agent_text, session)
     action = decide(text, config)
 
     if action == REFRESH:
-        for i, command in enumerate(config["on_refresh"]):
-            if i:
-                await asyncio.sleep(REFRESH_GAP_SECONDS)
-            await loop.run_in_executor(None, send_text, session, command)
-        # The loop just handled this idle; clear the attention overlay so the same idle
-        # doesn't also nudge Bill in the window before the session goes back to working.
-        session_attention.clear_unseen(session)
-        await session_attention.persist()
+        await _send_refresh(session, config)
     elif action == EMPTY:
         # Nothing left to do — release the loop and let the session's idle+unseen surface
         # to Bill through normal supervision, so he reports "backlog clear" to the user.
