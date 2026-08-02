@@ -27,3 +27,12 @@ Feature: Dashboard
     Then I should see the Bill hero
     When I open the Bill hero
     Then I should be on the session page for "bill"
+
+  Scenario: I can retire Bill from the dashboard and bring him back
+    Given a bill session exists
+    And I am on the dashboard
+    Then I should see the Bill hero
+    When I stop Bill
+    Then I should not see the Bill hero
+    When I summon Bill again
+    Then I should see the Bill hero

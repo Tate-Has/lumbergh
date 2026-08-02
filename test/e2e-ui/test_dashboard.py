@@ -24,6 +24,28 @@ def open_bill_hero(page: Page):
     page.locator('[data-testid="bill-hero"]').click()
 
 
+@then("I should not see the Bill hero")
+def not_see_bill_hero(page: Page):
+    expect(page.locator('[data-testid="bill-hero"]')).not_to_be_visible(timeout=10000)
+
+
+@when("I stop Bill")
+def stop_bill(page: Page):
+    # The stop control confirms via a native dialog (naming any babysits) before deleting.
+    page.once("dialog", lambda dialog: dialog.accept())
+    page.locator('[data-testid="stop-bill-btn"]').click()
+
+
+@when("I summon Bill again")
+def summon_bill_again(page: Page, base_url: str, repo_dir: str):
+    # Recreate the 'bill'-named session directly (as the session fixture does) rather than
+    # driving the real summon flow, then reload so the hero reappears.
+    with httpx.Client(base_url=base_url, timeout=30.0) as client:
+        client.post("/api/sessions", json={"name": "bill", "workdir": f"{repo_dir}/test-repo"})
+    page.goto(base_url)
+    page.wait_for_load_state("networkidle")
+
+
 # Steps shared with dashboard_extended.feature live in conftest.py - see the
 # note there. Only steps this feature alone uses belong in this module.
 

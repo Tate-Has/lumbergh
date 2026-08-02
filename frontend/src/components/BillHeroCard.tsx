@@ -1,8 +1,29 @@
 import { useNavigate } from 'react-router-dom'
-import { UserRoundCog } from 'lucide-react'
+import { Power, UserRoundCog } from 'lucide-react'
 import GlassPanel from './ui/GlassPanel'
 import type { Session } from './SessionCard'
 import { getSessionStatus, statusColorClasses } from '../utils/sessionStatus'
+import { getApiBase } from '../config'
+import { buildBillStopMessage } from '../utils/billStop'
+
+/** Retire Bill: warn (naming any overseers he's babysitting, since those loops keep
+ * running unmonitored) then hand off to the shared session-delete path. Mirrors
+ * SessionCard's confirmDeleteSession — its own fetch + confirm, so the card stays dumb. */
+async function confirmStopBill(name: string, onStop: (name: string) => void) {
+  let babysat: string[] = []
+  try {
+    const res = await fetch(`${getApiBase()}/bill/babysit`)
+    if (res.ok) {
+      const data = await res.json()
+      babysat = (data.babysits ?? []).map((b: { session: string }) => b.session)
+    }
+  } catch {
+    // Can't reach the registry — proceed; the warning is a courtesy, not a gate.
+  }
+  if (confirm(buildBillStopMessage(babysat))) {
+    onStop(name)
+  }
+}
 
 /** Bill, the fleet manager, promoted above the session grid. Distinct from a peer
  * card: full-width, elevated, manager icon, and a one-line supervision rollup. */
@@ -10,10 +31,12 @@ export default function BillHeroCard({
   bill,
   watching,
   needAttention,
+  onStop,
 }: {
   bill: Session
   watching: number
   needAttention: number
+  onStop: (name: string) => void
 }) {
   const navigate = useNavigate()
   const status = getSessionStatus(bill)
@@ -51,6 +74,18 @@ export default function BillHeroCard({
             <span className="text-xs text-text-muted">· {rollup}</span>
           </div>
         </div>
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            void confirmStopBill(bill.name, onStop)
+          }}
+          data-testid="stop-bill-btn"
+          className="flex-shrink-0 text-text-muted hover:text-danger transition-colors p-1"
+          title="Stop Bill (retire his session)"
+          aria-label="Stop Bill"
+        >
+          <Power size={18} />
+        </button>
       </GlassPanel>
     </section>
   )

@@ -95,7 +95,12 @@ function SessionGrid({
   return (
     <>
       {bill && (
-        <BillHeroCard bill={bill} watching={supervised.length} needAttention={needAttention} />
+        <BillHeroCard
+          bill={bill}
+          watching={supervised.length}
+          needAttention={needAttention}
+          onStop={onDelete}
+        />
       )}
       {items.length > 0 && (
         <section className="mb-8">
