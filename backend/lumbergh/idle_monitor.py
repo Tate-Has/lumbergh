@@ -351,12 +351,16 @@ class IdleMonitor:
 
         from lumbergh.routers.bill import BILL_ORIGIN, _fleet_rows
 
-        # BILL_ORIGIN, not BILL_SESSION: this argument is the registry `origin` filter,
-        # and the two only happen to share a value today. Passing the session name here
-        # would turn the whole backstop into a silent no-op the day Bill is renamed.
-        rows = await loop.run_in_executor(None, _fleet_rows, BILL_ORIGIN)
+        # One unfiltered snapshot serves both triggers, because they need different slices
+        # of it: the edge nudge only counts Bill's own workers, while "is this overseer
+        # actually stalled?" has to see the workers *it* spawned, whatever their origin.
+        rows = await loop.run_in_executor(None, _fleet_rows, None)
+        # BILL_ORIGIN, not BILL_SESSION: this is the registry `origin` value, and the two
+        # only happen to share a string today. Using the session name here would turn the
+        # whole backstop into a silent no-op the day Bill is renamed.
+        his = [r for r in rows if r.get("role") != "worker" or r.get("origin") == BILL_ORIGIN]
 
-        if bill_nudge.should_nudge(state, rows):
+        if bill_nudge.should_nudge(state, his):
             if self._bill_nudged:
                 return
             # Latch from the send's own result. Setting it unconditionally meant a failed
@@ -370,7 +374,7 @@ class IdleMonitor:
 
         # No edge, but a babysat overseer may be stuck idle with no sentinel — ranked below
         # a real blocker, above the generic heartbeat. Returns True once it has tapped Bill.
-        if await self._maybe_advance_babysat(loop, now):
+        if await self._maybe_advance_babysat(loop, now, rows):
             return
 
         # Calm fleet: fall through to the heartbeat. It must not touch ``_bill_nudged`` —
@@ -384,7 +388,9 @@ class IdleMonitor:
         if await loop.run_in_executor(None, bill_nudge.heartbeat_nudge):
             self._last_bill_nudge_at = now
 
-    async def _maybe_advance_babysat(self, loop: asyncio.AbstractEventLoop, now: float) -> bool:
+    async def _maybe_advance_babysat(
+        self, loop: asyncio.AbstractEventLoop, now: float, rows: list[dict]
+    ) -> bool:
         """Tap Bill at a babysat overseer stuck plain-idle with no sentinel — the gap the
         sentinel-driven babysit loop deliberately leaves to supervision (babysit.decide's
         NONE), and the one that stalled port overnight. An imperative to advance *that*
@@ -393,7 +399,7 @@ class IdleMonitor:
         """
         from lumbergh import bill_nudge
 
-        stuck = self._unhandled_babysat_idle()
+        stuck = self._unhandled_babysat_idle(rows)
         if stuck is None:
             return False
         if await loop.run_in_executor(None, bill_nudge.advance_nudge, stuck):
@@ -401,19 +407,25 @@ class IdleMonitor:
             self._last_bill_nudge_at = now
         return True
 
-    def _unhandled_babysat_idle(self) -> str | None:
+    def _unhandled_babysat_idle(self, rows: list[dict]) -> str | None:
         """A babysat overseer sitting plain-idle that Bill hasn't been pointed at yet.
 
         Skips one that's blocked/error (a different wake owns that), waiting on the user
-        (``needs_answer``), or already tapped for this idle episode. Returns one such
-        session, or None. Cheap: reads only in-memory state, so it's safe on the loop.
+        (``needs_answer``), still supervising live workers, or already tapped for this idle
+        episode. Returns one such session, or None.
+
+        **An overseer waiting on its own batch is idle too**, and telling Bill to "advance"
+        one is how a `/clear` landed on a session supervising five running workers. Idle
+        plus a live crew is not a stall; it is the system working.
         """
-        from lumbergh import babysit
+        from lumbergh import babysit, fleet
 
         for session in babysit.babysat_sessions():
             if self.get_state(session) != SessionState.IDLE:
                 continue
             if self.needs_answer(session):
+                continue
+            if fleet.workers_in_flight(rows, session):
                 continue
             since = self._state_since.get(session, 0.0)
             if self._babysit_nudged_since.get(session) == since:

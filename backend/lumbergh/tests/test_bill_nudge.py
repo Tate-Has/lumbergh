@@ -252,12 +252,14 @@ async def test_maybe_nudge_bill_retries_after_a_failed_send(stub_fleet_rows, mon
     assert len(sends) == 2
 
 
-async def test_maybe_nudge_bill_filters_the_sweep_by_origin_not_by_session_name(
+async def test_maybe_nudge_bill_scopes_workers_by_origin_not_by_session_name(
     sent_nudges, monkeypatch
 ):
-    """``_fleet_rows``'s first parameter is the registry `origin` filter. It only worked
-    because the origin and the session name happen to share a value, so a rename would
-    have made the backstop sweep an empty fleet forever, silently."""
+    """The sweep itself is unfiltered — "is this overseer actually stalled?" has to see the
+    workers *it* spawned, whatever their origin. Bill's own scope is then applied in memory,
+    and it keys on the registry `origin` value: the origin and the session name only happen
+    to share a string today, and keying on the name would silently widen his supervision to
+    every hand-off worker the day he is renamed."""
     from lumbergh.routers import bill as bill_router
 
     captured = []
@@ -268,12 +270,13 @@ async def test_maybe_nudge_bill_filters_the_sweep_by_origin_not_by_session_name(
             captured.append(origin)
             or [
                 {
-                    "role": "overseer",
-                    "task": "port",
+                    "role": "worker",
+                    "task": "handoff-1",
+                    "parent": None,
+                    "origin": "bill-renamed",
                     "state": "blocked",
-                    "unseen": False,
-                    "watched": True,
-                }
+                    "unseen": True,
+                },
             ]
         ),
     )
@@ -282,8 +285,8 @@ async def test_maybe_nudge_bill_filters_the_sweep_by_origin_not_by_session_name(
 
     await monitor._maybe_nudge_bill(asyncio.get_event_loop())
 
-    assert captured == [bill_router.BILL_ORIGIN]
-    assert len(sent_nudges) == 1
+    assert captured == [None], "the sweep must see the whole fleet"
+    assert sent_nudges == [], "a worker that isn't Bill's own must not wake him"
 
 
 def _babysat_idle(monitor: "_StubMonitor", babysat: set, session: str = "port") -> None:
@@ -329,6 +332,60 @@ async def test_maybe_nudge_bill_advances_once_per_idle_episode(
     _bypass_sweep_throttle(monitor)
     await monitor._maybe_nudge_bill(loop)
     assert sent_advances == ["port", "port"], "a fresh idle episode re-arms the tap"
+
+
+async def test_maybe_nudge_bill_does_not_advance_an_overseer_whose_crew_is_still_running(
+    sent_advances, stub_fleet_rows, babysat
+):
+    """The incident: `port` dispatched a five-worker batch and went idle — because that is
+    what an overseer waiting on its crew looks like. Bill was told to "advance" it, and
+    took the refresh branch, so `/clear` wiped the context supervising five live workers.
+    Idle plus a live crew is not a stall."""
+    stub_fleet_rows["rows"] = [
+        {"role": "overseer", "task": "port", "state": "idle", "unseen": False, "watched": True},
+        {"role": "worker", "task": "issue-792", "parent": "port", "state": "working"},
+        {"role": "worker", "task": "issue-804", "parent": "port", "state": "working"},
+    ]
+    monitor = _StubMonitor("idle")
+    _babysat_idle(monitor, babysat)
+
+    await monitor._maybe_nudge_bill(asyncio.get_event_loop())
+
+    assert sent_advances == []
+
+
+async def test_maybe_nudge_bill_advances_once_the_crew_has_delivered(
+    sent_advances, stub_fleet_rows, babysat
+):
+    # Delivered (idle) and reaped-away (dead) workers hold nothing — that is exactly the
+    # moment the overseer does need advancing.
+    stub_fleet_rows["rows"] = [
+        {"role": "overseer", "task": "port", "state": "idle", "unseen": False, "watched": True},
+        {"role": "worker", "task": "issue-792", "parent": "port", "state": "idle"},
+        {"role": "worker", "task": "issue-804", "parent": "port", "state": "dead"},
+    ]
+    monitor = _StubMonitor("idle")
+    _babysat_idle(monitor, babysat)
+
+    await monitor._maybe_nudge_bill(asyncio.get_event_loop())
+
+    assert sent_advances == ["port"]
+
+
+async def test_maybe_nudge_bill_ignores_another_overseers_workers(
+    sent_advances, stub_fleet_rows, babysat
+):
+    # `aio`'s running crew says nothing about whether `port` has stalled.
+    stub_fleet_rows["rows"] = [
+        {"role": "overseer", "task": "port", "state": "idle", "unseen": False, "watched": True},
+        {"role": "worker", "task": "aio-12", "parent": "aio", "state": "working"},
+    ]
+    monitor = _StubMonitor("idle")
+    _babysat_idle(monitor, babysat)
+
+    await monitor._maybe_nudge_bill(asyncio.get_event_loop())
+
+    assert sent_advances == ["port"]
 
 
 async def test_maybe_nudge_bill_does_not_advance_a_session_waiting_on_the_user(

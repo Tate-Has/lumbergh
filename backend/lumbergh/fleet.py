@@ -33,6 +33,11 @@ def _resolved(path: str | None) -> str | None:
 # user's call), so it surfaces once via `unseen` and then stays quiet — see `needs_attention`.
 ATTENTION_STATES = {"blocked", "error"}
 
+# States in which a worker still needs its overseer's context. `working` is the obvious
+# one; `blocked`/`error` count too, because answering them is exactly what that context is
+# for. A delivered (`idle`) worker, or a `dead`/`orphan` row, holds nothing.
+IN_FLIGHT_STATES = {"working", "blocked", "error"}
+
 _OUTCOME = re.compile(r"^(DELIVERED|FAILED):\s*(.+)$")
 
 
@@ -94,6 +99,7 @@ def snapshot(
                 "target": target,
                 "run": entry.get("run"),
                 "kind": entry.get("kind"),
+                "origin": entry.get("origin"),
                 "role": "worker",
                 "parent": None,  # filled once overseers are known
                 "state": state,
@@ -188,6 +194,19 @@ def needs_attention(row: dict) -> bool:
     if row["state"] in ATTENTION_STATES:
         return True
     return row["state"] == "idle" and bool(row.get("unseen"))
+
+
+def workers_in_flight(rows: list[dict], overseer: str) -> list[str]:
+    """The overseer's own workers that still need it, so nothing wipes its context under
+    them. An overseer waiting on a running batch is *idle* — indistinguishable, by state
+    alone, from one that has stalled. This is the difference."""
+    return [
+        r["task"]
+        for r in rows
+        if r.get("role") == "worker"
+        and r.get("parent") == overseer
+        and r["state"] in IN_FLIGHT_STATES
+    ]
 
 
 def any_needs_attention(rows: list[dict]) -> bool:

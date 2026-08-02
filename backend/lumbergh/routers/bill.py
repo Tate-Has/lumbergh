@@ -509,8 +509,24 @@ async def refresh_babysit(body: BabysitBody):
     he never has to cram the two into a single prompt (which the /clear would eat)."""
     from lumbergh import babysit
 
-    if await babysit.refresh(body.session):
+    status, busy = await babysit.refresh(body.session)
+    if status == babysit.REFRESHED:
         return {"session": body.session, "refreshed": True}
+    if status == babysit.HELD:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": (
+                    f"{body.session} is still supervising {len(busy)} worker(s) "
+                    f"({', '.join(busy)}) — refreshing would `/clear` the context "
+                    "supervising them"
+                ),
+                "help": (
+                    "it is waiting on its crew, not stalled — leave it alone until they "
+                    "finish, or `lb read` a stuck one and answer it through its overseer"
+                ),
+            },
+        )
     raise HTTPException(
         status_code=400,
         detail={

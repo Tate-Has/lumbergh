@@ -529,3 +529,21 @@ def test_snapshot_carries_both_paths_bill_needs_to_act(tmp_path, monkeypatch):
     assert rows[0]["repo"] == "a"
     assert rows[0]["repo_path"] == str((tmp_path / "a").resolve())
     assert rows[0]["path"] == str((tmp_path / "a-wt").resolve())
+
+
+def test_workers_in_flight_is_the_crew_that_still_needs_its_overseer():
+    """An overseer waiting on a running batch is `idle`, exactly like one that has
+    stalled. This is what tells them apart — and it is what stands between a refresh and
+    a `/clear` landing on the context that is supervising five live workers."""
+    rows = [
+        {"role": "overseer", "task": "port", "state": "idle"},
+        {"role": "worker", "task": "issue-792", "parent": "port", "state": "working"},
+        {"role": "worker", "task": "issue-770", "parent": "port", "state": "blocked"},
+        {"role": "worker", "task": "issue-750", "parent": "port", "state": "error"},
+        {"role": "worker", "task": "issue-798", "parent": "port", "state": "idle"},
+        {"role": "worker", "task": "issue-804", "parent": "port", "state": "dead"},
+        {"role": "worker", "task": "aio-12", "parent": "aio", "state": "working"},
+    ]
+    assert fleet.workers_in_flight(rows, "port") == ["issue-792", "issue-770", "issue-750"]
+    assert fleet.workers_in_flight(rows, "aio") == ["aio-12"]
+    assert fleet.workers_in_flight(rows, "hack-the-body") == []

@@ -133,6 +133,12 @@ project's path, or use one recorded in `preferences.md`. Do not guess one.
      backlog item; or, only if it is genuinely waiting on the user or its backlog is truly dry,
      report that to the user and `lb babysit --stop`. "Everything's delivered and idle" is the
      signal to push, not to stand down.
+     **But an overseer whose own workers are still running is not idle-stuck — it is waiting,
+     and that is the system working.** Check its `↳` rows first: any of them `working`,
+     `blocked`, or `error` and there is nothing for you to do but leave it alone. Refreshing
+     it means `/clear`, which wipes the very context supervising that crew — this has already
+     cost a live five-worker batch. The server will refuse the refresh, and that refusal is
+     information, not an obstacle to work around with `lb prompt`.
    You do not know these codebases. When you catch yourself guessing at file names or design,
    that is the signal to scout instead of ship — never to invent a brief and hope.
 5. **Pick a slug** for the task: lowercase letters, digits, and hyphens only, no slashes

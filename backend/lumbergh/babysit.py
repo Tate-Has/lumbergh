@@ -40,6 +40,11 @@ DEFAULTS: dict = {
 REFRESH = "refresh"
 EMPTY = "empty"
 NONE = "none"
+# The refresh was asked for but withheld: the session is supervising live workers, and the
+# `/clear` would wipe the context that is supervising them.
+HELD = "held"
+REFRESHED = "refreshed"
+NOT_BABYSAT = "not-babysat"
 
 
 def read_config(repo: Path | None) -> dict:
@@ -171,16 +176,34 @@ async def _send_refresh(session: str, config: dict) -> None:
     await session_attention.persist()
 
 
-async def refresh(session: str) -> bool:
+def workers_in_flight(session: str) -> list[str]:
+    """The session's own workers that are still running, blocked, or errored.
+
+    Blocking (tmux, plus `git worktree list` per repo) — call it in an executor.
+    """
+    from lumbergh import fleet
+    from lumbergh.routers.bill import _fleet_rows
+
+    return fleet.workers_in_flight(_fleet_rows(None), session)
+
+
+async def refresh(session: str) -> tuple[str, list[str]]:
     """Run a babysat session's refresh ritual now — Bill's `lb babysit --refresh` button.
 
-    The decision to refresh is Bill's; the fiddly two-step timing stays here. Returns
-    False (a no-op) for a session that isn't babysat, so the caller can report the refusal.
+    The decision to refresh is Bill's; the fiddly two-step timing stays here, and so does
+    the one veto he cannot be trusted with. Returns ``(status, blocking_workers)``:
+    ``NOT_BABYSAT`` for a session nobody is babysitting, ``HELD`` when the session is
+    supervising live workers, ``REFRESHED`` when the ritual was sent.
     """
+    import asyncio
+
     if session not in babysat_sessions():
-        return False
+        return NOT_BABYSAT, []
+    busy = await asyncio.get_event_loop().run_in_executor(None, workers_in_flight, session)
+    if busy:
+        return HELD, busy
     await _send_refresh(session, read_config(repo_of(session)))
-    return True
+    return REFRESHED, []
 
 
 async def on_idle(session: str) -> str:
@@ -200,6 +223,12 @@ async def on_idle(session: str) -> str:
     action = decide(text, config)
 
     if action == REFRESH:
+        # Even when the session asks for it. A `REFRESH-READY` left in the transcript tail
+        # from the last cycle reads exactly like a fresh one, and firing it mid-batch wipes
+        # the context supervising the batch. The sentinel says "I'm ready"; this says
+        # "your crew isn't."
+        if await loop.run_in_executor(None, workers_in_flight, session):
+            return HELD
         await _send_refresh(session, config)
     elif action == EMPTY:
         # Nothing left to do — release the loop and let the session's idle+unseen surface

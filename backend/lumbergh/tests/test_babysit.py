@@ -103,10 +103,11 @@ class TestDecide:
 
 
 class TestOnIdle:
-    def _wire(self, babysit, monkeypatch, text: str):
+    def _wire(self, babysit, monkeypatch, text: str, in_flight: list[str] | None = None):
         sent: list[tuple[str, str]] = []
         cleared: list[str] = []
         monkeypatch.setattr(babysit, "last_agent_text", lambda _session: text)
+        monkeypatch.setattr(babysit, "workers_in_flight", lambda _session: in_flight or [])
         monkeypatch.setattr(babysit, "REFRESH_GAP_SECONDS", 0)
         monkeypatch.setattr("lumbergh.tmux_pty.send_text", lambda s, t: sent.append((s, t)))
         monkeypatch.setattr("lumbergh.session_attention.clear_unseen", lambda s: cleared.append(s))
@@ -154,9 +155,10 @@ class TestRefresh:
     the same /clear + restart the sentinel path sends, so it stays the one place that owns
     the load-bearing gap between the two commands."""
 
-    def _wire(self, babysit, monkeypatch):
+    def _wire(self, babysit, monkeypatch, in_flight: list[str] | None = None):
         sent: list[tuple[str, str]] = []
         cleared: list[str] = []
+        monkeypatch.setattr(babysit, "workers_in_flight", lambda _session: in_flight or [])
         monkeypatch.setattr(babysit, "REFRESH_GAP_SECONDS", 0)
         monkeypatch.setattr("lumbergh.tmux_pty.send_text", lambda s, t: sent.append((s, t)))
         monkeypatch.setattr("lumbergh.session_attention.clear_unseen", lambda s: cleared.append(s))
@@ -170,11 +172,55 @@ class TestRefresh:
     def test_sends_the_refresh_ritual(self, babysit, monkeypatch):
         babysit.start("port", None, "t")
         sent, cleared = self._wire(babysit, monkeypatch)
-        assert asyncio.run(babysit.refresh("port")) is True
+        assert asyncio.run(babysit.refresh("port")) == (babysit.REFRESHED, [])
         assert sent == [("port", "/clear"), ("port", "/fleet-start")]
         assert cleared == ["port"]
 
     def test_unbabysat_session_refuses(self, babysit, monkeypatch):
         sent, _ = self._wire(babysit, monkeypatch)
-        assert asyncio.run(babysit.refresh("not-babysat")) is False
+        assert asyncio.run(babysit.refresh("not-babysat")) == (babysit.NOT_BABYSAT, [])
         assert sent == []
+
+
+class TestRefreshHoldsWhileWorkersRun:
+    """The incident: an overseer that has just dispatched a batch sits *idle* while its
+    workers run — that is it waiting, not stalling. Bill (a small model, prompted to
+    "advance" it) refreshed it anyway, and the `/clear` wiped the context supervising five
+    in-flight workers. The session's own handoff contract says the same thing: hand off
+    only with the fleet idle. So the server refuses, whoever asks."""
+
+    def _wire(self, babysit, monkeypatch, in_flight):
+        sent: list[tuple[str, str]] = []
+        monkeypatch.setattr(babysit, "workers_in_flight", lambda _session: in_flight)
+        monkeypatch.setattr(babysit, "REFRESH_GAP_SECONDS", 0)
+        monkeypatch.setattr("lumbergh.tmux_pty.send_text", lambda s, t: sent.append((s, t)))
+        monkeypatch.setattr("lumbergh.session_attention.clear_unseen", lambda _s: None)
+
+        async def _noop_persist():
+            return None
+
+        monkeypatch.setattr("lumbergh.session_attention.persist", _noop_persist)
+        return sent
+
+    def test_manual_refresh_is_held(self, babysit, monkeypatch):
+        babysit.start("port", None, "t")
+        sent = self._wire(babysit, monkeypatch, ["issue-792", "issue-804"])
+        assert asyncio.run(babysit.refresh("port")) == (babysit.HELD, ["issue-792", "issue-804"])
+        assert sent == [], "nothing may reach a session that is supervising live workers"
+
+    def test_the_sentinel_path_is_held_too(self, babysit, monkeypatch):
+        # Even the session asking for it: a REFRESH-READY left in the transcript tail from
+        # its last cycle must not fire while this cycle's workers are still running.
+        babysit.start("port", None, "t")
+        monkeypatch.setattr(babysit, "last_agent_text", lambda _s: "⟳ REFRESH-READY")
+        sent = self._wire(babysit, monkeypatch, ["issue-792"])
+        assert asyncio.run(babysit.on_idle("port")) == babysit.HELD
+        assert sent == []
+
+    def test_a_delivered_worker_does_not_hold_the_refresh(self, babysit, monkeypatch):
+        # Landing delivered work and refreshing is the normal cycle — only workers still
+        # running (or stuck, and needing their overseer's context to answer) hold it.
+        babysit.start("port", None, "t")
+        sent = self._wire(babysit, monkeypatch, [])
+        assert asyncio.run(babysit.refresh("port")) == (babysit.REFRESHED, [])
+        assert sent == [("port", "/clear"), ("port", "/fleet-start")]

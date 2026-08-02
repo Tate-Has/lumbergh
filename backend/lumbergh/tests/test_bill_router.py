@@ -1714,7 +1714,7 @@ class TestBabysitEndpoints:
 
         async def _fake_refresh(session):
             called["session"] = session
-            return True
+            return ("refreshed", [])
 
         monkeypatch.setattr("lumbergh.babysit.refresh", _fake_refresh)
         resp = client.post("/api/bill/babysit/refresh", json={"session": "port"})
@@ -1722,6 +1722,25 @@ class TestBabysitEndpoints:
         assert resp.status_code == 200
         assert resp.json() == {"session": "port", "refreshed": True}
         assert called["session"] == "port"
+
+    def test_refresh_is_refused_while_the_session_supervises_live_workers(
+        self, client, monkeypatch
+    ):
+        """The incident: `/clear` landed on an overseer with five running workers, wiping
+        the context supervising them. Bill asked for it, so the veto lives in the server."""
+        monkeypatch.setattr(bill, "_session_meta", lambda _name: {"workdir": "/repo/port"})
+        client.post("/api/bill/babysit", json={"session": "port"})
+
+        async def _fake_refresh(_session):
+            return ("held", ["issue-792", "issue-804"])
+
+        monkeypatch.setattr("lumbergh.babysit.refresh", _fake_refresh)
+        resp = client.post("/api/bill/babysit/refresh", json={"session": "port"})
+
+        assert resp.status_code == 409
+        detail = resp.json()["detail"]
+        assert "issue-792" in detail["error"]
+        assert "waiting on its crew" in detail["help"]
 
     def test_refresh_rejects_a_session_that_is_not_babysat(self, client):
         resp = client.post("/api/bill/babysit/refresh", json={"session": "nope"})
