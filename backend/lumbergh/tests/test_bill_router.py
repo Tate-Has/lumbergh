@@ -478,7 +478,7 @@ def test_outcome_of_reads_the_workers_final_line(monkeypatch):
             return [_Event("ran the tests"), _Event("DELIVERED: https://example.test/pull/7")]
 
     monkeypatch.setattr(bill, "resolve_adapter", lambda *a, **kw: _Adapter())  # noqa: ARG005
-    monkeypatch.setattr(bill, "_session_meta", lambda name: {"workdir": "/w"})  # noqa: ARG005
+    monkeypatch.setattr(bill, "_session_meta", lambda _name: {"workdir": "/w"})
     assert bill._outcome_of("w-a") == "DELIVERED: https://example.test/pull/7"
 
 
@@ -493,7 +493,7 @@ def test_outcome_of_is_none_when_the_transcript_is_corrupt(monkeypatch):
         raise ValueError("corrupt transcript")
 
     monkeypatch.setattr(bill, "resolve_adapter", _blow_up)
-    monkeypatch.setattr(bill, "_session_meta", lambda name: {"workdir": "/w"})  # noqa: ARG005
+    monkeypatch.setattr(bill, "_session_meta", lambda _name: {"workdir": "/w"})
     assert bill._outcome_of("w-a") is None
 
 
@@ -956,7 +956,7 @@ def test_fleet_isolates_a_row_whose_transcript_read_raises(client, monkeypatch):
             {"session": "healthy", "task": "w-healthy"},
         ],
     )
-    monkeypatch.setattr(bill, "_session_meta", lambda name: {"workdir": "/w"})  # noqa: ARG005
+    monkeypatch.setattr(bill, "_session_meta", lambda _name: {"workdir": "/w"})
 
     class _Event:
         def __init__(self, text):
@@ -1463,18 +1463,18 @@ class TestBabysitEndpoints:
         monkeypatch.setattr(babysit, "BABYSITS_PATH", tmp_path / "babysits.json")
 
     def test_start_resolves_repo_from_session_workdir(self, client, monkeypatch):
-        monkeypatch.setattr(bill, "_session_meta", lambda name: {"workdir": "/repo/port"})
+        monkeypatch.setattr(bill, "_session_meta", lambda _name: {"workdir": "/repo/port"})
         resp = client.post("/api/bill/babysit", json={"session": "port"})
         assert resp.status_code == 200
         assert resp.json()["repo"] == "/repo/port"
 
     def test_explicit_repo_wins(self, client, monkeypatch):
-        monkeypatch.setattr(bill, "_session_meta", lambda name: {"workdir": "/wrong"})
+        monkeypatch.setattr(bill, "_session_meta", lambda _name: {"workdir": "/wrong"})
         resp = client.post("/api/bill/babysit", json={"session": "port", "repo": "/right"})
         assert resp.json()["repo"] == "/right"
 
     def test_list_then_stop_roundtrip(self, client, monkeypatch):
-        monkeypatch.setattr(bill, "_session_meta", lambda name: {"workdir": "/repo/port"})
+        monkeypatch.setattr(bill, "_session_meta", lambda _name: {"workdir": "/repo/port"})
         client.post("/api/bill/babysit", json={"session": "port"})
         client.post("/api/bill/babysit", json={"session": "aio", "repo": "/repo/aio"})
 
