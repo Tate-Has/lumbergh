@@ -21,6 +21,7 @@ import BillHeroCard from '../components/BillHeroCard'
 import CreateSessionModal from '../components/CreateSessionModal'
 import SettingsModal from '../components/SettingsModal'
 import WorktreePanel from '../components/WorktreePanel'
+import type { BabysitEntry } from '../utils/babysit'
 import Button from '../components/ui/Button'
 import Banner from '../components/ui/Banner'
 import { useTheme } from '../hooks/useTheme'
@@ -59,12 +60,15 @@ interface PlanInfo {
 function SessionGrid({
   sessions,
   cloudAtLimit,
+  babysatSessions,
   onDelete,
   onUpdate,
   onReset,
+  onToggleBabysit,
 }: {
   sessions: Session[]
   cloudAtLimit: boolean
+  babysatSessions: Set<string>
   onDelete: (name: string, cleanupWorktree?: boolean) => void
   onUpdate: (
     name: string,
@@ -79,6 +83,7 @@ function SessionGrid({
     }
   ) => void
   onReset: (name: string) => void
+  onToggleBabysit: (name: string, babysat: boolean) => void
 }) {
   const sortSessions = (a: Session, b: Session) => {
     const rank = sessionUrgencyRank(a) - sessionUrgencyRank(b)
@@ -118,6 +123,8 @@ function SessionGrid({
                     onUpdate={onUpdate}
                     onReset={onReset}
                     cloudAtLimit={cloudAtLimit}
+                    babysat={babysatSessions.has(parent.name)}
+                    onToggleBabysit={onToggleBabysit}
                   />
                 ) : (
                   <SessionCard
@@ -126,6 +133,8 @@ function SessionGrid({
                     onUpdate={onUpdate}
                     onReset={onReset}
                     cloudAtLimit={cloudAtLimit}
+                    babysat={babysatSessions.has(parent.name)}
+                    onToggleBabysit={onToggleBabysit}
                   />
                 )}
               </div>
@@ -147,6 +156,8 @@ function SessionGrid({
                   onUpdate={onUpdate}
                   onReset={onReset}
                   cloudAtLimit={cloudAtLimit}
+                  babysat={babysatSessions.has(session.name)}
+                  onToggleBabysit={onToggleBabysit}
                 />
               </div>
             ))}
@@ -162,9 +173,11 @@ function DashboardContent({
   error,
   sessions,
   cloudAtLimit,
+  babysatSessions,
   onDelete,
   onUpdate,
   onReset,
+  onToggleBabysit,
   onRetry,
   onCreateNew,
 }: {
@@ -172,6 +185,7 @@ function DashboardContent({
   error: string | null
   sessions: Session[]
   cloudAtLimit: boolean
+  babysatSessions: Set<string>
   onDelete: (name: string, cleanupWorktree?: boolean) => void
   onUpdate: (
     name: string,
@@ -186,6 +200,7 @@ function DashboardContent({
     }
   ) => void
   onReset: (name: string) => void
+  onToggleBabysit: (name: string, babysat: boolean) => void
   onRetry: () => void
   onCreateNew: () => void
 }) {
@@ -232,9 +247,11 @@ function DashboardContent({
     <SessionGrid
       sessions={sessions}
       cloudAtLimit={cloudAtLimit}
+      babysatSessions={babysatSessions}
       onDelete={onDelete}
       onUpdate={onUpdate}
       onReset={onReset}
+      onToggleBabysit={onToggleBabysit}
     />
   )
 }
@@ -377,6 +394,7 @@ function describeErrorDetail(detail: unknown): string | undefined {
 export default function Dashboard() {
   const navigate = useNavigate()
   const [sessions, setSessions] = useState<Session[]>([])
+  const [babysits, setBabysits] = useState<BabysitEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -434,6 +452,18 @@ export default function Dashboard() {
       setError(err instanceof Error ? err.message : 'Failed to fetch sessions')
     } finally {
       setLoading(false)
+    }
+  }, [])
+
+  const fetchBabysits = useCallback(async () => {
+    try {
+      const res = await fetch(`${getApiBase()}/bill/babysit`)
+      if (res.ok) {
+        const data = await res.json()
+        setBabysits(data.babysits ?? [])
+      }
+    } catch {
+      // Non-critical — the panel just shows fewer/no active loops if this fails.
     }
   }, [])
 
@@ -536,6 +566,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchSessions()
+    fetchBabysits()
     checkFirstRun()
     checkLbSharedStatus()
     checkTmuxMouse()
@@ -544,11 +575,13 @@ export default function Dashboard() {
     // Poll for session updates every 10 seconds
     const interval = setInterval(() => {
       fetchSessions()
+      fetchBabysits()
       fetchPlanInfo()
     }, 10000)
     return () => clearInterval(interval)
   }, [
     fetchSessions,
+    fetchBabysits,
     fetchPlanInfo,
     checkFirstRun,
     checkLbSharedStatus,
@@ -699,6 +732,30 @@ export default function Dashboard() {
     }
   }
 
+  const handleToggleBabysit = async (session: string, babysat: boolean) => {
+    try {
+      const res = babysat
+        ? await fetch(`${getApiBase()}/bill/babysit?session=${encodeURIComponent(session)}`, {
+            method: 'DELETE',
+          })
+        : await fetch(`${getApiBase()}/bill/babysit`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session }),
+          })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(describeErrorDetail(data.detail) || 'Failed to toggle babysit')
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to toggle babysit')
+    } finally {
+      await fetchBabysits()
+    }
+  }
+
+  const babysatSessions = new Set(babysits.map((b) => b.session))
+
   const cloudAtLimit = planInfo ? planInfo.limit > 0 && planInfo.used >= planInfo.limit : false
 
   return (
@@ -808,9 +865,11 @@ export default function Dashboard() {
             error={error}
             sessions={sessions}
             cloudAtLimit={cloudAtLimit}
+            babysatSessions={babysatSessions}
             onDelete={handleDelete}
             onUpdate={handleUpdate}
             onReset={handleReset}
+            onToggleBabysit={handleToggleBabysit}
             onRetry={fetchSessions}
             onCreateNew={() => setShowCreateModal(true)}
           />

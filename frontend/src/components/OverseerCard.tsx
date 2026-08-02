@@ -25,6 +25,8 @@ export default function OverseerCard({
   onUpdate,
   onReset,
   cloudAtLimit,
+  babysat,
+  onToggleBabysit,
 }: {
   parent: Session
   workers: Session[]
@@ -32,6 +34,8 @@ export default function OverseerCard({
   onUpdate: (name: string, updates: SessionUpdate) => void
   onReset: (name: string) => void
   cloudAtLimit?: boolean
+  babysat?: boolean
+  onToggleBabysit?: (name: string, babysat: boolean) => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const attention = workers.filter(sessionNeedsAttention).length
@@ -44,6 +48,8 @@ export default function OverseerCard({
         onUpdate={onUpdate}
         onReset={onReset}
         cloudAtLimit={cloudAtLimit}
+        babysat={babysat}
+        onToggleBabysit={onToggleBabysit}
       />
       <div className="mt-1 ml-3 border-l-2 border-border-default/60 pl-1">
         <button

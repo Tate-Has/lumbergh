@@ -12,6 +12,7 @@ import {
   Hand,
   MessageCircleQuestion,
 } from 'lucide-react'
+import BabysitToggle from './BabysitToggle'
 import SessionCardEditForm from './SessionCardEditForm'
 import SessionCardActions from './SessionCardActions'
 import SessionCardBadges from './SessionCardBadges'
@@ -66,13 +67,17 @@ interface SessionUpdate {
 function SessionCardFooter({
   session,
   cloudAtLimit,
+  babysat,
   onToggleCloud,
   onToggleTheOne,
+  onToggleBabysit,
 }: {
-  session: Pick<Session, 'windows' | 'attached' | 'workdir' | 'cloudEnabled' | 'theOne'>
+  session: Session
   cloudAtLimit?: boolean
+  babysat?: boolean
   onToggleCloud: (e: React.MouseEvent) => void
   onToggleTheOne: (e: React.MouseEvent) => void
+  onToggleBabysit?: (name: string, babysat: boolean) => void
 }) {
   return (
     <div className="flex items-center gap-3 text-xs text-text-muted">
@@ -81,34 +86,37 @@ function SessionCardFooter({
       </span>
       {session.attached && <span className="text-action">attached</span>}
       {!session.workdir && <span className="text-warning">orphan</span>}
-      <button
-        onClick={onToggleTheOne}
-        className={`ml-auto p-0.5 rounded-[var(--radius-md)] transition-colors ${
-          session.theOne ? 'text-amber hover:text-amber/80' : 'text-text-muted hover:text-amber'
-        }`}
-        title={session.theOne ? 'Starred (click to unstar)' : 'Star session'}
-      >
-        <Star size={14} fill={session.theOne ? 'currentColor' : 'none'} />
-      </button>
-      <button
-        onClick={onToggleCloud}
-        className={`p-0.5 rounded-[var(--radius-md)] transition-colors ${
-          session.cloudEnabled
-            ? 'text-action hover:text-action/80'
-            : cloudAtLimit
-              ? 'text-text-muted opacity-40 cursor-not-allowed'
-              : 'text-text-muted hover:text-action'
-        }`}
-        title={
-          session.cloudEnabled
-            ? 'Cloud enabled (click to disable)'
-            : cloudAtLimit
-              ? 'Cloud session limit reached'
-              : 'Enable cloud access'
-        }
-      >
-        <Cloud size={14} fill={session.cloudEnabled ? 'currentColor' : 'none'} />
-      </button>
+      <div className="ml-auto flex items-center gap-3">
+        <BabysitToggle session={session} babysat={babysat} onToggle={onToggleBabysit} />
+        <button
+          onClick={onToggleTheOne}
+          className={`p-0.5 rounded-[var(--radius-md)] transition-colors ${
+            session.theOne ? 'text-amber hover:text-amber/80' : 'text-text-muted hover:text-amber'
+          }`}
+          title={session.theOne ? 'Starred (click to unstar)' : 'Star session'}
+        >
+          <Star size={14} fill={session.theOne ? 'currentColor' : 'none'} />
+        </button>
+        <button
+          onClick={onToggleCloud}
+          className={`p-0.5 rounded-[var(--radius-md)] transition-colors ${
+            session.cloudEnabled
+              ? 'text-action hover:text-action/80'
+              : cloudAtLimit
+                ? 'text-text-muted opacity-40 cursor-not-allowed'
+                : 'text-text-muted hover:text-action'
+          }`}
+          title={
+            session.cloudEnabled
+              ? 'Cloud enabled (click to disable)'
+              : cloudAtLimit
+                ? 'Cloud session limit reached'
+                : 'Enable cloud access'
+          }
+        >
+          <Cloud size={14} fill={session.cloudEnabled ? 'currentColor' : 'none'} />
+        </button>
+      </div>
     </div>
   )
 }
@@ -151,9 +159,19 @@ interface Props {
   onUpdate: (name: string, updates: SessionUpdate) => void
   onReset: (name: string) => void
   cloudAtLimit?: boolean
+  babysat?: boolean
+  onToggleBabysit?: (name: string, babysat: boolean) => void
 }
 
-export default function SessionCard({ session, onDelete, onUpdate, onReset, cloudAtLimit }: Props) {
+export default function SessionCard({
+  session,
+  onDelete,
+  onUpdate,
+  onReset,
+  cloudAtLimit,
+  babysat,
+  onToggleBabysit,
+}: Props) {
   const navigate = useNavigate()
   const [isEditing, setIsEditing] = useState(false)
 
@@ -274,8 +292,10 @@ export default function SessionCard({ session, onDelete, onUpdate, onReset, clou
       <SessionCardFooter
         session={session}
         cloudAtLimit={cloudAtLimit}
+        babysat={babysat}
         onToggleCloud={handleToggleCloud}
         onToggleTheOne={handleToggleTheOne}
+        onToggleBabysit={onToggleBabysit}
       />
     </GlassPanel>
   )
