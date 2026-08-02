@@ -1,4 +1,5 @@
 import asyncio
+import time
 
 import pytest
 
@@ -43,6 +44,23 @@ def test_nudge_sends_one_short_line():
     assert "\n" not in sent["text"]
 
 
+def test_heartbeat_nudge_sends_one_short_line():
+    sent = {}
+    assert bill_nudge.heartbeat_nudge(
+        send=lambda name, text: sent.update(name=name, text=text) or True
+    )
+    assert sent["name"] == "bill"
+    assert "lb fleet" in sent["text"]
+    assert "\n" not in sent["text"]
+
+
+def test_heartbeat_and_edge_messages_differ():
+    edge, beat = {}, {}
+    bill_nudge.nudge(send=lambda _n, text: edge.update(text=text) or True)
+    bill_nudge.heartbeat_nudge(send=lambda _n, text: beat.update(text=text) or True)
+    assert edge["text"] != beat["text"]
+
+
 class _StubMonitor(IdleMonitor):
     """An IdleMonitor whose Bill-state lookup is replaced with a fixed fake."""
 
@@ -64,6 +82,13 @@ def sent_nudges(monkeypatch):
 
 
 @pytest.fixture
+def sent_heartbeats(monkeypatch):
+    sent = []
+    monkeypatch.setattr(bill_nudge, "heartbeat_nudge", lambda **_kwargs: sent.append(1) or True)
+    return sent
+
+
+@pytest.fixture
 def stub_fleet_rows(monkeypatch):
     state = {"rows": [], "calls": 0}
 
@@ -73,6 +98,11 @@ def stub_fleet_rows(monkeypatch):
 
     monkeypatch.setattr("lumbergh.routers.bill._fleet_rows", _fake_fleet_rows)
     return state
+
+
+def _idle_for(monitor: "_StubMonitor", seconds: float) -> None:
+    """Backdate Bill's idle-since clock so state_since_seconds reads ``seconds``."""
+    monitor._state_since[bill_nudge.BILL_SESSION] = time.time() - seconds
 
 
 def _bypass_sweep_throttle(monitor: _StubMonitor) -> None:
@@ -206,6 +236,94 @@ async def test_maybe_nudge_bill_filters_the_sweep_by_origin_not_by_session_name(
 
     assert captured == [bill_router.BILL_ORIGIN]
     assert len(sent_nudges) == 1
+
+
+async def test_maybe_nudge_bill_heartbeats_a_calm_long_idle_bill(
+    sent_heartbeats, sent_nudges, stub_fleet_rows
+):
+    """Nothing needs attention, but Bill has sat idle past the cadence: tap him to walk
+    the fleet on his own so he never goes permanently deaf once everything's been acked."""
+    stub_fleet_rows["rows"] = []
+    monitor = _StubMonitor("idle")
+    _idle_for(monitor, monitor.BILL_HEARTBEAT_INTERVAL_SECONDS + 10)
+
+    await monitor._maybe_nudge_bill(asyncio.get_event_loop())
+
+    assert len(sent_heartbeats) == 1
+    assert sent_nudges == [], "a calm fleet must not fire the urgent edge nudge"
+
+
+async def test_maybe_nudge_bill_does_not_heartbeat_a_freshly_idle_bill(
+    sent_heartbeats, stub_fleet_rows
+):
+    stub_fleet_rows["rows"] = []
+    monitor = _StubMonitor("idle")
+    _idle_for(monitor, monitor.BILL_HEARTBEAT_INTERVAL_SECONDS - 30)
+
+    await monitor._maybe_nudge_bill(asyncio.get_event_loop())
+
+    assert sent_heartbeats == []
+
+
+async def test_maybe_nudge_bill_spaces_out_its_heartbeats(sent_heartbeats, stub_fleet_rows):
+    stub_fleet_rows["rows"] = []
+    monitor = _StubMonitor("idle")
+    loop = asyncio.get_event_loop()
+    _idle_for(monitor, monitor.BILL_HEARTBEAT_INTERVAL_SECONDS + 10)
+
+    await monitor._maybe_nudge_bill(loop)
+    assert len(sent_heartbeats) == 1
+
+    _bypass_sweep_throttle(monitor)
+    await monitor._maybe_nudge_bill(loop)
+    assert len(sent_heartbeats) == 1, "a second check-in within the window must not fire"
+
+    _bypass_sweep_throttle(monitor)
+    monitor._last_bill_nudge_at -= monitor.BILL_HEARTBEAT_INTERVAL_SECONDS + 5
+    await monitor._maybe_nudge_bill(loop)
+    assert len(sent_heartbeats) == 2, "once the cadence elapses, the next check-in fires"
+
+
+async def test_maybe_nudge_bill_prefers_the_edge_nudge_over_a_heartbeat(
+    sent_nudges, sent_heartbeats, stub_fleet_rows
+):
+    """A real blocker must win: an idle-past-cadence Bill with a blocked overseer gets the
+    urgent nudge, never the softer routine check-in."""
+    from lumbergh.routers.bill import _overseer_acked
+
+    _overseer_acked.clear()
+    stub_fleet_rows["rows"] = [
+        {"role": "overseer", "task": "port", "state": "blocked", "unseen": False}
+    ]
+    monitor = _StubMonitor("idle")
+    _idle_for(monitor, monitor.BILL_HEARTBEAT_INTERVAL_SECONDS * 3)
+
+    await monitor._maybe_nudge_bill(asyncio.get_event_loop())
+
+    assert len(sent_nudges) == 1
+    assert sent_heartbeats == []
+
+
+async def test_maybe_nudge_bill_heartbeat_stays_off_the_event_loop(stub_fleet_rows, monkeypatch):
+    """Like the edge nudge, the heartbeat shells out to tmux; it must not run on the loop."""
+    ran_on_loop = []
+
+    def recording_heartbeat(**_kwargs):
+        try:
+            asyncio.get_running_loop()
+            ran_on_loop.append(True)
+        except RuntimeError:
+            ran_on_loop.append(False)
+        return True
+
+    monkeypatch.setattr(bill_nudge, "heartbeat_nudge", recording_heartbeat)
+    stub_fleet_rows["rows"] = []
+    monitor = _StubMonitor("idle")
+    _idle_for(monitor, monitor.BILL_HEARTBEAT_INTERVAL_SECONDS + 10)
+
+    await monitor._maybe_nudge_bill(asyncio.get_event_loop())
+
+    assert ran_on_loop == [False]
 
 
 async def test_maybe_nudge_bill_keeps_the_tmux_send_off_the_event_loop(

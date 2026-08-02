@@ -109,6 +109,12 @@ class IdleMonitor:
     # per repo, so it runs on its own throttle rather than every 2s poll; fifteen
     # seconds is still well within "human-scale noticeable" for a stalled orchestrator.
     BILL_NUDGE_CHECK_INTERVAL_SECONDS = 15.0
+    # How long Bill may sit idle with a calm fleet before the level-triggered heartbeat
+    # taps him to check in on his own. The edge nudge handles anything urgent immediately;
+    # this only covers the "everything's acked, nothing crossed an edge" gap that otherwise
+    # lets him go permanently deaf. Fifteen minutes is ~96 check-ins/day — cheap even for a
+    # local model, and a check-in a few minutes late costs nothing at supervision scale.
+    BILL_HEARTBEAT_INTERVAL_SECONDS = 900.0
 
     def __init__(self):
         self._fingerprints: dict[str, str] = {}
@@ -125,6 +131,9 @@ class IdleMonitor:
         self._running = False
         self._bill_nudged = False
         self._bill_nudge_checked_at = 0.0
+        # Last time we contacted Bill by any tap (edge or heartbeat). Shared so the two
+        # never double-contact him inside one heartbeat window.
+        self._last_bill_nudge_at = 0.0
         self._live_targets: list[str] = []
         # Targets whose agent process went missing but whose terminal is still
         # open — held one poll before being declared exited, so a transient
@@ -305,20 +314,28 @@ class IdleMonitor:
         await session_attention.persist()
 
     async def _maybe_nudge_bill(self, loop: asyncio.AbstractEventLoop) -> None:
-        """Wake Bill if he's idle with live work, off the event loop and throttled.
+        """Tap Bill if he's idle — with live work (edge) or just to check in (heartbeat).
 
         ``_fleet_rows`` shells out to tmux and git per repo, so it never runs on the
         loop directly, and it only runs on ``BILL_NUDGE_CHECK_INTERVAL_SECONDS`` — not
         every ~2s poll — since a stalled Bill is a human-scale problem, not one that
         needs sub-second detection.
+
+        Two triggers share this one sweep:
+
+        - **edge** — a report needs attention now. Fires once per idle episode
+          (``_bill_nudged``), preempting the heartbeat so a real blocker never gets a
+          mere "routine check-in".
+        - **level (heartbeat)** — nothing's flagged, but Bill has sat idle past
+          ``BILL_HEARTBEAT_INTERVAL_SECONDS``. Fires on that cadence so he never goes
+          permanently deaf once everything has been acked — the exact gap the edge
+          trigger alone can't see.
         """
         from lumbergh import bill_nudge
 
         state = self.get_state(bill_nudge.BILL_SESSION).value
         if state != "idle":
             self._bill_nudged = False
-            return
-        if self._bill_nudged:
             return
 
         now = time.time()
@@ -332,14 +349,29 @@ class IdleMonitor:
         # and the two only happen to share a value today. Passing the session name here
         # would turn the whole backstop into a silent no-op the day Bill is renamed.
         rows = await loop.run_in_executor(None, _fleet_rows, BILL_ORIGIN)
-        if not bill_nudge.should_nudge(state, rows):
+
+        if bill_nudge.should_nudge(state, rows):
+            if self._bill_nudged:
+                return
+            # Latch from the send's own result. Setting it unconditionally meant a failed
+            # tmux send disarmed the backstop permanently: nothing retries, and Bill never
+            # leaves `idle` because he was never actually woken. `nudge` shells out to tmux
+            # twice, so it goes to the executor like the sweep above.
+            if await loop.run_in_executor(None, bill_nudge.nudge):
+                self._bill_nudged = True
+                self._last_bill_nudge_at = now
             return
 
-        # Latch from the send's own result. Setting it unconditionally meant a failed
-        # tmux send disarmed the backstop permanently: nothing retries, and Bill never
-        # leaves `idle` because he was never actually woken. `nudge` shells out to tmux
-        # twice, so it goes to the executor like the sweep above.
-        self._bill_nudged = await loop.run_in_executor(None, bill_nudge.nudge)
+        # Calm fleet: fall through to the heartbeat. It must not touch ``_bill_nudged`` —
+        # that latch belongs to the edge, and a heartbeat setting it would suppress a real
+        # blocker until Bill next left idle.
+        idle_for = self.state_since_seconds(bill_nudge.BILL_SESSION)
+        if idle_for is None or idle_for < self.BILL_HEARTBEAT_INTERVAL_SECONDS:
+            return
+        if now - self._last_bill_nudge_at < self.BILL_HEARTBEAT_INTERVAL_SECONDS:
+            return
+        if await loop.run_in_executor(None, bill_nudge.heartbeat_nudge):
+            self._last_bill_nudge_at = now
 
     async def _burst_capture(self, session_name: str) -> list[str]:
         """Take BURST_CAPTURES snapshots with short async gaps between them."""
