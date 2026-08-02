@@ -17,6 +17,17 @@ def test_render_falls_back_to_professional_for_an_unknown_personality():
     assert bill.render("pirate") == bill.render("professional")
 
 
+def test_instructions_treat_an_idle_unseen_overseer_as_a_delivered_chunk():
+    """The bug this guards: Bill woke on a finished overseer, saw it idle (no
+    DELIVERED/FAILED outcome — overseers don't emit one), judged it "still working,"
+    and sat on the report instead of relaying it. The bundle must tell him idle+unseen
+    is a delivered chunk to report, and that state comes from the row, not read text."""
+    body = " ".join(bill.render("professional").lower().split())
+    assert "unseen" in body
+    assert "delivered a chunk" in body
+    assert "never infer state from `lb read`" in body
+
+
 def test_materialize_creates_the_full_home(tmp_path):
     home = bill.materialize(home_dir=tmp_path / "bill")
     assert (home / "AGENTS.md").is_file()

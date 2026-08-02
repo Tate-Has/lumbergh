@@ -51,6 +51,45 @@ def test_read_pane(client, monkeypatch):
     assert "hello" in r["pane"]
 
 
+def _transcript(monkeypatch):
+    """A transcript whose tool_result body embeds a stale `lb fleet` dump (the real
+    failure: Bill read `working, 1334s` from an old fleet snapshot inside port's own
+    transcript and concluded the finished overseer was still working)."""
+    from lumbergh.activity.events import ConversationEvent
+
+    events = [
+        ConversationEvent(
+            type="tool_result",
+            id="t1",
+            status="error",
+            text="error: branch not found --- fleet --- port,overseer,port,working,1334s",
+        ),
+        ConversationEvent(type="agent_message", id="a1", text="Batch landed and deployed."),
+    ]
+
+    class FakeAdapter:
+        def read_new(self):
+            return events
+
+    monkeypatch.setattr(agent, "resolve_adapter", lambda *_a, **_k: FakeAdapter())
+
+
+def test_read_transcript_suppresses_tool_result_body_by_default(client, monkeypatch):
+    _transcript(monkeypatch)
+    r = client.get("/api/agent/sessions/s1/read?last=10").json()
+    by_type = {e["type"]: e["text"] for e in r["events"]}
+    assert "working" not in by_type["tool_result"]
+    assert by_type["tool_result"] == "[error]"
+    assert by_type["agent_message"] == "Batch landed and deployed."
+
+
+def test_read_transcript_full_restores_tool_result_body(client, monkeypatch):
+    _transcript(monkeypatch)
+    r = client.get("/api/agent/sessions/s1/read?last=10&full=true").json()
+    by_type = {e["type"]: e["text"] for e in r["events"]}
+    assert "working" in by_type["tool_result"]
+
+
 def test_prompt_sends(client, monkeypatch):
     sent = {}
     monkeypatch.setattr(agent, "send_text", lambda n, t: sent.update({n: t}) or True)

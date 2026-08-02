@@ -53,6 +53,22 @@ def _oneline(text: str) -> str:
     return " ".join(text.split())
 
 
+def _event_text(e, limit: int | None, full: bool) -> str:
+    """The one-line text for a transcript event.
+
+    A ``tool_result``'s raw body is command output — a git listing, a prior ``lb fleet``
+    dump, a build log — and it is where a *stale* snapshot of another session's state
+    bleeds in. A reader judging what a session is doing *now* (Bill, an overseer) read
+    ``working, 1334s`` out of an old fleet dump embedded in a finished session's own
+    transcript and concluded it was still working. So a tool_result shows only its
+    ok/error marker by default; ``--full`` restores the body for genuine spelunking.
+    The session's live STATE comes from ``lb fleet``/``lb state``, never from this text.
+    """
+    if e.type == "tool_result" and not full:
+        return f"[{e.status or 'result'}]"
+    return _trunc(_oneline(e.text or e.tool_summary or ""), limit)
+
+
 @router.get("/sessions")
 def sessions():
     names = _live_names()
@@ -93,7 +109,7 @@ def read(name: str, source: str = "transcript", last: int = 10, full: bool = Fal
                     {
                         "type": e.type,
                         "tool": e.tool_name or "",
-                        "text": _trunc(_oneline(e.text or e.tool_summary or ""), limit),
+                        "text": _event_text(e, limit, full),
                     }
                     for e in recent
                 ],
