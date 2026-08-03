@@ -103,21 +103,27 @@ def deliver_when_ready(
     confirm_timeout: float = DEFAULT_CONFIRM_TIMEOUT,
     poll: float = DEFAULT_POLL,
 ) -> DeliveryResult:
+    # Imported here because the idle monitor imports this module: a session's agent is its
+    # first window, and a bare session ref would type the brief into whichever window the
+    # user has selected. See ``lumbergh.targets``.
+    from lumbergh.idle_monitor import tmux_ref
+
+    ref = tmux_ref(name)
     deadline = clock() + ready_timeout
     answered_trust = False
     prev: str | None = None
     while clock() < deadline:
-        content = capture(name) or ""
+        content = capture(ref) or ""
         if _is_trust_dialog(content):
             if not answered_trust:
-                press(name, "Enter")  # default option is "Yes, I trust this folder"
+                press(ref, "Enter")  # default option is "Yes, I trust this folder"
                 answered_trust = True
             prev = None
             sleep(poll)
             continue
         if _is_ready(content, prev):
             return _deliver_and_confirm(
-                name,
+                ref,
                 text,
                 content,
                 capture=capture,
@@ -138,7 +144,7 @@ def deliver_when_ready(
 
 
 def _deliver_and_confirm(
-    name: str,
+    ref: str,
     text: str,
     ready_snapshot: str,
     *,
@@ -161,9 +167,9 @@ def _deliver_and_confirm(
     manual recovery for this is a single keystroke, not a second copy of the brief.
     """
     for _ in range(MAX_SEND_ATTEMPTS):
-        send(name, text)
+        send(ref, text)
         if _confirm_started(
-            name,
+            ref,
             ready_snapshot,
             capture=capture,
             sleep=sleep,
@@ -172,9 +178,9 @@ def _deliver_and_confirm(
             poll=poll,
         ):
             return DeliveryResult(True, "")
-        press(name, "Enter")
+        press(ref, "Enter")
         if _confirm_started(
-            name,
+            ref,
             ready_snapshot,
             capture=capture,
             sleep=sleep,
@@ -192,7 +198,7 @@ def _deliver_and_confirm(
 
 
 def _confirm_started(
-    name: str,
+    ref: str,
     ready_snapshot: str,
     *,
     capture: Callable[[str], str],
@@ -205,7 +211,7 @@ def _confirm_started(
     prev: str | None = None
     while clock() < deadline:
         sleep(poll)
-        content = capture(name) or ""
+        content = capture(ref) or ""
         if _started(content, ready_snapshot, prev):
             return True
         prev = content

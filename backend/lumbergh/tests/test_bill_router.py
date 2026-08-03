@@ -1792,6 +1792,26 @@ def test_redeliver_resends_the_recorded_brief_after_clearing_the_input(
     }
 
 
+def test_redeliver_clears_the_input_of_the_agent_window(client, tmp_path, monkeypatch):
+    """`C-u` clears an input line, so it has to land on the worker's own window. A bare
+    session ref goes to whichever window is selected — clearing the wrong one, and leaving
+    the stuck brief in place to be typed over."""
+    brief = tmp_path / "b.md"
+    brief.write_text("do the thing")
+    keys = []
+
+    monkeypatch.setattr(
+        bill.worktrees,
+        "all_entries",
+        lambda: [{"target": "solo", "kind": "ship", "delivery": "pr", "brief_path": str(brief)}],
+    )
+    monkeypatch.setattr(bill, "send_key", lambda target, key: keys.append((target, key)))
+    monkeypatch.setattr(bill, "_deliver_brief", lambda *_a, **_kw: bill.DeliveryResult(True, ""))
+
+    assert client.post("/api/bill/redeliver", json={"target": "solo"}).status_code == 200
+    assert keys == [("solo:{start}", "C-u")]
+
+
 def test_redeliver_refuses_a_worker_with_no_brief_on_record(client, monkeypatch):
     monkeypatch.setattr(bill.worktrees, "all_entries", lambda: [{"target": "old", "kind": "ship"}])
     monkeypatch.setattr(bill, "send_key", lambda *a: None)  # noqa: ARG005

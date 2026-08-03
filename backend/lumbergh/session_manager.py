@@ -287,6 +287,10 @@ class SessionManager:
         if refreshed:
             return
         try:
+            # Bare session name on purpose, unlike supervision's window-pinned reads: the
+            # browser is attached with `tmux attach-session`, so it shows the session's
+            # *active* window and the user can switch windows inside it. This snapshot has
+            # to match that view, so pinning it to window 1 would be wrong here.
             content = await loop.run_in_executor(None, capture_pane_content, session_name)
             if content:
                 await websocket.send_json({"type": "output", "data": content})

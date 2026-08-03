@@ -18,7 +18,7 @@ from lumbergh import bill as bill_bundle
 from lumbergh.activity.resolve import resolve_adapter
 from lumbergh.activity.resolve import session_meta as _session_meta
 from lumbergh.briefs import enumerate_briefs
-from lumbergh.idle_monitor import idle_monitor
+from lumbergh.idle_monitor import idle_monitor, tmux_ref
 from lumbergh.routers.sessions import SESSION_NAME_PATTERN, create_tmux_session, create_tmux_window
 from lumbergh.runs import run_members
 from lumbergh.spawn_delivery import DeliveryResult, deliver_when_ready
@@ -936,7 +936,9 @@ def redeliver(body: RedeliverBody):
             're-send it by hand with `lb prompt --session <s> "$(cat <brief>)"`',
         )
 
-    send_key(body.target, "C-u")
+    # The worker's own window: `C-u` clears an input line, and a bare session ref would
+    # clear whichever window is selected instead.
+    send_key(tmux_ref(body.target), "C-u")
     delivery = _deliver_brief(
         body.target, brief, entry.get("kind") or "ship", entry.get("delivery") or "commit"
     )

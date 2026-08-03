@@ -67,16 +67,22 @@ class Fake:
         self.on_enter = list(on_enter) if on_enter else None
         self.sent: list[str] = []
         self.keys: list[str] = []
+        # Every tmux ref the delivery addressed, so a brief typed at the wrong window
+        # is a test failure rather than a surprise in production.
+        self.refs: list[str] = []
         self.t = 0.0
 
-    def capture(self, _name):
+    def capture(self, name):
+        self.refs.append(name)
         return self._panes.pop(0) if len(self._panes) > 1 else self._panes[0]
 
-    def send(self, _name, text):
+    def send(self, name, text):
+        self.refs.append(name)
         self.sent.append(text)
         return True
 
-    def press(self, _name, key="Enter"):
+    def press(self, name, key="Enter"):
+        self.refs.append(name)
         self.keys.append(key)
         if self.on_enter is not None:
             self._panes = list(self.on_enter)
@@ -212,3 +218,27 @@ def test_a_real_pane_that_took_the_brief_is_delivered():
     result = fake.run(confirm_timeout=2.0, poll=0.5)
     assert result.delivered is True
     assert fake.keys == []
+
+
+def test_delivery_addresses_the_agent_window_not_the_selected_one():
+    """A brief is typed with `send-keys`, and a bare session ref types into whichever
+    window the user has selected — so a worker sharing a session with anything else
+    would get its brief dropped into the wrong pane."""
+    fake = Fake([READY, READY, *WORKING])
+    fake.run()
+    assert fake.refs
+    assert set(fake.refs) == {"w:{start}"}
+
+
+def test_a_window_worker_is_addressed_at_its_own_window():
+    fake = Fake([READY, READY, *WORKING])
+    deliver_when_ready(
+        "batch:issue-841",
+        "BRIEF",
+        capture=fake.capture,
+        send=fake.send,
+        press=fake.press,
+        sleep=fake.sleep,
+        clock=fake.clock,
+    )
+    assert set(fake.refs) == {"batch:issue-841"}
