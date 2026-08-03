@@ -9,6 +9,7 @@ fallbacks for `-F` format-flag incompatibilities.
 """
 
 import asyncio
+import logging
 import os
 import re
 import struct
@@ -20,6 +21,9 @@ import libtmux
 from libtmux._internal.query_list import ObjectDoesNotExist
 
 from lumbergh.constants import TMUX_CMD
+from lumbergh.targets import Window
+
+logger = logging.getLogger(__name__)
 
 IS_WINDOWS = sys.platform == "win32"
 
@@ -276,11 +280,18 @@ def capture_pane_text(target: str, lines: int | None = None) -> str:
         return ""
 
 
-def list_session_windows(session: str) -> list[str]:
-    """Window names in a session, or [] on any failure."""
+def list_session_window_specs(session: str) -> list[Window]:
+    """Every window in a session as (id, index, name), or [] on any failure."""
     try:
         result = subprocess.run(
-            [TMUX_CMD, "list-windows", "-t", session, "-F", "#{window_name}"],
+            [
+                TMUX_CMD,
+                "list-windows",
+                "-t",
+                session,
+                "-F",
+                "#{window_id}\t#{window_index}\t#{window_name}",
+            ],
             capture_output=True,
             encoding="utf-8",
             errors="replace",
@@ -288,13 +299,23 @@ def list_session_windows(session: str) -> list[str]:
         )
         if result.returncode != 0:
             return []
-        return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+        windows = []
+        for line in result.stdout.splitlines():
+            fields = line.split("\t")
+            if len(fields) == 3 and all(f.strip() for f in fields[:2]):
+                windows.append(Window(fields[0].strip(), fields[1].strip(), fields[2].strip()))
+        return windows
     except Exception:
         return []
 
 
+def list_session_windows(session: str) -> list[str]:
+    """Window names in a session, or [] on any failure."""
+    return [w.name for w in list_session_window_specs(session)]
+
+
 def _pane_pids(target: str) -> list[int]:
-    """Root pids of every pane in ``target`` (a session or session:window)."""
+    """Root pids of every pane in ``target`` (a session, session:window, or window id)."""
     try:
         result = subprocess.run(
             [TMUX_CMD, "list-panes", "-t", target, "-F", "#{pane_pid}"],
@@ -304,6 +325,12 @@ def _pane_pids(target: str) -> list[int]:
             timeout=2,
         )
         if result.returncode != 0:
+            # A ref tmux won't resolve reads downstream as "no agent lives here", which
+            # is indistinguishable from a finished session — log it so an unaddressable
+            # target can't go quiet for hours.
+            logger.warning(
+                "tmux could not resolve target %r: %s", target, result.stderr.strip() or "no stderr"
+            )
             return []
         return [int(x) for x in result.stdout.split() if x.strip().isdigit()]
     except Exception:

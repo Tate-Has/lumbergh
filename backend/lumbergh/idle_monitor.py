@@ -86,11 +86,11 @@ def _live_session_names() -> list[str]:
 
 def discover_live_targets() -> list[str]:
     from lumbergh.targets import discover_targets
-    from lumbergh.tmux_pty import build_pane_commands_lookup, list_session_windows
+    from lumbergh.tmux_pty import build_pane_commands_lookup, list_session_window_specs
 
     return discover_targets(
         _live_session_names(),
-        list_windows=list_session_windows,
+        list_windows=list_session_window_specs,
         pane_commands=build_pane_commands_lookup(),
     )
 
