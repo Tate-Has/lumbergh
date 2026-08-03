@@ -27,13 +27,28 @@ def fake_agent_bin(tmp_path):
     return path
 
 
+def _window_indices(session: str) -> list[str]:
+    """The session's real window indices, in order.
+
+    Read rather than assumed: tmux numbers from `base-index`, which is 1 in many user
+    configs and 0 by default — hardcoding either makes a test that only passes on the
+    machine it was written on.
+    """
+    out = subprocess.run(
+        [TMUX_CMD, "list-windows", "-t", session, "-F", "#{window_index}"],
+        capture_output=True,
+        encoding="utf-8",
+    )
+    return out.stdout.split()
+
+
 def _start_agent_session(name: str, window_names: list[str], agent_bin, marker: bool = False):
     subprocess.run([TMUX_CMD, "kill-session", "-t", name], capture_output=True)
     _tmux("new-session", "-d", "-s", name, "-n", window_names[0])
     for window in window_names[1:]:
         _tmux("new-window", "-t", name, "-n", window)
-    for index in range(1, len(window_names) + 1):
-        prefix = f"echo MARKER-WINDOW-{index}; " if marker else ""
+    for position, index in enumerate(_window_indices(name), start=1):
+        prefix = f"echo MARKER-WINDOW-{position}; " if marker else ""
         _tmux("send-keys", "-t", f"{name}:{index}", f"{prefix}exec {agent_bin} 60", "Enter")
 
 
@@ -87,8 +102,10 @@ def test_registered_workers_resolve_even_when_their_names_collide(
     name = "lbtest-dupe"
     killable.append(name)
     _start_agent_session(name, ["claude", "claude"], fake_agent_bin)
-    _register_workers(monkeypatch, {f"{name}:1", f"{name}:2"})
-    expected = {f"{name}:1", f"{name}:2"}
+    # Colliding names mean the labels are the windows' own indices, whatever tmux's
+    # `base-index` happens to be.
+    expected = {f"{name}:{i}" for i in _window_indices(name)}
+    _register_workers(monkeypatch, expected)
     assert _await_targets(name, expected) == expected
 
 
@@ -101,14 +118,15 @@ def test_the_session_target_points_at_its_first_window_not_the_selected_one(
     killable.append(name)
     _start_agent_session(name, ["claude", "scratch"], fake_agent_bin, marker=True)
     _await_targets(name, {name})
-    _tmux("select-window", "-t", f"{name}:2")
+    first, second = _window_indices(name)
+    _tmux("select-window", "-t", f"{name}:{second}")
 
-    window_one_id = subprocess.run(
-        [TMUX_CMD, "display-message", "-p", "-t", f"{name}:1", "#{window_id}"],
+    first_window_id = subprocess.run(
+        [TMUX_CMD, "display-message", "-p", "-t", f"{name}:{first}", "#{window_id}"],
         capture_output=True,
         encoding="utf-8",
     ).stdout.strip()
-    assert discover_target_refs()[name] == window_one_id
+    assert discover_target_refs()[name] == first_window_id
 
     content = capture_pane_content(tmux_ref(name))
     assert "MARKER-WINDOW-1" in content
