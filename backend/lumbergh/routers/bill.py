@@ -1204,16 +1204,31 @@ def _assemble_and_land(body: LandBody, repo: Path, base: str, member_branches: l
 class TeardownBody(BaseModel):
     run: str
     force: bool = False
+    dry_run: bool = False
 
 
 @router.post("/teardown")
 def teardown(body: TeardownBody):
-    """Kill each run member's window and reap its worktree; refuse dirty work."""
+    """Kill each run member's window and reap its worktree; refuse unlanded work."""
     members = run_members(body.run)
     results, refused = [], []
     for m in members:
         target = m.get("target")
         killed = False
+        if body.dry_run:
+            readiness = worktrees.reap_readiness(Path(m["path"]))
+            if readiness["blocker"]:
+                refused.append({"target": target, "reason": readiness["blocker"]})
+            results.append(
+                {
+                    "target": target,
+                    "killed": False,
+                    "reaped": "dry-run",
+                    "landed": readiness["landed"],
+                    "commits": readiness["commits"],
+                }
+            )
+            continue
         if target:
             session, window = parse_target(target)
             # A batch worker is one window of a shared session — kill just its
@@ -1230,15 +1245,18 @@ def teardown(body: TeardownBody):
                 "target": target,
                 "killed": killed,
                 "reaped": reap.get("status"),
-                # Whether this worker's work reached a remote. Torn down with
-                # `landed: false` is the signal a repo needs to put the worker's
-                # tracking issue back on its board — lb knows nothing about boards.
+                # Whether this worker's commits exist outside its worktree, by patch.
+                # Torn down with `landed: false` and a non-zero `commits` is the signal
+                # a repo needs to put the worker's tracking issue back on its board —
+                # lb knows nothing about boards. `null` means the check could not run;
+                # `commits: 0` means the worker (a scout) had nothing to land.
                 "landed": reap.get("landed"),
+                "commits": reap.get("commits"),
             }
         )
     # Drop the batch branch a prior no-push `land` left behind (a no-op if there
     # was none, or if a member's repo has no such branch).
-    for repo_path in {m.get("parent_repo") for m in members}:
+    for repo_path in {m.get("parent_repo") for m in members} if not body.dry_run else set():
         if repo_path:
             land.delete_batch(Path(repo_path), f"batch-{body.run}")
-    return {"run": body.run, "results": results, "refused": refused}
+    return {"run": body.run, "dry_run": body.dry_run, "results": results, "refused": refused}

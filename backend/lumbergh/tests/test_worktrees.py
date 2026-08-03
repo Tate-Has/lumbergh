@@ -134,7 +134,7 @@ def test_reap_reports_landed_false_for_unlanded_work_it_is_forced_through(tmp_pa
 
 
 @pytest.mark.usefixtures("worktrees_db")
-def test_reap_still_refuses_genuinely_unpushed_work(tmp_path):
+def test_reap_still_refuses_genuinely_unlanded_work(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init", "-q", "-b", "master")
@@ -154,10 +154,120 @@ def test_reap_still_refuses_genuinely_unpushed_work(tmp_path):
     _git(wt, "add", ".")
     _git(wt, "commit", "-qm", "work")
 
-    # Content lives on no remote — reaping would truly lose it, so refuse.
+    # The patch is in no base and on no remote — reaping would truly lose it, so refuse.
     result = worktrees.reap(wt, force=False)
 
-    assert result.get("reason") == "unpushed", result
+    assert result.get("reason") == "unlanded", result
+    # A refusal still has to answer the question it refused on: blank is not "false".
+    assert result.get("landed") is False, result
+    assert result.get("commits") == 1, result
+
+
+def _commit_mode_fleet(tmp_path: Path) -> tuple[Path, dict[str, Path]]:
+    """A `commit`-delivery run at the moment teardown runs: workers committed and
+    never pushed, one scout committed nothing, and the overseer landed the batch onto
+    the local base branch. Nothing has reached a remote yet — the normal state."""
+    repo = _repo_with_origin(tmp_path)
+    _git(repo, "checkout", "-q", "-b", "dev")
+    _git(repo, "push", "-q", "origin", "dev")
+
+    workers = {}
+    for name in ("issue-749", "issue-786"):
+        wt = tmp_path / name
+        _git(repo, "worktree", "add", "-q", "-b", name, str(wt), "dev")
+        (wt / f"{name}.txt").write_text(name)
+        _git(wt, "add", ".")
+        _git(wt, "commit", "-qm", f"{name} work")
+        workers[name] = wt
+    scout = tmp_path / "scout-585"
+    _git(repo, "worktree", "add", "-q", "-b", "scout-585", str(scout), "dev")
+    workers["scout-585"] = scout
+
+    _git(repo, "checkout", "-q", "-b", "batch-run", "dev")
+    for name in ("issue-749", "issue-786"):
+        _git(repo, "cherry-pick", name)
+    _git(repo, "checkout", "-q", "dev")
+    _git(repo, "merge", "-q", "--ff-only", "batch-run")
+    for name, wt in workers.items():
+        worktrees.record_worktree(
+            wt, repo, name, "2026-08-02T00:00:00Z", run="port-tooling-0802", base_branch="dev"
+        )
+    return repo, workers
+
+
+@pytest.mark.usefixtures("worktrees_db")
+def test_reap_lands_a_commit_mode_worker_that_never_pushed(tmp_path):
+    """The delivery mode is `commit`: workers never push, so "unpushed" is the normal
+    state of fully landed work. Refusing on it makes `--force` reflex — the very thing
+    the landed check was added to end. Patch identity against the base is the question."""
+    _, workers = _commit_mode_fleet(tmp_path)
+
+    result = worktrees.reap(workers["issue-749"], force=False, rm_branch=True)
+
+    assert result.get("status") == "removed", result
+    assert result.get("landed") is True, result
+
+
+@pytest.mark.usefixtures("worktrees_db")
+def test_reap_reports_landed_on_the_forced_path_too(tmp_path):
+    """`--force` suppresses the refusal, not the fact. Reporting `landed: false` for
+    work that provably landed is worse than reporting nothing: the consumer acts on it."""
+    _, workers = _commit_mode_fleet(tmp_path)
+
+    result = worktrees.reap(workers["issue-786"], force=True, rm_branch=True)
+
+    assert result.get("status") == "removed", result
+    assert result.get("landed") is True, result
+
+
+@pytest.mark.usefixtures("worktrees_db")
+def test_reap_reports_a_zero_commit_scout_as_having_landed_nothing(tmp_path):
+    """A scout delivers a report and commits nothing. "Landed" is vacuously true of it
+    and sends a consumer looking for work that never existed — it landed nothing."""
+    _, workers = _commit_mode_fleet(tmp_path)
+
+    result = worktrees.reap(workers["scout-585"], force=False, rm_branch=True)
+
+    assert result.get("status") == "removed", result  # nothing to lose, so no refusal
+    assert result.get("commits") == 0, result
+    assert result.get("landed") is False, result
+
+
+@pytest.mark.usefixtures("worktrees_db")
+def test_reap_reports_landed_unknown_when_no_base_can_be_resolved(tmp_path):
+    """With nothing to compare against, the honest answer is "unknown" — and a consumer
+    must be able to tell that from a genuine `false`, which it acts on."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "master")
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
+    (repo / "base.txt").write_text("base")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "base")
+    wt = tmp_path / "wt"
+    _git(repo, "worktree", "add", "-q", "-b", "worker", str(wt), "master")
+    (wt / "work.txt").write_text("work")
+    _git(wt, "add", ".")
+    _git(wt, "commit", "-qm", "work")
+
+    refused = worktrees.reap(wt, force=False)
+    assert refused.get("reason") == "unknown", refused
+
+    forced = worktrees.reap(wt, force=True, rm_branch=True)
+    assert forced.get("status") == "removed", forced
+    assert forced.get("landed") is None, forced
+
+
+@pytest.mark.usefixtures("worktrees_db")
+def test_reap_readiness_answers_without_touching_the_worktree(tmp_path):
+    """`lb teardown --dry-run` needs the whole verdict before anything is destroyed."""
+    _, workers = _commit_mode_fleet(tmp_path)
+
+    readiness = worktrees.reap_readiness(workers["issue-749"])
+
+    assert readiness == {"landed": True, "commits": 1, "blocker": None}
+    assert workers["issue-749"].exists()
 
 
 @pytest.mark.usefixtures("worktrees_db")

@@ -54,7 +54,7 @@ FLAGS = {
     "batch": {"--repo", "--run", "--briefs", "--kind", "--base", "--session", "--delivery"},
     "init": {"--repo", "--delivery", "--smoke", "--dep-sync"},
     "land": {"--run", "--onto", "--push", "--smoke", "--skip-smoke"},
-    "teardown": {"--run", "--force"},
+    "teardown": {"--run", "--force", "--dry-run"},
     "babysit": {"--session", "--stop", "--list", "--refresh"},
 }
 _BOOL_FLAGS = {
@@ -63,6 +63,7 @@ _BOOL_FLAGS = {
     "--check",
     "--new",
     "--force",
+    "--dry-run",
     "--rm-branch",
     "--json",
     "--push",
@@ -106,7 +107,7 @@ _COMMAND_HELP = {
         "[--base <b>] [--session <n>] [--delivery pr|branch|commit]"
     ),
     "land": "lb land --run <id> [--onto <base>] [--push] [--smoke '<cmd>'] [--skip-smoke]",
-    "teardown": "lb teardown --run <id> [--force]",
+    "teardown": "lb teardown --run <id> [--dry-run] [--force]",
     "init": (
         "lb init --repo <path> [--delivery pr|branch|commit] [--smoke '<cmd>'] "
         "[--dep-sync '<install cmd>']"

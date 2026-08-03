@@ -75,7 +75,7 @@ def ls(repo: str | None = None):
 def reap(body: ReapBody):
     path = Path(body.path).expanduser()
     # Capture the worker before reap drops the registry entry. Only kill it on a
-    # real removal: a refused reap (dirty/unpushed) is a stop-and-report, and its
+    # real removal: a refused reap (dirty/unlanded/unknown) is a stop-and-report, and its
     # worker must be left running so nothing is lost.
     entry = worktrees.get_entry(path) or {}
     worker = entry.get("target")

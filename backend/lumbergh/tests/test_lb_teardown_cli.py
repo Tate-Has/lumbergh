@@ -26,7 +26,31 @@ def test_teardown_posts_run_and_force(monkeypatch):
     monkeypatch.setattr(teardown_cli, "_request", fake_request)
     rc = teardown_cli.run({"--run": "r", "--force": True})
     assert rc == 0
-    assert captured["json"] == {"run": "r", "force": True}
+    assert captured["json"] == {"run": "r", "force": True, "dry_run": False}
+
+
+def test_teardown_posts_dry_run(monkeypatch, capsys):
+    captured = {}
+
+    def fake_request(_m, _p, **kw):
+        captured["json"] = kw.get("json")
+        return _Resp(
+            {
+                "run": "r",
+                "dry_run": True,
+                "results": [
+                    {"target": "r:a", "killed": False, "reaped": "dry-run", "landed": True}
+                ],
+                "refused": [],
+            }
+        )
+
+    monkeypatch.setattr(teardown_cli, "_request", fake_request)
+    rc = teardown_cli.run({"--run": "r", "--dry-run": True})
+
+    assert rc == 0
+    assert captured["json"] == {"run": "r", "force": False, "dry_run": True}
+    assert "dry run" in capsys.readouterr().out
 
 
 def test_teardown_surfaces_refused(monkeypatch, capsys):
@@ -72,3 +96,123 @@ def test_teardown_shows_which_workers_went_down_unlanded(monkeypatch, capsys):
     assert rc == 0
     assert "landed" in out
     assert "r:b" in out.split("unlanded")[1]  # called out explicitly, not just tabulated
+
+
+def test_teardown_separates_landing_nothing_from_losing_work(capsys, monkeypatch):
+    """A scout commits nothing, so it is neither landed nor work that went missing.
+    Listing it as unlanded is what sends a consumer to reopen an issue that shipped."""
+    monkeypatch.setattr(
+        teardown_cli,
+        "_request",
+        lambda _m, _p, **_kw: _Resp(
+            {
+                "run": "r",
+                "results": [
+                    {
+                        "target": "r:scout",
+                        "killed": True,
+                        "reaped": "removed",
+                        "landed": False,
+                        "commits": 0,
+                    },
+                    {
+                        "target": "r:lost",
+                        "killed": True,
+                        "reaped": "removed",
+                        "landed": False,
+                        "commits": 3,
+                    },
+                ],
+                "refused": [],
+            }
+        ),
+    )
+    rc = teardown_cli.run({"--run": "r"})
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert "r:lost" in out.split("unlanded")[1].split("\n")[0]
+    assert "r:scout" not in out.split("unlanded")[1].split("\n")[0]
+    assert "r:scout" in out.split("landed nothing")[1]
+
+
+def test_teardown_does_not_report_a_refused_worker_as_torn_down(capsys, monkeypatch):
+    """A refusal leaves the worker standing with its work intact. Announcing it as
+    unlanded-and-gone is the same false alarm in the other direction."""
+    monkeypatch.setattr(
+        teardown_cli,
+        "_request",
+        lambda _m, _p, **_kw: _Resp(
+            {
+                "run": "r",
+                "results": [
+                    {
+                        "target": "r:a",
+                        "killed": True,
+                        "reaped": None,
+                        "landed": False,
+                        "commits": 2,
+                    }
+                ],
+                "refused": [{"target": "r:a", "reason": "unlanded"}],
+            }
+        ),
+    )
+    rc = teardown_cli.run({"--run": "r"})
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert "torn down without landing" not in out
+    assert "left running" in out
+
+
+def test_teardown_renders_an_unanswerable_landed_check_as_unknown(capsys, monkeypatch):
+    """Blank reads as false to every consumer downstream. "Could not tell" has to look
+    different from "provably did not land"."""
+    monkeypatch.setattr(
+        teardown_cli,
+        "_request",
+        lambda _m, _p, **_kw: _Resp(
+            {
+                "run": "r",
+                "results": [
+                    {
+                        "target": "r:a",
+                        "killed": True,
+                        "reaped": "removed",
+                        "landed": None,
+                        "commits": None,
+                    }
+                ],
+                "refused": [],
+            }
+        ),
+    )
+    rc = teardown_cli.run({"--run": "r"})
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert "unknown" in out
+    assert "unlanded" not in out
+
+
+def test_teardown_refusal_does_not_tell_a_commit_mode_worker_to_push(capsys, monkeypatch):
+    """Under `commit` delivery no worker ever pushes. Telling the operator to push is
+    how `--force` became the reflex."""
+    monkeypatch.setattr(
+        teardown_cli,
+        "_request",
+        lambda _m, _p, **_kw: _Resp(
+            {
+                "run": "r",
+                "results": [{"target": "r:a", "killed": True, "reaped": None, "landed": False}],
+                "refused": [{"target": "r:a", "reason": "unlanded"}],
+            }
+        ),
+    )
+    rc = teardown_cli.run({"--run": "r"})
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert "push" not in out
+    assert "lb land" in out

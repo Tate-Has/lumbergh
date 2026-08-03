@@ -168,6 +168,72 @@ def test_teardown_reports_whether_each_worker_landed(monkeypatch, tmp_path):
     assert by_target["sprint:abandoned"]["landed"] is False
 
 
+def test_teardown_dry_run_reports_the_verdict_without_touching_anything(monkeypatch, tmp_path):
+    """The point of a dry run is to see what a teardown would decide *before* any
+    window is killed or any worktree removed."""
+    members = [
+        {
+            "target": "sprint:issue-749",
+            "branch": "issue-749",
+            "parent_repo": str(tmp_path),
+            "path": str(tmp_path / "wt"),
+            "run": "sprint",
+        }
+    ]
+    monkeypatch.setattr("lumbergh.routers.bill.run_members", lambda _run: members)
+    monkeypatch.setattr(
+        "lumbergh.worktrees.reap_readiness",
+        lambda _p: {"landed": True, "commits": 2, "blocker": None},
+    )
+
+    def _no_destruction(*_a, **_k):
+        raise AssertionError("a dry run must not kill or reap anything")
+
+    monkeypatch.setattr("lumbergh.worktrees.reap", _no_destruction)
+    monkeypatch.setattr("lumbergh.routers.bill.kill_tmux_window", _no_destruction)
+    monkeypatch.setattr("lumbergh.land.delete_batch", _no_destruction)
+
+    resp = bill.teardown(bill.TeardownBody(run="sprint", dry_run=True))
+
+    assert resp["dry_run"] is True
+    assert resp["results"] == [
+        {
+            "target": "sprint:issue-749",
+            "killed": False,
+            "reaped": "dry-run",
+            "landed": True,
+            "commits": 2,
+        }
+    ]
+    assert resp["refused"] == []
+
+
+def test_teardown_reports_the_commit_count_alongside_landed(monkeypatch, tmp_path):
+    """`landed: false` with zero commits is a scout that landed nothing, not work that
+    was lost — the consumer resetting tracking issues has to tell those apart."""
+    members = [
+        {
+            "target": "sprint:scout-585",
+            "branch": "scout-585",
+            "parent_repo": str(tmp_path),
+            "path": str(tmp_path / "wt"),
+            "run": "sprint",
+        }
+    ]
+    monkeypatch.setattr("lumbergh.routers.bill.run_members", lambda _run: members)
+    monkeypatch.setattr(
+        "lumbergh.worktrees.reap",
+        lambda _p, **_k: {"status": "removed", "landed": False, "commits": 0},
+    )
+    monkeypatch.setattr("lumbergh.land.delete_batch", lambda *_a: True)
+    monkeypatch.setattr("lumbergh.routers.bill.kill_tmux_window", lambda _t: True)
+
+    resp = bill.teardown(bill.TeardownBody(run="sprint"))
+
+    assert resp["results"][0]["commits"] == 0
+    assert resp["results"][0]["landed"] is False
+
+
 def test_teardown_refusal_names_its_reason(monkeypatch, tmp_path):
     """`--force` stops being read the moment every refusal looks the same. A refusal
     must say which of the two things it is."""

@@ -1809,44 +1809,84 @@ def default_base_ref(cwd: Path) -> str:
     return "HEAD"
 
 
-def head_commits_landed_on_a_remote(cwd: Path) -> bool:
-    """True if every commit this worktree added is present on some remote by PATCH,
-    even though its sha was rewritten getting there.
+def _ref_exists(cwd: Path, ref: str) -> bool:
+    return (
+        subprocess.run(
+            ["git", "-C", str(cwd), "rev-parse", "--verify", "--quiet", ref],
+            capture_output=True,
+        ).returncode
+        == 0
+    )
 
-    ``head_tree_matches_a_remote`` only recognizes a worker whose landed tree is the
-    whole remote tip, which a batch land never produces: `lb land` cherry-picks every
-    member onto the base, so each worker's tree is missing its peers' work and matches
-    nothing. Patch equivalence is what survives that — ``git cherry`` marks a commit
-    ``-`` when the upstream already contains an equivalent patch and ``+`` when it does
-    not, so a ref with no ``+`` lines contains all of this worktree's work.
 
-    Falls back to False on error, so a genuine never-pushed worktree stays protected.
+def landed_reference_points(cwd: Path, base: str | None = None) -> list[str]:
+    """Refs whose containing this worktree's patches means reaping it loses nothing.
+
+    The base branch comes first in both spellings, and the *local* one is not a
+    fallback: a `commit`-delivery fleet's overseer lands the batch onto local ``dev``
+    and pushes later, so between those two moments the local branch is the only place
+    the work exists. Every remote tip follows, for a worker whose recorded base is
+    stale or absent."""
+    named = []
+    if base:
+        named += [f"origin/{base}", base]
+    default = default_base_ref(cwd)
+    if default != "HEAD":
+        named += [default, default.removeprefix("origin/")]
+    refs, seen = [], set()
+    for candidate in named:
+        if candidate not in seen and _ref_exists(cwd, candidate):
+            seen.add(candidate)
+            refs.append(candidate)
+    try:  # remote tips come from git itself, so they need no verification
+        for remote in get_repo(cwd).remotes:
+            for ref in remote.refs:
+                if ref.name not in seen:
+                    seen.add(ref.name)
+                    refs.append(ref.name)
+    except (InvalidGitRepositoryError, GitCommandError, ValueError):
+        pass
+    return refs
+
+
+def head_landed_state(cwd: Path, base: str | None = None) -> dict:
+    """Whether this worktree's own commits already exist elsewhere, by patch identity —
+    the reap guard's whole question and the ``landed`` signal `lb teardown` reports.
+
+    Push state answers a different question. Under `commit` delivery no worker ever
+    pushes, so "unpushed" is the *normal* state of fully landed work and refusing on it
+    trains ``--force`` into a reflex. ``git cherry`` is the check that survives the
+    rewrite a batch land performs: it marks a commit ``-`` when the reference already
+    holds an equivalent patch and ``+`` when it does not, so a ref with no ``+`` lines
+    holds all of this worktree's work.
+
+    ``landed`` is ``None`` when the question could not be answered at all — a consumer
+    that resets a tracking issue on ``false`` must be able to tell the two apart. A
+    worktree with zero commits of its own (a scout that delivered a report) landed
+    *nothing*: ``landed`` is ``False`` with ``commits`` 0, never a vacuous ``True``.
     """
+    unknown = {"landed": None, "commits": None, "base": None}
+    refs = landed_reference_points(cwd, base)
+    if not refs:
+        return unknown
     try:
         repo = get_repo(cwd)
-    except InvalidGitRepositoryError:
-        return False
-    try:
-        for remote in repo.remotes:
-            for ref in remote.refs:
-                out = repo.git.cherry(ref.name, "HEAD")
-                if not any(line.startswith("+") for line in out.splitlines()):
-                    return True
-    except (GitCommandError, ValueError):
-        return False
-    return False
-
-
-def head_work_is_on_a_remote(cwd: Path) -> bool:
-    """Whether reaping this worktree would lose anything — the reap guard's whole
-    question, and the ``landed`` signal `lb teardown` reports per worker.
-
-    Three ways the work can already be safe, cheapest first: it is an ancestor of a
-    remote (never rebased), its tree matches a remote tip (a solo land), or its patches
-    are on a remote under rewritten shas (a batch land)."""
-    if count_unpushed_commits(cwd) == 0:
-        return True
-    return head_tree_matches_a_remote(cwd) or head_commits_landed_on_a_remote(cwd)
+        commits = int(repo.git.rev_list("--count", f"{refs[0]}..HEAD").strip() or "0")
+    except (InvalidGitRepositoryError, GitCommandError, ValueError):
+        return unknown
+    if commits == 0:
+        return {"landed": False, "commits": 0, "base": refs[0]}
+    for ref in refs:
+        try:
+            cherry = repo.git.cherry(ref, "HEAD")
+        except (GitCommandError, ValueError):
+            continue  # one unusable ref must not decide the whole question
+        if not any(line.startswith("+") for line in cherry.splitlines()):
+            return {"landed": True, "commits": commits, "base": ref}
+    # A solo land leaves the worktree's tree equal to the remote tip even when the
+    # patches were squashed on the way in, which patch identity cannot see.
+    landed = count_unpushed_commits(cwd) == 0 or head_tree_matches_a_remote(cwd)
+    return {"landed": landed, "commits": commits, "base": refs[0]}
 
 
 def remove_worktree(repo_path: Path, worktree_path: Path, force: bool = False) -> dict:

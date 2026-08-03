@@ -24,7 +24,7 @@ from lumbergh.git_utils import (
     get_porcelain_status,
     get_repo,
     get_worktree_container_path,
-    head_work_is_on_a_remote,
+    head_landed_state,
     list_worktrees,
     sanitize_branch_for_path,
 )
@@ -406,17 +406,52 @@ def create(
     return {"path": str(wt), "links_applied": applied}
 
 
+REAP_BLOCKERS = {
+    "dirty": "worktree has uncommitted changes",
+    "unlanded": "worktree has commits that are in no base branch and on no remote",
+    "unknown": "cannot determine whether this worktree's commits landed",
+}
+
+
+def reap_readiness(worktree: Path) -> dict:
+    """What reaping this worktree would cost, computed without touching it — the whole
+    verdict `lb teardown --dry-run` reports and the one `reap` decides on.
+
+    ``blocker`` is what an un-forced reap refuses on, named so the operator can tell a
+    genuinely unlanded worker from one whose landed-ness could not be established.
+    ``--force`` suppresses the refusal, never the facts alongside it.
+    """
+    if not worktree.exists():
+        # Nothing on disk left to lose; reaping only converges the registry.
+        return {"landed": None, "commits": None, "blocker": None}
+    entry = get_entry(worktree)
+    state = head_landed_state(worktree, entry.get("base_branch") if entry else None)
+    if get_porcelain_status(worktree):
+        blocker = "dirty"
+    elif state["landed"] is None:
+        blocker = "unknown"
+    elif not state["landed"] and state["commits"]:
+        blocker = "unlanded"
+    else:
+        # Landed, or a scout that committed nothing — either way nothing is lost.
+        blocker = None
+    return {"landed": state["landed"], "commits": state["commits"], "blocker": blocker}
+
+
 def reap(worktree: Path, *, force: bool = False, rm_branch: bool = False) -> dict:
-    # Answer "did this work land?" up front and report it either way: a forced reap
+    # Answer "did this work land?" up front and report it on every path: a forced reap
     # still owes the caller that flag, because a torn-down-but-unlanded worker is the
     # one whose tracking issue has to go back on the board (nothing here knows or
     # cares what a board is — it only exposes the fact).
-    landed = head_work_is_on_a_remote(worktree) if worktree.exists() else None
-    if not force:
-        if get_porcelain_status(worktree):
-            return {"error": "worktree has uncommitted changes", "reason": "dirty"}
-        if not landed:
-            return {"error": "worktree has unpushed commits", "reason": "unpushed"}
+    readiness = reap_readiness(worktree)
+    landed, commits = readiness["landed"], readiness["commits"]
+    if not force and readiness["blocker"]:
+        return {
+            "error": REAP_BLOCKERS[readiness["blocker"]],
+            "reason": readiness["blocker"],
+            "landed": landed,
+            "commits": commits,
+        }
     entry = get_entry(worktree)
     parent = Path(entry["parent_repo"]) if entry else parent_repo_of(worktree)
     branch = entry.get("branch") if entry else None
@@ -432,6 +467,7 @@ def reap(worktree: Path, *, force: bool = False, rm_branch: bool = False) -> dic
                 "status": "removed",
                 "path": str(worktree),
                 "landed": landed,
+                "commits": commits,
                 "note": "already absent",
             }
         return result
@@ -441,7 +477,7 @@ def reap(worktree: Path, *, force: bool = False, rm_branch: bool = False) -> dic
             get_repo(parent).git.branch("-D", branch)
         except GitCommandError:
             pass
-    return {"status": "removed", "path": str(worktree), "landed": landed}
+    return {"status": "removed", "path": str(worktree), "landed": landed, "commits": commits}
 
 
 def parent_repo_of(worktree: Path) -> Path:

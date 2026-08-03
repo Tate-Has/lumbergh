@@ -132,10 +132,21 @@ def _reap(flags, positional) -> int:
     d = _request("POST", "/api/worktrees/reap", json=body).json()
     if d.get("error"):
         hint = (
-            "re-run with --force to override" if d.get("reason") in ("dirty", "unpushed") else None
+            "re-run with --force to override"
+            if d.get("reason") in ("dirty", "unlanded", "unknown")
+            else None
         )
         return _err(d["error"], hint, 1)
-    _emit(render_object([("reaped", d["path"])]))
+    landed = d.get("landed")
+    _emit(
+        render_object(
+            [
+                ("reaped", d["path"]),
+                ("landed", "unknown" if landed is None else landed),
+                ("commits", d.get("commits")),
+            ]
+        )
+    )
     return 0
 
 
