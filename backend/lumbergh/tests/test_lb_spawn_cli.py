@@ -72,6 +72,58 @@ def test_spawn_posts_the_expected_body(monkeypatch, capsys):
     assert "feat-x" in out
 
 
+def test_spawn_prints_what_it_branched_from(monkeypatch, capsys):
+    monkeypatch.setattr(
+        spawn_cli,
+        "_request",
+        lambda m, p, **kw: _Resp(  # noqa: ARG005
+            {
+                "session": "issue-835",
+                "path": "/w/app-worktrees/issue-835",
+                "branch": "issue-835",
+                "kind": "ship",
+                "base_ref": "origin/dev",
+                "base_sha": "f91381de1c0ffee0000000000000000000000000",
+                "base_note": "local dev (9d351d7e) is behind origin/dev (f91381de)",
+            }
+        ),
+    )
+
+    rc = spawn_cli.run(
+        {"--repo": "/w/app", "--branch": "issue-835", "--kind": "ship", "--brief": "/w/b.md"}
+    )
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "origin/dev" in out
+    assert "f91381de" in out
+    assert "is behind" in out
+
+
+def test_spawn_omits_the_base_note_when_there_is_nothing_to_warn_about(monkeypatch, capsys):
+    monkeypatch.setattr(
+        spawn_cli,
+        "_request",
+        lambda m, p, **kw: _Resp(  # noqa: ARG005
+            {
+                "session": "s",
+                "path": "/p",
+                "branch": "b",
+                "kind": "ship",
+                "base_ref": "dev",
+                "base_sha": "abc1234500000000000000000000000000000000",
+                "base_note": None,
+            }
+        ),
+    )
+
+    spawn_cli.run({"--repo": "/w/app", "--branch": "b", "--kind": "ship", "--brief": "/w/b.md"})
+
+    out = capsys.readouterr().out
+    assert "abc12345" in out
+    assert "base_note" not in out
+
+
 def test_spawn_surfaces_the_server_stage_and_help(monkeypatch, capsys):
     monkeypatch.setattr(
         spawn_cli,

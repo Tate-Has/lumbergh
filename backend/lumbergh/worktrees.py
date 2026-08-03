@@ -25,7 +25,9 @@ from lumbergh.git_utils import (
     get_repo,
     get_worktree_container_path,
     head_landed_state,
+    head_sha,
     list_worktrees,
+    resolve_spawn_base,
     sanitize_branch_for_path,
 )
 from lumbergh.git_utils import (
@@ -285,6 +287,7 @@ def record_worktree(
     target: str | None = None,
     run: str | None = None,
     base_branch: str | None = None,
+    base_sha: str | None = None,
 ) -> dict:
     resolved_target = target if target is not None else session
     row = {
@@ -301,6 +304,10 @@ def record_worktree(
         # What this worktree branched from, so a later dependency-drift check knows
         # which base to diff against instead of guessing at the repo's default.
         "base_branch": base_branch,
+        # The commit the worktree actually started at, so "has this worker done
+        # anything at all?" is one `rev-parse` rather than a branch comparison
+        # against a ref that has since moved.
+        "base_sha": base_sha,
     }
     db = get_worktrees_db()
     db.upsert(row, Query().path == row["path"])
@@ -381,8 +388,16 @@ def create(
 ) -> dict:
     cfg = parse_worktree_config(repo)
     dest = resolve_worktree_dir(repo, branch, cfg, global_base_dir)
+    # The name the caller gave is not a commit: a local branch left behind by a pushed
+    # land points somewhere staler than what everyone means by that name. Resolve it,
+    # and hand the resolution back so the caller can say what it branched from.
+    base = resolve_spawn_base(repo, base_branch) if create_branch and base_branch else {}
     result = _git_create_worktree(
-        repo, branch, worktree_path=dest, create_branch=create_branch, base_branch=base_branch
+        repo,
+        branch,
+        worktree_path=dest,
+        create_branch=create_branch,
+        base_branch=base.get("ref") or base_branch,
     )
     if "error" in result:
         return result
@@ -403,8 +418,9 @@ def create(
         target=target,
         run=run,
         base_branch=base_branch,
+        base_sha=head_sha(wt),
     )
-    return {"path": str(wt), "links_applied": applied}
+    return {"path": str(wt), "links_applied": applied, "base": base or None}
 
 
 REAP_BLOCKERS = {

@@ -38,16 +38,21 @@ def run(flags: dict) -> int:
         )
 
     d = resp.json()
-    _emit(
-        render_object(
-            [
-                ("run", d["run"]),
-                ("session", d["session"]),
-                ("spawned", str(len(d["workers"]))),
-                ("failed", str(len(d["failed"]))),
-            ]
-        )
-    )
+    summary = [
+        ("run", d["run"]),
+        ("session", d["session"]),
+        ("spawned", str(len(d["workers"]))),
+        ("failed", str(len(d["failed"]))),
+    ]
+    # Every worker in a batch shares one base, so it belongs in the summary rather
+    # than repeated down the table — but it must be there, or a whole batch built on
+    # a stale ref looks exactly like one built on the current tip.
+    first = d["workers"][0] if d["workers"] else {}
+    if base := " ".join(p for p in (first.get("base_ref"), (first.get("base_sha") or "")[:8]) if p):
+        summary.append(("base", base))
+    if first.get("base_note"):
+        summary.append(("base_note", first["base_note"]))
+    _emit(render_object(summary))
     if d["workers"]:
         _emit(render_collection("workers", d["workers"], ["session", "branch", "kind", "path"]))
     if d["failed"]:

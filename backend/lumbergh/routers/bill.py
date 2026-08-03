@@ -880,12 +880,18 @@ def spawn(body: SpawnBody):
             target=target,
         )
 
+    base = created.get("base") or {}
     return {
         "session": target,
         "path": str(workdir),
         "branch": body.branch,
         "kind": body.kind,
         "brief_path": str(brief),
+        # What it branched from. Absent from the old response, which is why a worker
+        # started on a stale `dev` looked exactly like one started on a fresh one.
+        "base_ref": base.get("ref"),
+        "base_sha": (worktrees.get_entry(workdir) or {}).get("base_sha"),
+        "base_note": base.get("note") or None,
     }
 
 

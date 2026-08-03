@@ -61,6 +61,9 @@ authority on syntax — run `lb <command> --help` when unsure.
   worker in it, and deliver the brief. Any stage failing (bad kind/brief/repo/name, the
   worktree, the session, recording it, or delivering the brief after retries) unwinds
   everything already created, so a failed spawn never leaves a half-built task behind.
+  The output names the `base` it branched from (ref + sha). `--base <b>` resolves against
+  the branch's upstream when the local copy is behind it — `lb land --push` leaves local
+  branches stale — and prints a `base_note` whenever local and upstream disagree.
 
 ## Worktrees
 

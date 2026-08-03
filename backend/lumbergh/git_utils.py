@@ -3,6 +3,7 @@ Git utilities for the Lumbergh backend using GitPython.
 """
 
 import hashlib
+import logging
 import os
 import subprocess
 import tempfile
@@ -15,6 +16,8 @@ os.environ.setdefault("GIT_TERMINAL_PROMPT", "0")
 
 from git import InvalidGitRepositoryError, Repo
 from git.exc import GitCommandError, NoSuchPathError
+
+logger = logging.getLogger(__name__)
 
 
 def _sanitize(text: str) -> str:
@@ -1817,6 +1820,103 @@ def _ref_exists(cwd: Path, ref: str) -> bool:
         ).returncode
         == 0
     )
+
+
+BASE_FETCH_TIMEOUT = 20
+
+
+def _git_out(cwd: Path, *args: str) -> str | None:
+    result = subprocess.run(
+        ["git", "-C", str(cwd), *args], capture_output=True, encoding="utf-8", errors="replace"
+    )
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
+def _upstream_of(cwd: Path, branch: str) -> str | None:
+    """The remote-tracking ref ``branch`` follows, whether or not it is checked out."""
+    tracking = _git_out(cwd, "rev-parse", "--abbrev-ref", "--symbolic-full-name", f"{branch}@{{u}}")
+    if tracking:
+        return tracking
+    return f"origin/{branch}" if _ref_exists(cwd, f"origin/{branch}") else None
+
+
+def _fetch_base(cwd: Path, upstream: str) -> None:
+    """Refresh one remote-tracking ref so "what upstream says" isn't itself stale.
+
+    Best-effort by design: a spawn on a laptop with no network must still work, and a
+    remote-tracking ref that a recent push already advanced is the common case.
+    """
+    remote, _, branch = upstream.partition("/")
+    if not branch:
+        return
+    try:
+        subprocess.run(
+            ["git", "-C", str(cwd), "fetch", "--quiet", remote, branch],
+            capture_output=True,
+            timeout=BASE_FETCH_TIMEOUT,
+            check=False,
+        )
+    except (subprocess.SubprocessError, OSError):
+        logger.debug("could not refresh %s before resolving the spawn base", upstream)
+
+
+def _is_ancestor(cwd: Path, ancestor: str, descendant: str) -> bool:
+    return (
+        subprocess.run(
+            ["git", "-C", str(cwd), "merge-base", "--is-ancestor", ancestor, descendant],
+            capture_output=True,
+        ).returncode
+        == 0
+    )
+
+
+def head_sha(cwd: Path) -> str | None:
+    """The commit a worktree is sitting on, or None if that can't be read."""
+    return _git_out(cwd, "rev-parse", "HEAD")
+
+
+def resolve_spawn_base(repo: Path, name: str, *, fetch: bool = True) -> dict:
+    """Which commit a new branch should actually start from, and whether that needed saying.
+
+    ``lb land --push`` advances the remote without fast-forwarding the local branch, so
+    the local ``dev`` a spawn resolves is routinely behind the ``dev`` everyone means. A
+    worker branched there cannot see work that already landed. So a base that is strictly
+    behind its upstream resolves to the upstream instead — but local commits that were
+    never pushed are real work, and a base ahead of (or diverged from) its upstream stays
+    local rather than silently dropping them.
+
+    ``note`` is empty only when local and upstream agree; any other choice is one the
+    caller is expected to print, because choosing silently is what made the original
+    incident invisible.
+    """
+    upstream = _upstream_of(repo, name)
+    if upstream and fetch:
+        _fetch_base(repo, upstream)
+
+    local_sha = _git_out(repo, "rev-parse", "--verify", "--quiet", name)
+    upstream_sha = (
+        _git_out(repo, "rev-parse", "--verify", "--quiet", upstream) if upstream else None
+    )
+
+    if not upstream_sha:
+        return {"ref": name, "sha": local_sha, "note": ""}
+    if not local_sha:
+        return {"ref": upstream, "sha": upstream_sha, "note": ""}
+    if local_sha == upstream_sha:
+        return {"ref": name, "sha": local_sha, "note": ""}
+    if _is_ancestor(repo, local_sha, upstream_sha):
+        return {
+            "ref": upstream,
+            "sha": upstream_sha,
+            "note": f"local {name} ({local_sha[:8]}) is behind {upstream} "
+            f"({upstream_sha[:8]}) — branching from {upstream}",
+        }
+    return {
+        "ref": name,
+        "sha": local_sha,
+        "note": f"local {name} ({local_sha[:8]}) is ahead of or diverged from {upstream} "
+        f"({upstream_sha[:8]}) — branching from local {name}",
+    }
 
 
 def landed_reference_points(cwd: Path, base: str | None = None) -> list[str]:

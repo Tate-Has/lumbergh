@@ -48,14 +48,23 @@ def run(flags: dict) -> int:
             f"{d.get('stage', 'spawn')}: {d.get('error', 'spawn failed')}", d.get("help"), 1
         )
     d = resp.json()
-    _emit(
-        render_object(
-            [
-                ("session", d["session"]),
-                ("kind", d["kind"]),
-                ("branch", d["branch"]),
-                ("path", d["path"]),
-            ]
-        )
-    )
+    fields = [
+        ("session", d["session"]),
+        ("kind", d["kind"]),
+        ("branch", d["branch"]),
+        ("path", d["path"]),
+    ]
+    # What it branched from, always — a worker started on a stale base is otherwise
+    # indistinguishable from a healthy one until its work turns out to be wrong.
+    if base := _base_line(d):
+        fields.append(("base", base))
+    if d.get("base_note"):
+        fields.append(("base_note", d["base_note"]))
+    _emit(render_object(fields))
     return 0
+
+
+def _base_line(d: dict) -> str:
+    ref, sha = d.get("base_ref"), d.get("base_sha")
+    short = sha[:8] if sha else ""
+    return " ".join(part for part in (ref, short) if part)
