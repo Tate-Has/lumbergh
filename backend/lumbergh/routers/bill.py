@@ -1205,6 +1205,8 @@ class TeardownBody(BaseModel):
     run: str
     force: bool = False
     dry_run: bool = False
+    # See ReapBody.caller_pid: an overseer can be sitting in a worktree it tears down.
+    caller_pid: int | None = None
 
 
 @router.post("/teardown")
@@ -1216,7 +1218,7 @@ def teardown(body: TeardownBody):
         target = m.get("target")
         killed = False
         if body.dry_run:
-            readiness = worktrees.reap_readiness(Path(m["path"]))
+            readiness = worktrees.reap_readiness(Path(m["path"]), caller_pid=body.caller_pid)
             if readiness["blocker"]:
                 refused.append({"target": target, "reason": readiness["blocker"]})
             results.append(
@@ -1226,6 +1228,9 @@ def teardown(body: TeardownBody):
                     "reaped": "dry-run",
                     "landed": readiness["landed"],
                     "commits": readiness["commits"],
+                    # What a real teardown would kill: processes the worker left running
+                    # inside its worktree, which otherwise outlive the tree itself.
+                    "processes": readiness["processes"],
                 }
             )
             continue
@@ -1236,7 +1241,9 @@ def teardown(body: TeardownBody):
             # so kill the session; otherwise it lingers in the list pointing at a
             # worktree that no longer exists.
             killed = kill_tmux_window(target) if window is not None else kill_tmux_session(session)
-        reap = worktrees.reap(Path(m["path"]), force=body.force, rm_branch=True)
+        reap = worktrees.reap(
+            Path(m["path"]), force=body.force, rm_branch=True, caller_pid=body.caller_pid
+        )
         if reap.get("status") != "removed":
             # Two refusals with one message is how `--force` became reflex: say which.
             refused.append({"target": target, "reason": reap.get("reason", "error")})
@@ -1252,6 +1259,9 @@ def teardown(body: TeardownBody):
                 # `commits: 0` means the worker (a scout) had nothing to land.
                 "landed": reap.get("landed"),
                 "commits": reap.get("commits"),
+                # Leftovers this teardown killed — a server the worker started keeps a
+                # port and a shared-DB connection open long after its tree is gone.
+                "processes": reap.get("processes_killed", []),
             }
         )
     # Drop the batch branch a prior no-push `land` left behind (a no-op if there

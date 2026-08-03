@@ -1,5 +1,7 @@
 """`lb teardown` — kill a run's windows and reap its worktrees, refusing unlanded work."""
 
+import os
+
 from lumbergh.agent_cli.main import _COMMAND_HELP, _emit, _err, _request
 from lumbergh.agent_cli.toon import render_collection, render_object
 
@@ -15,6 +17,16 @@ _REFUSAL_FIXES = {
 }
 
 
+def _report_processes(results: list[dict], dry: bool) -> None:
+    """Name every leftover, killed or merely doomed: a worker's test server holds a
+    port and a shared-DB connection, and a silent kill is its own trap."""
+    for r in results:
+        for proc in r.get("processes") or []:
+            verb = "would kill" if dry else f"killed ({proc.get('signal', 'SIGTERM')})"
+            cmd = proc["cmd"]
+            _emit(f"{verb}: {r['target']} — {proc['pid']} {cmd[:100]}{'…' * (len(cmd) > 100)}")
+
+
 def run(flags: dict) -> int:
     if not flags.get("--run"):
         return _err("--run required", _HELP, 2)
@@ -23,6 +35,7 @@ def run(flags: dict) -> int:
         "run": flags["--run"],
         "force": "--force" in flags,
         "dry_run": "--dry-run" in flags,
+        "caller_pid": os.getpid(),
     }
     resp = _request("POST", "/api/bill/teardown", json=body)
     if resp.status_code >= 400:
@@ -40,14 +53,21 @@ def run(flags: dict) -> int:
         # `landed: null` is "the check could not run", which renders blank — and blank
         # reads as false to everything downstream. Say the word instead.
         rows = [
-            {**r, "landed": "unknown" if r.get("landed") is None else r["landed"]}
+            {
+                **r,
+                "landed": "unknown" if r.get("landed") is None else r["landed"],
+                "procs": len(r.get("processes") or []),
+            }
             for r in d["results"]
         ]
         _emit(
-            render_collection("results", rows, ["target", "killed", "reaped", "landed", "commits"])
+            render_collection(
+                "results", rows, ["target", "killed", "reaped", "landed", "commits", "procs"]
+            )
         )
 
     dry = bool(d.get("dry_run"))
+    _report_processes(d["results"], dry)
     # A refused worker is still standing, so nothing happened to its work — saying it
     # "went down unlanded" is the same false alarm this command exists to stop.
     gone = [r for r in d["results"] if dry or r.get("reaped") == "removed"]

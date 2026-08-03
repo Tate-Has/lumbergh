@@ -1,5 +1,8 @@
 import importlib
+import os
 import subprocess
+import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -266,7 +269,7 @@ def test_reap_readiness_answers_without_touching_the_worktree(tmp_path):
 
     readiness = worktrees.reap_readiness(workers["issue-749"])
 
-    assert readiness == {"landed": True, "commits": 1, "blocker": None}
+    assert readiness == {"landed": True, "commits": 1, "blocker": None, "processes": []}
     assert workers["issue-749"].exists()
 
 
@@ -691,3 +694,67 @@ def test_create_threads_target_and_run(tmp_path, monkeypatch):
     entry = worktrees.get_entry(Path(created["path"]))
     assert entry["target"] == "port:fleet-644"
     assert entry["run"] == "batch-9"
+
+
+def _spawn_orphan_in(cwd: Path, pidfile: Path) -> int:
+    """A leftover the way workers really leave one: reparented to init, still holding
+    the worktree as its cwd long after the window that started it is gone."""
+    script = (
+        f"import os, time; open({str(pidfile)!r}, 'w').write(str(os.getpid())); time.sleep(300)"
+    )
+    subprocess.run(["setsid", "--fork", sys.executable, "-c", script], cwd=str(cwd), check=True)
+    for _ in range(200):
+        if pidfile.exists() and pidfile.read_text():
+            return int(pidfile.read_text())
+        time.sleep(0.02)
+    raise AssertionError("orphan never reported its pid")
+
+
+def _pid_alive(pid: int) -> bool:
+    return Path(f"/proc/{pid}").exists()
+
+
+def _wait_gone(pid: int, timeout: float = 5.0) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if not _pid_alive(pid):
+            return True
+        time.sleep(0.05)
+    return False
+
+
+@pytest.mark.usefixtures("worktrees_db")
+def test_reap_kills_processes_the_worker_left_running_in_the_worktree(tmp_path):
+    """A test server the worker started outlives its own worktree otherwise: the binary
+    keeps a port and a shared-DB connection while its tree is gone from disk."""
+    repo = _repo_with_origin(tmp_path)
+    wt = tmp_path / "wt"
+    _git(repo, "worktree", "add", "-q", "-b", "worker", str(wt), "master")
+    server = _spawn_orphan_in(wt, tmp_path / "server.pid")
+
+    try:
+        result = worktrees.reap(wt, force=True, rm_branch=True)
+
+        assert result.get("status") == "removed", result
+        assert _wait_gone(server)
+        assert [p["pid"] for p in result.get("processes_killed", [])] == [server]
+    finally:
+        if _pid_alive(server):
+            os.kill(server, 9)
+
+
+@pytest.mark.usefixtures("worktrees_db")
+def test_reap_readiness_reports_leftover_processes_without_killing_them(tmp_path):
+    """`--dry-run` has to show what a real teardown would kill — a silent kill is its own trap."""
+    repo = _repo_with_origin(tmp_path)
+    wt = tmp_path / "wt"
+    _git(repo, "worktree", "add", "-q", "-b", "worker", str(wt), "master")
+    server = _spawn_orphan_in(wt, tmp_path / "server.pid")
+
+    try:
+        readiness = worktrees.reap_readiness(wt)
+
+        assert [p["pid"] for p in readiness["processes"]] == [server]
+        assert _pid_alive(server)
+    finally:
+        os.kill(server, 9)

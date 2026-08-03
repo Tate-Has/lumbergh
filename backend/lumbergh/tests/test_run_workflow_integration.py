@@ -183,7 +183,7 @@ def test_teardown_dry_run_reports_the_verdict_without_touching_anything(monkeypa
     monkeypatch.setattr("lumbergh.routers.bill.run_members", lambda _run: members)
     monkeypatch.setattr(
         "lumbergh.worktrees.reap_readiness",
-        lambda _p: {"landed": True, "commits": 2, "blocker": None},
+        lambda _p, **_kw: {"landed": True, "commits": 2, "blocker": None, "processes": []},
     )
 
     def _no_destruction(*_a, **_k):
@@ -203,6 +203,7 @@ def test_teardown_dry_run_reports_the_verdict_without_touching_anything(monkeypa
             "reaped": "dry-run",
             "landed": True,
             "commits": 2,
+            "processes": [],
         }
     ]
     assert resp["refused"] == []

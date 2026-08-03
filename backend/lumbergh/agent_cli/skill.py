@@ -79,7 +79,10 @@ one per task, so reach for these when adopting or cleaning up.
   `--force`. Landed-ness is patch identity against the base branch, not push state: work
   that landed by rebase or cherry-pick counts, and so does a batch the overseer landed onto
   the local base but has not pushed — which is the normal end state under `commit` delivery.
-  A refusal after a green batch is therefore a real finding, not noise.
+  A refusal after a green batch is therefore a real finding, not noise. On a real reap it
+  also kills anything still running inside the worktree — a test server left up would
+  otherwise outlive its own tree, holding a port and a database connection — and names
+  every process it killed.
 - `lb worktree deps <path> [--base <ref>]` — does this worktree's gate test what its code
   declares? Exits non-zero when it changed a dependency manifest while `.venv`/
   `node_modules` still points at the shared checkout, which makes lint and tests pass

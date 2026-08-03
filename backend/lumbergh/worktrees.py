@@ -31,6 +31,7 @@ from lumbergh.git_utils import (
 from lumbergh.git_utils import (
     remove_worktree as _git_remove_worktree,
 )
+from lumbergh.proc_utils import kill_processes_under, processes_under
 from lumbergh.providers import DEFAULT_PROVIDER
 
 if TYPE_CHECKING:
@@ -413,7 +414,7 @@ REAP_BLOCKERS = {
 }
 
 
-def reap_readiness(worktree: Path) -> dict:
+def reap_readiness(worktree: Path, *, caller_pid: int | None = None) -> dict:
     """What reaping this worktree would cost, computed without touching it — the whole
     verdict `lb teardown --dry-run` reports and the one `reap` decides on.
 
@@ -423,7 +424,7 @@ def reap_readiness(worktree: Path) -> dict:
     """
     if not worktree.exists():
         # Nothing on disk left to lose; reaping only converges the registry.
-        return {"landed": None, "commits": None, "blocker": None}
+        return {"landed": None, "commits": None, "blocker": None, "processes": []}
     entry = get_entry(worktree)
     state = head_landed_state(worktree, entry.get("base_branch") if entry else None)
     if get_porcelain_status(worktree):
@@ -435,15 +436,28 @@ def reap_readiness(worktree: Path) -> dict:
     else:
         # Landed, or a scout that committed nothing — either way nothing is lost.
         blocker = None
-    return {"landed": state["landed"], "commits": state["commits"], "blocker": blocker}
+    return {
+        "landed": state["landed"],
+        "commits": state["commits"],
+        "blocker": blocker,
+        # Reported, never a blocker: leftovers are the reaper's to clean up, not a
+        # reason to leave the worktree standing.
+        "processes": processes_under(worktree, protect=_protected(caller_pid)),
+    }
 
 
-def reap(worktree: Path, *, force: bool = False, rm_branch: bool = False) -> dict:
+def _protected(caller_pid: int | None) -> tuple[int, ...]:
+    return (caller_pid,) if caller_pid else ()
+
+
+def reap(
+    worktree: Path, *, force: bool = False, rm_branch: bool = False, caller_pid: int | None = None
+) -> dict:
     # Answer "did this work land?" up front and report it on every path: a forced reap
     # still owes the caller that flag, because a torn-down-but-unlanded worker is the
     # one whose tracking issue has to go back on the board (nothing here knows or
     # cares what a board is — it only exposes the fact).
-    readiness = reap_readiness(worktree)
+    readiness = reap_readiness(worktree, caller_pid=caller_pid)
     landed, commits = readiness["landed"], readiness["commits"]
     if not force and readiness["blocker"]:
         return {
@@ -455,6 +469,10 @@ def reap(worktree: Path, *, force: bool = False, rm_branch: bool = False) -> dic
     entry = get_entry(worktree)
     parent = Path(entry["parent_repo"]) if entry else parent_repo_of(worktree)
     branch = entry.get("branch") if entry else None
+    # Anything the worker left running here (a test server, most often) outlives the
+    # tree otherwise: still holding its port and its shared-DB connection, running
+    # code that no longer exists on disk. Kill it before the tree goes, and say so.
+    processes_killed = kill_processes_under(worktree, protect=_protected(caller_pid))
     result = _git_remove_worktree(parent, worktree, force=force)
     if "error" in result:
         # The one benign failure is "nothing left to remove": the worktree — and
@@ -468,16 +486,23 @@ def reap(worktree: Path, *, force: bool = False, rm_branch: bool = False) -> dic
                 "path": str(worktree),
                 "landed": landed,
                 "commits": commits,
+                "processes_killed": processes_killed,
                 "note": "already absent",
             }
-        return result
+        return {**result, "processes_killed": processes_killed}
     remove_entry(worktree)
     if rm_branch and branch:
         try:
             get_repo(parent).git.branch("-D", branch)
         except GitCommandError:
             pass
-    return {"status": "removed", "path": str(worktree), "landed": landed, "commits": commits}
+    return {
+        "status": "removed",
+        "path": str(worktree),
+        "landed": landed,
+        "commits": commits,
+        "processes_killed": processes_killed,
+    }
 
 
 def parent_repo_of(worktree: Path) -> Path:

@@ -1,6 +1,7 @@
 """`lb worktree` — first-class worktree lifecycle over the REST surface."""
 
 import json
+import os
 import re
 
 from lumbergh.agent_cli.main import _emit, _err, _request
@@ -128,6 +129,7 @@ def _reap(flags, positional) -> int:
         "path": positional[0],
         "force": "--force" in flags,
         "rm_branch": "--rm-branch" in flags,
+        "caller_pid": os.getpid(),
     }
     d = _request("POST", "/api/worktrees/reap", json=body).json()
     if d.get("error"):
@@ -147,6 +149,12 @@ def _reap(flags, positional) -> int:
             ]
         )
     )
+    for proc in d.get("processes_killed") or []:
+        cmd = proc["cmd"]
+        _emit(
+            f"killed ({proc.get('signal', 'SIGTERM')}): "
+            f"{proc['pid']} {cmd[:100]}{'…' * (len(cmd) > 100)}"
+        )
     return 0
 
 

@@ -1,3 +1,5 @@
+import os
+
 from lumbergh.agent_cli import teardown as teardown_cli
 
 
@@ -26,7 +28,13 @@ def test_teardown_posts_run_and_force(monkeypatch):
     monkeypatch.setattr(teardown_cli, "_request", fake_request)
     rc = teardown_cli.run({"--run": "r", "--force": True})
     assert rc == 0
-    assert captured["json"] == {"run": "r", "force": True, "dry_run": False}
+    assert {k: v for k, v in captured["json"].items() if k != "caller_pid"} == {
+        "run": "r",
+        "force": True,
+        "dry_run": False,
+    }
+    # The reaper must spare whatever asked for the teardown, so it has to be told.
+    assert captured["json"]["caller_pid"] == os.getpid()
 
 
 def test_teardown_posts_dry_run(monkeypatch, capsys):
@@ -49,7 +57,11 @@ def test_teardown_posts_dry_run(monkeypatch, capsys):
     rc = teardown_cli.run({"--run": "r", "--dry-run": True})
 
     assert rc == 0
-    assert captured["json"] == {"run": "r", "force": False, "dry_run": True}
+    assert {k: v for k, v in captured["json"].items() if k != "caller_pid"} == {
+        "run": "r",
+        "force": False,
+        "dry_run": True,
+    }
     assert "dry run" in capsys.readouterr().out
 
 
@@ -216,3 +228,71 @@ def test_teardown_refusal_does_not_tell_a_commit_mode_worker_to_push(capsys, mon
     assert rc == 0
     assert "push" not in out
     assert "lb land" in out
+
+
+def test_teardown_names_every_process_it_killed(monkeypatch, capsys):
+    """A leftover server dies quietly otherwise, and the operator learns what teardown
+    took only when something they were using stops answering."""
+    monkeypatch.setattr(
+        teardown_cli,
+        "_request",
+        lambda _m, _p, **_kw: _Resp(
+            {
+                "run": "r",
+                "results": [
+                    {
+                        "target": "r:issue-784",
+                        "killed": True,
+                        "reaped": "removed",
+                        "landed": True,
+                        "commits": 1,
+                        "processes": [
+                            {
+                                "pid": 1379330,
+                                "cmd": "granian --port 40159 app.main:app",
+                                "signal": "SIGKILL",
+                            }
+                        ],
+                    }
+                ],
+                "refused": [],
+            }
+        ),
+    )
+
+    rc = teardown_cli.run({"--run": "r"})
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "procs" in out
+    assert "killed (SIGKILL): r:issue-784 — 1379330 granian --port 40159 app.main:app" in out
+
+
+def test_teardown_dry_run_says_what_it_would_kill(monkeypatch, capsys):
+    monkeypatch.setattr(
+        teardown_cli,
+        "_request",
+        lambda _m, _p, **_kw: _Resp(
+            {
+                "run": "r",
+                "dry_run": True,
+                "results": [
+                    {
+                        "target": "r:issue-784",
+                        "killed": False,
+                        "reaped": "dry-run",
+                        "landed": True,
+                        "commits": 1,
+                        "processes": [{"pid": 1379330, "cmd": "granian app.main:app"}],
+                    }
+                ],
+                "refused": [],
+            }
+        ),
+    )
+
+    rc = teardown_cli.run({"--run": "r", "--dry-run": True})
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "would kill: r:issue-784 — 1379330 granian app.main:app" in out

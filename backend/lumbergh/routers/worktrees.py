@@ -39,6 +39,9 @@ class ReapBody(BaseModel):
     path: str
     force: bool = False
     rm_branch: bool = False
+    # The client's pid, so the sweep for leftover processes spares the shell that
+    # asked for the reap — `lb worktree reap .` is run from inside the worktree.
+    caller_pid: int | None = None
 
 
 class AdoptBody(BaseModel):
@@ -79,7 +82,9 @@ def reap(body: ReapBody):
     # worker must be left running so nothing is lost.
     entry = worktrees.get_entry(path) or {}
     worker = entry.get("target")
-    result = worktrees.reap(path, force=body.force, rm_branch=body.rm_branch)
+    result = worktrees.reap(
+        path, force=body.force, rm_branch=body.rm_branch, caller_pid=body.caller_pid
+    )
     if result.get("status") == "removed" and worker:
         if parse_target(worker)[1] is not None:
             kill_tmux_window(worker)
