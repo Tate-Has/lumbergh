@@ -13,8 +13,8 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from lumbergh import babysit, bill_watch, fleet, land, session_attention, worktrees
 from lumbergh import bill as bill_bundle
-from lumbergh import bill_watch, fleet, land, session_attention, worktrees
 from lumbergh.activity.resolve import resolve_adapter
 from lumbergh.activity.resolve import session_meta as _session_meta
 from lumbergh.briefs import enumerate_briefs
@@ -194,6 +194,7 @@ def _fleet_rows(origin: str | None, with_outcome: bool = False) -> list[dict]:
         live_targets=set(idle_monitor.live_targets()),
         context_of=idle_monitor.context_used,
         overseer_exclude={BILL_SESSION},
+        babysat_unresolved=set(babysit.unresolved(set(idle_monitor.live_targets()))),
     )
     # Stamped here, inside the executor, rather than read per row on the event loop: the
     # supervise long poll asks for direct reports every 1.5s and the registries are files.

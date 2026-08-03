@@ -95,7 +95,8 @@ def test_prompt_sends(client, monkeypatch):
     monkeypatch.setattr(agent, "send_text", lambda n, t: sent.update({n: t}) or True)
     r = client.post("/api/agent/sessions/s1/prompt", json={"text": "go"}).json()
     assert r["sent"] == "go"
-    assert sent["s1"] == "go"
+    # Typed into the session's agent window, not whichever window it has selected.
+    assert sent["s1:{start}"] == "go"
 
 
 def test_a_prompt_from_bill_puts_the_session_under_his_watch(client, monkeypatch, tmp_path):

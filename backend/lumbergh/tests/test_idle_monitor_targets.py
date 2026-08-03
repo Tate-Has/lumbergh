@@ -6,9 +6,9 @@ from lumbergh.idle_monitor import IdleMonitor
 
 def test_two_agent_windows_get_independent_state(monkeypatch):
     monitor = IdleMonitor()
-    discovered = ["port:fleet-643", "port:fleet-644"]
+    refs = {"port:fleet-643": "@1", "port:fleet-644": "@2"}
 
-    monkeypatch.setattr("lumbergh.idle_monitor.discover_live_targets", lambda: discovered)
+    monkeypatch.setattr("lumbergh.idle_monitor.discover_target_refs", lambda: refs)
 
     async def fake_check(target):
         monitor._record_state_change(
@@ -26,9 +26,9 @@ def test_two_agent_windows_get_independent_state(monkeypatch):
 
 def test_check_all_sessions_caches_discovered_targets(monkeypatch):
     monitor = IdleMonitor()
-    discovered = ["port:fleet-643", "port:fleet-644"]
+    refs = {"port:fleet-643": "@1", "port:fleet-644": "@2"}
 
-    monkeypatch.setattr("lumbergh.idle_monitor.discover_live_targets", lambda: discovered)
+    monkeypatch.setattr("lumbergh.idle_monitor.discover_target_refs", lambda: refs)
 
     async def fake_check(_target):
         return None
@@ -39,4 +39,4 @@ def test_check_all_sessions_caches_discovered_targets(monkeypatch):
 
     asyncio.run(monitor._check_all_sessions())
 
-    assert monitor.live_targets() == discovered
+    assert monitor.live_targets() == list(refs)

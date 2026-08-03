@@ -106,6 +106,16 @@ def babysat_sessions() -> set[str]:
     return set(_load().keys())
 
 
+def unresolved(live_targets: set[str]) -> list[str]:
+    """Babysat names with no live agent behind them.
+
+    A babysit is a standing instruction, so this is a real fault, not housekeeping: there
+    is nothing to drive and nothing that can fail loudly. The loop just goes quiet, which
+    reads exactly like a calm fleet — see ``idle_monitor._check_babysit_health``.
+    """
+    return sorted(babysat_sessions() - live_targets)
+
+
 def list_all() -> list[dict]:
     return [{"session": name, **entry} for name, entry in _load().items()]
 
@@ -163,13 +173,17 @@ async def _send_refresh(session: str, config: dict) -> None:
     import asyncio
 
     from lumbergh import session_attention
+    from lumbergh.idle_monitor import tmux_ref
     from lumbergh.tmux_pty import send_text
 
     loop = asyncio.get_event_loop()
+    # The session's agent window, never the bare name: a bare tmux ref types into whichever
+    # window the user has selected, and these keystrokes are a `/clear`.
+    ref = tmux_ref(session)
     for i, command in enumerate(config["on_refresh"]):
         if i:
             await asyncio.sleep(REFRESH_GAP_SECONDS)
-        await loop.run_in_executor(None, send_text, session, command)
+        await loop.run_in_executor(None, send_text, ref, command)
     # Clear the attention overlay so the same idle doesn't also nudge Bill in the window
     # before the session goes back to working.
     session_attention.clear_unseen(session)

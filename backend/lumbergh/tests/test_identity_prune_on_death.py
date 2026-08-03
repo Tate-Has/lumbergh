@@ -4,7 +4,7 @@ import lumbergh.idle_monitor as im
 async def test_check_all_sessions_prunes_identity(monkeypatch):
     monitor = im.IdleMonitor()
     monitor._fingerprints = {"dead": "x"}
-    monkeypatch.setattr(im, "discover_live_targets", lambda: ["alive"])
+    monkeypatch.setattr(im, "discover_target_refs", lambda: {"alive": "@1"})
     pruned = {}
     monkeypatch.setattr(
         im.session_identity, "prune", lambda live: pruned.setdefault("live", set(live))
@@ -25,7 +25,7 @@ async def test_prune_keeps_full_window_targets(monkeypatch):
     which is what forced outcome reads onto the fragile cwd-guess fallback.
     """
     monitor = im.IdleMonitor()
-    monkeypatch.setattr(im, "discover_live_targets", lambda: ["batch:w1", "batch:w2"])
+    monkeypatch.setattr(im, "discover_target_refs", lambda: {"batch:w1": "@1", "batch:w2": "@2"})
     monkeypatch.setattr(im, "_live_session_names", lambda: ["batch"])
     pruned = {}
     monkeypatch.setattr(

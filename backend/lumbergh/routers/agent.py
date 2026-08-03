@@ -17,7 +17,7 @@ from lumbergh import session_attention
 from lumbergh.activity.resolve import resolve_adapter
 from lumbergh.activity.resolve import session_meta as _meta
 from lumbergh.detect import regions
-from lumbergh.idle_monitor import idle_monitor
+from lumbergh.idle_monitor import idle_monitor, tmux_ref
 from lumbergh.tmux_pty import capture_pane_text, send_text
 
 router = APIRouter(prefix="/api/agent")
@@ -115,16 +115,16 @@ def read(name: str, source: str = "transcript", last: int = 10, full: bool = Fal
                     for e in recent
                 ],
             }
-        text = capture_pane_text(name)
+        text = capture_pane_text(tmux_ref(name))
         return {
             "source": "pane",
             "pane": _trunc(text, None if full else 1500),
             "note": "no transcript for this session; showing the pane",
         }
     if source == "detection":
-        text = "\n".join(regions.extract("recent", capture_pane_text(name), ""))
+        text = "\n".join(regions.extract("recent", capture_pane_text(tmux_ref(name)), ""))
         return {"source": "detection", "pane": text}
-    text = capture_pane_text(name)
+    text = capture_pane_text(tmux_ref(name))
     return {"source": "pane", "pane": _trunc(text, None if full else 1500)}
 
 
@@ -185,7 +185,7 @@ async def wait_output(
     deadline = time.monotonic() + timeout
     start = time.monotonic()
     while True:
-        text = capture_pane_text(name, lines=lines)
+        text = capture_pane_text(tmux_ref(name), lines=lines)
         if _output_matches(text, match, pattern):
             return {"session": name, "matched": True, "waited": round(time.monotonic() - start, 1)}
         if time.monotonic() >= deadline:
@@ -209,7 +209,7 @@ async def prompt(name: str, body: PromptBody):
 
         engage_overseer(name)
     before = _state(name)
-    if not send_text(name, body.text):
+    if not send_text(tmux_ref(name), body.text):
         raise HTTPException(status_code=500, detail={"error": f"failed to send to {name}"})
     changed = False
     if body.wait:

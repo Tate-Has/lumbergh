@@ -5,6 +5,10 @@ import pytest
 
 from lumbergh import constants
 
+# The refresh ritual must land in the session's *agent* window. A bare `port` would type
+# `/clear` into whichever window the user has selected — see targets.py.
+PORT_REF = "port:{start}"
+
 
 @pytest.fixture
 def babysit(tmp_path, monkeypatch):
@@ -123,7 +127,7 @@ class TestOnIdle:
         sent, cleared = self._wire(babysit, monkeypatch, "⟳ REFRESH-READY")
         action = asyncio.run(babysit.on_idle("port"))
         assert action == babysit.REFRESH
-        assert sent == [("port", "/clear"), ("port", "/fleet-start")]
+        assert sent == [(PORT_REF, "/clear"), (PORT_REF, "/fleet-start")]
         assert cleared == ["port"]
 
     def test_empty_stops_the_babysit(self, babysit, monkeypatch):
@@ -173,7 +177,7 @@ class TestRefresh:
         babysit.start("port", None, "t")
         sent, cleared = self._wire(babysit, monkeypatch)
         assert asyncio.run(babysit.refresh("port")) == (babysit.REFRESHED, [])
-        assert sent == [("port", "/clear"), ("port", "/fleet-start")]
+        assert sent == [(PORT_REF, "/clear"), (PORT_REF, "/fleet-start")]
         assert cleared == ["port"]
 
     def test_unbabysat_session_refuses(self, babysit, monkeypatch):
@@ -223,4 +227,4 @@ class TestRefreshHoldsWhileWorkersRun:
         babysit.start("port", None, "t")
         sent = self._wire(babysit, monkeypatch, [])
         assert asyncio.run(babysit.refresh("port")) == (babysit.REFRESHED, [])
-        assert sent == [("port", "/clear"), ("port", "/fleet-start")]
+        assert sent == [(PORT_REF, "/clear"), (PORT_REF, "/fleet-start")]

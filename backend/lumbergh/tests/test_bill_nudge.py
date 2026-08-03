@@ -39,7 +39,7 @@ def test_should_nudge(bill_state, rows, expected):
 def test_nudge_sends_one_short_line():
     sent = {}
     assert bill_nudge.nudge(send=lambda name, text: sent.update(name=name, text=text) or True)
-    assert sent["name"] == "bill"
+    assert sent["name"] == "bill:{start}"  # his agent window, not his selected one
     assert "lb fleet" in sent["text"]
     assert "\n" not in sent["text"]
 
@@ -49,7 +49,7 @@ def test_heartbeat_nudge_sends_one_short_line():
     assert bill_nudge.heartbeat_nudge(
         send=lambda name, text: sent.update(name=name, text=text) or True
     )
-    assert sent["name"] == "bill"
+    assert sent["name"] == "bill:{start}"  # his agent window, not his selected one
     assert "lb fleet" in sent["text"]
     assert "\n" not in sent["text"]
 
@@ -66,7 +66,7 @@ def test_advance_nudge_names_the_session_and_the_refresh_verb():
     assert bill_nudge.advance_nudge(
         "port", send=lambda name, text: sent.update(name=name, text=text) or True
     )
-    assert sent["name"] == "bill"
+    assert sent["name"] == "bill:{start}"  # his agent window, not his selected one
     assert "port" in sent["text"]
     assert "lb babysit --refresh" in sent["text"]
     assert "\n" not in sent["text"]

@@ -26,6 +26,14 @@ def _no_real_skill_writes(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_real_babysits(monkeypatch):
+    """`_fleet_rows` reports any babysit with no live agent, and it reads the real registry —
+    so a babysit the developer happens to have running would otherwise inject a row into
+    every fleet assertion here. Tests that want one say so themselves."""
+    monkeypatch.setattr(bill.babysit, "unresolved", lambda _targets: [])
+
+
+@pytest.fixture(autouse=True)
 def _reset_bill_acks():
     """Bill's private ack sets are module globals; clear them so one test's wake can't
     silence the next test's overseer."""

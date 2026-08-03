@@ -35,38 +35,39 @@ def _wait_until(predicate, timeout=5.0):
     return predicate()
 
 
-def test_two_window_workers_visible_and_reap_isolated(tmp_path, session_name, fake_agent_bin):
-    # Three windows, not two: with only two, killing one leaves a single
-    # remaining agent window, and targets.select_targets() deliberately
-    # collapses a lone-window session back to its bare session name (see
-    # targets.py's module docstring). That collapse is correct behavior but
-    # would masquerade as a false negative here. A third sibling keeps the
-    # session multi-window after the kill, so the assertions below exercise
-    # window-level reap isolation on its own.
+def test_two_window_workers_visible_and_reap_isolated(
+    tmp_path, session_name, fake_agent_bin, monkeypatch
+):
+    # Two windows is enough now: a registered worker keeps its own `session:window`
+    # target however many siblings it has. Discovery used to collapse a lone remaining
+    # agent window back to the bare session name, which forced a third sibling in here
+    # purely to keep that collapse from masquerading as a reap failure.
     from lumbergh.idle_monitor import discover_live_targets
     from lumbergh.tmux_pty import create_tmux_window, kill_tmux_window
+
+    workers = {f"{session_name}:fleet-643", f"{session_name}:fleet-644"}
+    monkeypatch.setattr(
+        "lumbergh.idle_monitor._registered_worker_targets",
+        lambda: workers,
+    )
 
     launch = f"exec {fake_agent_bin} 300"
     create_tmux_window(session_name, "fleet-643", tmp_path, launch)
     create_tmux_window(session_name, "fleet-644", tmp_path, launch)
-    create_tmux_window(session_name, "fleet-645", tmp_path, launch)
 
-    def all_three_visible():
+    def both_visible():
         targets = discover_live_targets()
-        return all(
-            f"{session_name}:{w}" in targets for w in ("fleet-643", "fleet-644", "fleet-645")
-        )
+        return all(f"{session_name}:{w}" in targets for w in ("fleet-643", "fleet-644"))
 
-    assert _wait_until(all_three_visible)
+    assert _wait_until(both_visible)
 
     assert kill_tmux_window(f"{session_name}:fleet-644") is True
 
-    def reaped_and_siblings_survive():
+    def reaped_and_sibling_survives():
         remaining = discover_live_targets()
         return (
             f"{session_name}:fleet-643" in remaining
-            and f"{session_name}:fleet-645" in remaining
             and f"{session_name}:fleet-644" not in remaining
         )
 
-    assert _wait_until(reaped_and_siblings_survive)
+    assert _wait_until(reaped_and_sibling_survives)

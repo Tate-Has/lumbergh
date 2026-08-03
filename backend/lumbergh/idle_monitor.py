@@ -36,7 +36,7 @@ from lumbergh.db_utils import (
 )
 from lumbergh.idle_detector import SessionState, classify_overrides
 from lumbergh.spawn_delivery import context_used_k
-from lumbergh.targets import parse_target
+from lumbergh.targets import format_target, parse_target
 from lumbergh.tmux_pty import (
     IS_WINDOWS,
     capture_pane_content,
@@ -84,15 +84,49 @@ def _live_session_names() -> list[str]:
         return []
 
 
-def discover_live_targets() -> list[str]:
-    from lumbergh.targets import discover_targets
+def _registered_worker_targets() -> set[str]:
+    """Targets the worktree registry claims as fleet work — the only windows that are
+    supervised in their own right rather than as part of the session that holds them."""
+    from lumbergh import worktrees
+
+    try:
+        return {r["target"] for r in worktrees.all_entries() if r.get("target")}
+    except Exception:
+        logger.warning("could not read worker targets; treating every window as its session's")
+        return set()
+
+
+def discover_target_refs() -> dict[str, str]:
+    """Live target → the tmux window ref that is it. See ``lumbergh.targets``."""
+    from lumbergh.targets import discover_target_refs as _discover
     from lumbergh.tmux_pty import build_pane_commands_lookup, list_session_window_specs
 
-    return discover_targets(
+    return _discover(
         _live_session_names(),
         list_windows=list_session_window_specs,
         pane_commands=build_pane_commands_lookup(),
+        worker_targets=_registered_worker_targets(),
     )
+
+
+def discover_live_targets() -> list[str]:
+    return list(discover_target_refs())
+
+
+def tmux_ref(target: str) -> str:
+    """The tmux ref to hand tmux for ``target`` — never the bare target string.
+
+    A bare session name means "the selected window" to tmux, so passing one to
+    ``capture-pane`` reads whatever the user is looking at, and passing one to
+    ``send-keys`` types into it. Both are wrong: a session's agent is its first window.
+    Discovery's cached window id is exact; ``{start}`` is tmux's own name for the
+    lowest-numbered window and covers a target no pass has seen yet.
+    """
+    cached = idle_monitor.ref_for(target)
+    if cached:
+        return cached
+    session, window = parse_target(target)
+    return format_target(session, window) if window else f"{session}:{{start}}"
 
 
 class IdleMonitor:
@@ -145,6 +179,15 @@ class IdleMonitor:
         # Read off the pane the monitor already captured, so it costs nothing extra.
         self._context_used: dict[str, float | None] = {}
         self._live_targets: list[str] = []
+        # Babysat names found with no live agent on the last pass, so the warning and the
+        # attention overlay fire on the transition rather than every two seconds.
+        self._babysit_broken: set[str] = set()
+        # Broken babysits Bill has already been told about, so a standing fault taps him
+        # once rather than every sweep. Re-arms if the babysit starts resolving again.
+        self._babysit_broken_nudged: set[str] = set()
+        # target -> the tmux window id that *is* it, from the last discovery pass. What
+        # reaches tmux for a read or a keystroke; see the module-level ``tmux_ref``.
+        self._target_refs: dict[str, str] = {}
         # Targets whose agent process went missing but whose terminal is still
         # open — held one poll before being declared exited, so a transient
         # discovery miss can't fire a false "the worker died" wake.
@@ -172,6 +215,10 @@ class IdleMonitor:
 
     def live_targets(self) -> list[str]:
         return list(self._live_targets)
+
+    def ref_for(self, target: str) -> str | None:
+        """The tmux window id discovery bound to ``target``, if it has seen it."""
+        return self._target_refs.get(target)
 
     def _record_state_change(self, session_name: str, state: SessionState) -> None:
         self._states[session_name] = state
@@ -251,12 +298,14 @@ class IdleMonitor:
     async def _check_all_sessions(self) -> None:
         loop = asyncio.get_event_loop()
         try:
-            targets = await loop.run_in_executor(None, discover_live_targets)
+            refs = await loop.run_in_executor(None, discover_target_refs)
         except Exception as e:
             logger.warning(f"Failed to get live sessions: {e}")
             return
 
-        self._live_targets = list(targets)
+        targets = list(refs)
+        self._target_refs = refs
+        self._live_targets = targets
 
         live_session_names = set(await loop.run_in_executor(None, _live_session_names))
         await self._reap_dead_targets(set(targets), live_session_names)
@@ -267,6 +316,8 @@ class IdleMonitor:
         # identity each poll and force outcome reads onto the cwd-guess fallback.
         session_identity.prune(set(targets))
 
+        await self._check_babysit_health(set(targets))
+
         await asyncio.gather(
             *(self._check_session(target) for target in targets),
             return_exceptions=True,
@@ -276,6 +327,33 @@ class IdleMonitor:
             await self._maybe_nudge_bill(loop)
         except Exception:
             logger.debug("bill nudge skipped", exc_info=True)
+
+    async def _check_babysit_health(self, targets: set[str]) -> None:
+        """Surface any babysit that has nothing left to drive.
+
+        Marked as an attention *error* on the babysat name itself, which is what the
+        sessions API hands the dashboard notifier — so it reaches the user's browser
+        whether or not Bill is running. Bill's own tap is a separate, quieter path
+        (``_maybe_nudge_bill``), because the user asked to hear about this directly.
+        """
+        from lumbergh import babysit
+
+        try:
+            broken = babysit.unresolved(targets)
+        except Exception:
+            logger.warning("could not check babysit health", exc_info=True)
+            return
+        for session in broken:
+            if session not in self._babysit_broken:
+                logger.warning("babysat %r has no live agent — nothing is driving it", session)
+            session_attention.mark_attention(session, SessionState.ERROR.value)
+        newly_healthy = self._babysit_broken - set(broken)
+        for session in newly_healthy:
+            session_attention.clear_unseen(session)
+        self._babysit_broken = set(broken)
+        self._babysit_broken_nudged &= self._babysit_broken
+        if broken or newly_healthy:
+            await session_attention.persist()
 
     def _forget_target(self, target: str) -> None:
         self._fingerprints.pop(target, None)
@@ -370,16 +448,11 @@ class IdleMonitor:
         # whole backstop into a silent no-op the day Bill is renamed.
         his = [r for r in rows if r.get("role") != "worker" or r.get("origin") == BILL_ORIGIN]
 
+        if await self._maybe_report_broken_babysit(loop, now):
+            return
+
         if bill_nudge.should_nudge(state, his):
-            if self._bill_nudged:
-                return
-            # Latch from the send's own result. Setting it unconditionally meant a failed
-            # tmux send disarmed the backstop permanently: nothing retries, and Bill never
-            # leaves `idle` because he was never actually woken. `nudge` shells out to tmux
-            # twice, so it goes to the executor like the sweep above.
-            if await loop.run_in_executor(None, bill_nudge.nudge):
-                self._bill_nudged = True
-                self._last_bill_nudge_at = now
+            await self._nudge_edge(loop, now)
             return
 
         # No edge, but a babysat overseer may be stuck idle with no sentinel — ranked below
@@ -397,6 +470,41 @@ class IdleMonitor:
             return
         if await loop.run_in_executor(None, bill_nudge.heartbeat_nudge):
             self._last_bill_nudge_at = now
+
+    async def _nudge_edge(self, loop: asyncio.AbstractEventLoop, now: float) -> None:
+        """The edge tap: a report needs Bill now. Once per idle episode.
+
+        The latch is set from the send's own result. Setting it unconditionally meant a
+        failed tmux send disarmed the backstop permanently: nothing retries, and Bill never
+        leaves ``idle`` because he was never actually woken.
+        """
+        from lumbergh import bill_nudge
+
+        if self._bill_nudged:
+            return
+        if await loop.run_in_executor(None, bill_nudge.nudge):
+            self._bill_nudged = True
+            self._last_bill_nudge_at = now
+
+    async def _maybe_report_broken_babysit(
+        self, loop: asyncio.AbstractEventLoop, now: float
+    ) -> bool:
+        """Tap Bill about a babysit that has nothing behind it. Ranked above the edge nudge.
+
+        The generic wake tells him to run ``lb fleet`` and *handle* it, and there is nothing
+        there to handle — that loop is what burned a night. This one tells him to report it.
+        Latched per fault rather than per idle episode, because the fault stands until the
+        user acts on it. Returns whether a tap was made, so the caller stops here.
+        """
+        from lumbergh import bill_nudge
+
+        untold = sorted(self._babysit_broken - self._babysit_broken_nudged)
+        if not untold:
+            return False
+        if await loop.run_in_executor(None, bill_nudge.broken_babysit_nudge, untold[0]):
+            self._babysit_broken_nudged.add(untold[0])
+            self._last_bill_nudge_at = now
+        return True
 
     async def _maybe_advance_babysat(
         self, loop: asyncio.AbstractEventLoop, now: float, rows: list[dict]
@@ -446,11 +554,12 @@ class IdleMonitor:
     async def _burst_capture(self, session_name: str) -> list[str]:
         """Take BURST_CAPTURES snapshots with short async gaps between them."""
         loop = asyncio.get_event_loop()
+        ref = tmux_ref(session_name)
         captures: list[str] = []
         for i in range(self.BURST_CAPTURES):
             if i > 0:
                 await asyncio.sleep(self.BURST_GAP_SECONDS)
-            content = await loop.run_in_executor(None, capture_pane_content, session_name)
+            content = await loop.run_in_executor(None, capture_pane_content, ref)
             captures.append(content or "")
         return captures
 
@@ -460,7 +569,7 @@ class IdleMonitor:
             return
 
         loop = asyncio.get_event_loop()
-        osc_title = await loop.run_in_executor(None, capture_pane_title, session_name)
+        osc_title = await loop.run_in_executor(None, capture_pane_title, tmux_ref(session_name))
 
         self._context_used[session_name] = context_used_k(_ANSI_PATTERN.sub("", captures[-1]))
 
@@ -548,7 +657,7 @@ class IdleMonitor:
             if provider is None:
                 return
             loop = asyncio.get_event_loop()
-            text = await loop.run_in_executor(None, capture_pane_text, session_name)
+            text = await loop.run_in_executor(None, capture_pane_text, tmux_ref(session_name))
             if not text or not text.strip():
                 return
             verdict = await question_detector.detect(text, provider)

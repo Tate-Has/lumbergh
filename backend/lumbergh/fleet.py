@@ -59,6 +59,7 @@ def snapshot(
     live_targets: set[str] | None = None,
     overseer_exclude: set[str] | None = None,
     context_of: Callable[[str], float | None] | None = None,
+    babysat_unresolved: set[str] | None = None,
 ) -> list[dict]:
     dead_acked = dead_acked or set()
     overseer_exclude = overseer_exclude or set()
@@ -133,7 +134,41 @@ def snapshot(
     for w in workers:
         w["parent"] = overseer_by_path.get(_resolved(w["repo_path"]))
 
+    named = {o["task"] for o in overseers}
+    overseers.extend(
+        _broken_babysit_row(session)
+        for session in sorted(babysat_unresolved or set())
+        if session not in named
+    )
+
     return _as_tree(overseers, workers)
+
+
+def _broken_babysit_row(session: str) -> dict:
+    """A babysit with nothing behind it, as a row that wakes its watcher.
+
+    ``error`` rather than a state of its own: the whole point is to reach every path that
+    already means "this needs a human" — ``needs_attention``, ``lb fleet --wait``, the edge
+    nudge — instead of adding a state each of them would have to learn.
+    """
+    return {
+        "task": session,
+        "repo": None,
+        "repo_path": None,
+        "branch": None,
+        "session": None,
+        "target": None,
+        "run": None,
+        "kind": None,
+        "origin": None,
+        "role": "overseer",
+        "parent": None,
+        "state": "error",
+        "since": None,
+        "unseen": True,
+        "path": None,
+        "problem": "babysat but has no live agent — nothing is driving it",
+    }
 
 
 def _never_started(
