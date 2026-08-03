@@ -547,3 +547,76 @@ def test_workers_in_flight_is_the_crew_that_still_needs_its_overseer():
     assert fleet.workers_in_flight(rows, "port") == ["issue-792", "issue-770", "issue-750"]
     assert fleet.workers_in_flight(rows, "aio") == ["aio-12"]
     assert fleet.workers_in_flight(rows, "hack-the-body") == []
+
+
+def _one_worker(tmp_path, monkeypatch, **entry):
+    """A single live worker row in the registry, ready for a snapshot."""
+    wt = tmp_path / "wt"
+    wt.mkdir(exist_ok=True)
+    worktrees.record_worktree(
+        wt, tmp_path / "repo", "issue-848", "t", session="issue-848", kind="ship", **entry
+    )
+    monkeypatch.setattr(
+        worktrees,
+        "reconcile",
+        _fake_reconcile(
+            {
+                str((tmp_path / "repo").resolve()): [
+                    {
+                        "path": str(wt.resolve()),
+                        "repo": "repo",
+                        "branch": "issue-848",
+                        "session": "issue-848",
+                        "agent": "claude-code",
+                        "state": "active",
+                    }
+                ]
+            }
+        ),
+    )
+    return wt
+
+
+def _snapshot(context, monkeypatch, untouched=True):
+    monkeypatch.setattr(worktrees, "head_untouched", lambda _p: untouched)
+    return fleet.snapshot(
+        {"issue-848": {}},
+        state_of=lambda n: "working",  # noqa: ARG005
+        since_of=lambda n: 5.0,  # noqa: ARG005
+        unseen_of=lambda n: False,  # noqa: ARG005
+        context_of=lambda n: context,  # noqa: ARG005
+    )
+
+
+@pytest.mark.usefixtures("registry")
+def test_a_worker_that_never_took_its_brief_reads_as_undelivered(tmp_path, monkeypatch):
+    """#848: 0k context on an untouched HEAD is not `working`, and the fleet table is
+    what the overseer trusts."""
+    _one_worker(tmp_path, monkeypatch, base_sha="abc123")
+
+    row = _snapshot(0.0, monkeypatch)[0]
+
+    assert row["state"] == "undelivered"
+    assert fleet.needs_attention(row)
+
+
+@pytest.mark.usefixtures("registry")
+def test_a_worker_that_has_taken_a_turn_is_left_alone(tmp_path, monkeypatch):
+    _one_worker(tmp_path, monkeypatch, base_sha="abc123")
+
+    assert _snapshot(41.0, monkeypatch)[0]["state"] == "working"
+
+
+@pytest.mark.usefixtures("registry")
+def test_a_worker_that_has_committed_is_left_alone(tmp_path, monkeypatch):
+    # HEAD moved, so whatever the pane reports, this worker did something.
+    _one_worker(tmp_path, monkeypatch, base_sha="abc123")
+
+    assert _snapshot(0.0, monkeypatch, untouched=False)[0]["state"] == "working"
+
+
+@pytest.mark.usefixtures("registry")
+def test_a_pane_with_no_context_readout_is_never_called_undelivered(tmp_path, monkeypatch):
+    _one_worker(tmp_path, monkeypatch, base_sha="abc123")
+
+    assert _snapshot(None, monkeypatch)[0]["state"] == "working"

@@ -31,12 +31,20 @@ def _resolved(path: str | None) -> str | None:
 # error). These wake him on their state alone — he can never miss one. `dead` is deliberately
 # not here: a dead worker is one he cannot resolve (its session is gone, and `reap` is the
 # user's call), so it surfaces once via `unseen` and then stays quiet — see `needs_attention`.
-ATTENTION_STATES = {"blocked", "error"}
+ATTENTION_STATES = {"blocked", "error", "undelivered"}
+
+# A worker that was stood up but never received its brief: its agent has consumed no
+# context at all and its HEAD has not moved off the commit it was branched at. Quiescence
+# cannot see this — the pane holds the unsubmitted brief and reads as `idle`, or twitches
+# and reads as `working` — so it is judged here, from evidence the pane classifier
+# doesn't have, and named rather than folded into a state that means something else.
+UNDELIVERED = "undelivered"
+_DELIVERY_UNPROVEN_STATES = {"idle", "working"}
 
 # States in which a worker still needs its overseer's context. `working` is the obvious
 # one; `blocked`/`error` count too, because answering them is exactly what that context is
 # for. A delivered (`idle`) worker, or a `dead`/`orphan` row, holds nothing.
-IN_FLIGHT_STATES = {"working", "blocked", "error"}
+IN_FLIGHT_STATES = {"working", "blocked", "error", UNDELIVERED}
 
 _OUTCOME = re.compile(r"^(DELIVERED|FAILED):\s*(.+)$")
 
@@ -50,6 +58,7 @@ def snapshot(
     dead_acked: set[str] | None = None,
     live_targets: set[str] | None = None,
     overseer_exclude: set[str] | None = None,
+    context_of: Callable[[str], float | None] | None = None,
 ) -> list[dict]:
     dead_acked = dead_acked or set()
     overseer_exclude = overseer_exclude or set()
@@ -79,6 +88,8 @@ def snapshot(
             state = state_of(tracked)
             since = since_of(tracked)
             unseen = unseen_of(tracked)
+            if _never_started(state, tracked, row["path"], context_of):
+                state = UNDELIVERED
         else:
             state = "dead" if entry.get("target") else "orphan"
             since = None
@@ -123,6 +134,26 @@ def snapshot(
         w["parent"] = overseer_by_path.get(_resolved(w["repo_path"]))
 
     return _as_tree(overseers, workers)
+
+
+def _never_started(
+    state: str,
+    tracked: str,
+    path: str,
+    context_of: Callable[[str], float | None] | None,
+) -> bool:
+    """Whether this live worker was stood up and never actually took its brief.
+
+    Both halves are required. Zero consumed context alone would flag a worker in the
+    first seconds of its opening turn, before its readout moves; an untouched HEAD alone
+    describes every worker still reading. A pane that reports no context at all (a
+    provider whose TUI doesn't show one) is never accused — the absence of evidence
+    cannot be the evidence.
+    """
+    if context_of is None or state not in _DELIVERY_UNPROVEN_STATES:
+        return False
+    used = context_of(tracked)
+    return used == 0 and worktrees.head_untouched(Path(path))
 
 
 def _overseer_rows(

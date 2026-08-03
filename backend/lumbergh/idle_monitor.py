@@ -35,6 +35,7 @@ from lumbergh.db_utils import (
     session_data_lock,
 )
 from lumbergh.idle_detector import SessionState, classify_overrides
+from lumbergh.spawn_delivery import context_used_k
 from lumbergh.targets import parse_target
 from lumbergh.tmux_pty import (
     IS_WINDOWS,
@@ -139,6 +140,10 @@ class IdleMonitor:
         # timestamp re-arms on the session's *next* idle without our having to observe
         # the working transition (the sweep only runs while Bill himself is idle).
         self._babysit_nudged_since: dict[str, float] = {}
+        # Context the agent reports having consumed, per target — the one signal that
+        # separates a worker still holding an unsubmitted brief from one merely thinking.
+        # Read off the pane the monitor already captured, so it costs nothing extra.
+        self._context_used: dict[str, float | None] = {}
         self._live_targets: list[str] = []
         # Targets whose agent process went missing but whose terminal is still
         # open — held one poll before being declared exited, so a transient
@@ -160,6 +165,10 @@ class IdleMonitor:
 
     def get_state(self, session_name: str) -> SessionState:
         return self._states.get(session_name, SessionState.UNKNOWN)
+
+    def context_used(self, session_name: str) -> float | None:
+        """Thousands of context tokens the agent last reported, or None if it doesn't say."""
+        return self._context_used.get(session_name)
 
     def live_targets(self) -> list[str]:
         return list(self._live_targets)
@@ -277,6 +286,7 @@ class IdleMonitor:
         self._question_checked.discard(target)
         self._question_inflight.discard(target)
         self._exit_pending.discard(target)
+        self._context_used.pop(target, None)
         self._babysit_nudged_since.pop(target, None)
 
     async def _reap_dead_targets(self, targets: set[str], live_sessions: set[str]) -> None:
@@ -451,6 +461,8 @@ class IdleMonitor:
 
         loop = asyncio.get_event_loop()
         osc_title = await loop.run_in_executor(None, capture_pane_title, session_name)
+
+        self._context_used[session_name] = context_used_k(_ANSI_PATTERN.sub("", captures[-1]))
 
         state = self._classify_burst(session_name, captures, time.time(), osc_title)
 

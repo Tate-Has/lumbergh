@@ -288,6 +288,8 @@ def record_worktree(
     run: str | None = None,
     base_branch: str | None = None,
     base_sha: str | None = None,
+    brief_path: str | None = None,
+    delivery: str | None = None,
 ) -> dict:
     resolved_target = target if target is not None else session
     row = {
@@ -308,10 +310,28 @@ def record_worktree(
         # anything at all?" is one `rev-parse` rather than a branch comparison
         # against a ref that has since moved.
         "base_sha": base_sha,
+        # The brief this worker was handed and the mode it was handed under, so a
+        # worker that never took it can be given the same one again rather than a
+        # reconstruction of it.
+        "brief_path": brief_path,
+        "delivery": delivery,
     }
     db = get_worktrees_db()
     db.upsert(row, Query().path == row["path"])
     return row
+
+
+def head_untouched(worktree: Path) -> bool:
+    """Whether the worktree still sits exactly on the commit it was created at.
+
+    Unreadable counts as untouched. This only ever qualifies a worker whose pane has
+    already reported zero context consumed, and an agent that has taken no turn has
+    committed nothing — so the git answer can only ever exonerate, never accuse.
+    """
+    base = (get_entry(worktree) or {}).get("base_sha")
+    if not base:
+        return True
+    return head_sha(worktree) in (None, base)
 
 
 def get_entry(path: Path) -> dict | None:
@@ -385,6 +405,8 @@ def create(
     origin: str | None = None,
     target: str | None = None,
     run: str | None = None,
+    brief_path: str | None = None,
+    delivery: str | None = None,
 ) -> dict:
     cfg = parse_worktree_config(repo)
     dest = resolve_worktree_dir(repo, branch, cfg, global_base_dir)
@@ -419,6 +441,8 @@ def create(
         run=run,
         base_branch=base_branch,
         base_sha=head_sha(wt),
+        brief_path=brief_path,
+        delivery=delivery,
     )
     return {"path": str(wt), "links_applied": applied, "base": base or None}
 

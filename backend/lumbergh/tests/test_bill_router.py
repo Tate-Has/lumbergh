@@ -1746,3 +1746,80 @@ class TestBabysitEndpoints:
         resp = client.post("/api/bill/babysit/refresh", json={"session": "nope"})
         assert resp.status_code == 400
         assert "not being babysat" in resp.json()["detail"]["error"]
+
+
+def test_redeliver_resends_the_recorded_brief_after_clearing_the_input(
+    client, tmp_path, monkeypatch
+):
+    """#848's repair: the brief is sitting unsubmitted in the box, so it is cleared
+    before the same brief — not a reconstruction of it — is sent again."""
+    brief = tmp_path / "b.md"
+    brief.write_text("do the thing")
+    keys, delivered = [], {}
+
+    monkeypatch.setattr(
+        bill.worktrees,
+        "all_entries",
+        lambda: [
+            {"target": "port:issue-848", "kind": "ship", "delivery": "pr", "brief_path": str(brief)}
+        ],
+    )
+    monkeypatch.setattr(bill, "send_key", lambda target, key: keys.append((target, key)))
+
+    def fake_deliver(target, path, kind, mode):
+        delivered.update(target=target, path=path, kind=kind, mode=mode)
+        return bill.DeliveryResult(True, "")
+
+    monkeypatch.setattr(bill, "_deliver_brief", fake_deliver)
+
+    r = client.post("/api/bill/redeliver", json={"target": "port:issue-848"})
+
+    assert r.status_code == 200
+    assert keys == [("port:issue-848", "C-u")]
+    assert delivered == {
+        "target": "port:issue-848",
+        "path": brief,
+        "kind": "ship",
+        "mode": "pr",
+    }
+
+
+def test_redeliver_refuses_a_worker_with_no_brief_on_record(client, monkeypatch):
+    monkeypatch.setattr(bill.worktrees, "all_entries", lambda: [{"target": "old", "kind": "ship"}])
+    monkeypatch.setattr(bill, "send_key", lambda *a: None)  # noqa: ARG005
+
+    r = client.post("/api/bill/redeliver", json={"target": "old"})
+
+    assert r.status_code == 400
+    assert r.json()["detail"]["stage"] == "brief"
+    assert "lb prompt" in r.json()["detail"]["help"]
+
+
+def test_redeliver_refuses_an_unknown_target(client, monkeypatch):
+    monkeypatch.setattr(bill.worktrees, "all_entries", list)
+
+    r = client.post("/api/bill/redeliver", json={"target": "ghost"})
+
+    assert r.status_code == 400
+    assert r.json()["detail"]["stage"] == "target"
+
+
+def test_redeliver_surfaces_a_repair_that_did_not_take(client, tmp_path, monkeypatch):
+    brief = tmp_path / "b.md"
+    brief.write_text("do the thing")
+    monkeypatch.setattr(
+        bill.worktrees,
+        "all_entries",
+        lambda: [{"target": "stuck", "kind": "ship", "brief_path": str(brief)}],
+    )
+    monkeypatch.setattr(bill, "send_key", lambda *a: None)  # noqa: ARG005
+    monkeypatch.setattr(
+        bill,
+        "_deliver_brief",
+        lambda *a: bill.DeliveryResult(False, "worker never started on the brief"),  # noqa: ARG005
+    )
+
+    r = client.post("/api/bill/redeliver", json={"target": "stuck"})
+
+    assert r.status_code == 400
+    assert "never started" in r.json()["detail"]["error"]

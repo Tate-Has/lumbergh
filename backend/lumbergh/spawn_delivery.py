@@ -39,6 +39,14 @@ _YES_OPTION = re.compile(r"^\s*❯?\s*\d+\.\s*yes\b", re.IGNORECASE | re.MULTILI
 # mistaking a quiescent shell prompt for a ready agent and typing the brief there.
 _TUI_MARKERS = ("? for shortcuts", "auto mode", "esc to interrupt", "shift+tab to cycle")
 
+# The agent's own context readout, e.g. `41k (21%)`. Zero means it has not taken a
+# single turn, which is the whole signature of a brief that was never submitted.
+_CONTEXT_USED = re.compile(r"(\d+(?:\.\d+)?)k\s*\(\s*\d+\s*%\s*\)")
+
+# The agent's input line, whichever way its TUI draws one: boxed, or ruled off above
+# and below with a bare prompt character.
+_INPUT_BOX = re.compile(r"^\s*(?:[│┃|]\s*)?[>❯]\s?(.*?)\s*(?:[│┃|]\s*)?$", re.MULTILINE)  # noqa: RUF001
+
 
 @dataclass
 class DeliveryResult:
@@ -53,6 +61,24 @@ def _is_trust_dialog(content: str) -> bool:
 def _is_agent_tui(content: str) -> bool:
     low = content.lower()
     return any(marker in low for marker in _TUI_MARKERS)
+
+
+def context_used_k(content: str) -> float | None:
+    """Thousands of context tokens the agent has consumed, or None if it doesn't say.
+
+    Above zero is the one unambiguous proof that an agent took a turn — it cannot be
+    faked by text merely appearing on screen. Zero proves nothing on its own: a pane
+    can sit at ``0k`` for the whole of a first turn, so this is only ever read as
+    positive evidence.
+    """
+    matches = _CONTEXT_USED.findall(content or "")
+    return float(matches[-1]) if matches else None
+
+
+def _input_box_text(content: str) -> str | None:
+    """What is typed in the agent's input box, or None if no box is on screen."""
+    matches = _INPUT_BOX.findall(content or "")
+    return matches[-1] if matches else None
 
 
 def _is_ready(content: str, prev: str | None) -> bool:
@@ -124,21 +150,80 @@ def _deliver_and_confirm(
     confirm_timeout: float,
     poll: float,
 ) -> DeliveryResult:
-    """Send the brief and confirm the worker moved off the ready prompt onto it.
+    """Send the brief and confirm the worker actually started on it.
 
-    A ``send-keys`` that tmux accepts is not proof the harness consumed it, so
-    success means the pane actually changed — the worker echoed the brief and
-    started working. A stalled send is nudged with an Enter (in case the text
-    landed in the input box but was never submitted) and retried.
+    A ``send-keys`` that tmux accepts is not proof the harness consumed it — and
+    neither is a pane that merely changed, which was the bug: text typed into the
+    input box and never submitted changes the pane, so spawn reported a worker whose
+    brief was sitting there unsent and whose agent never ran. Success now means
+    positive evidence of a turn (see :func:`_started`). Failing that, the pending
+    brief is nudged with an Enter before the whole text is retyped, because the
+    manual recovery for this is a single keystroke, not a second copy of the brief.
     """
     for _ in range(MAX_SEND_ATTEMPTS):
         send(name, text)
-        confirm_deadline = clock() + confirm_timeout
-        while clock() < confirm_deadline:
-            sleep(poll)
-            if capture(name) != ready_snapshot:
-                return DeliveryResult(True, "")
+        if _confirm_started(
+            name,
+            ready_snapshot,
+            capture=capture,
+            sleep=sleep,
+            clock=clock,
+            confirm_timeout=confirm_timeout,
+            poll=poll,
+        ):
+            return DeliveryResult(True, "")
         press(name, "Enter")
+        if _confirm_started(
+            name,
+            ready_snapshot,
+            capture=capture,
+            sleep=sleep,
+            clock=clock,
+            confirm_timeout=confirm_timeout,
+            poll=poll,
+        ):
+            return DeliveryResult(True, "")
     return DeliveryResult(
-        False, f"worker did not start on the brief after {MAX_SEND_ATTEMPTS} attempts"
+        False,
+        f"worker never started on the brief after {MAX_SEND_ATTEMPTS} attempts "
+        "(context still 0k and the pane never moved — the brief may be sitting "
+        "unsubmitted in its input box)",
     )
+
+
+def _confirm_started(
+    name: str,
+    ready_snapshot: str,
+    *,
+    capture: Callable[[str], str],
+    sleep: Callable[[float], None],
+    clock: Callable[[], float],
+    confirm_timeout: float,
+    poll: float,
+) -> bool:
+    deadline = clock() + confirm_timeout
+    prev: str | None = None
+    while clock() < deadline:
+        sleep(poll)
+        content = capture(name) or ""
+        if _started(content, ready_snapshot, prev):
+            return True
+        prev = content
+    return False
+
+
+def _started(content: str, ready_snapshot: str, prev: str | None) -> bool:
+    """Whether the pane shows an agent that took the brief, rather than one holding it.
+
+    Any of three positive signals settles it: the context readout moved off zero, the
+    pane is animating (a working agent's spinner and timer never hold still), or the
+    input box is empty again, which only happens once the text in it was submitted.
+    """
+    used = context_used_k(content)
+    if used is not None and used > 0:
+        return True
+    if content == ready_snapshot:
+        return False
+    if prev is not None and content != prev:
+        return True
+    return _input_box_text(content) == ""

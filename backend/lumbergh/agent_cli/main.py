@@ -36,7 +36,7 @@ FLAGS = {
         "--rm-branch",
         "--json",
     },
-    "fleet": {"--wait", "--timeout", "--origin", "--json"},
+    "fleet": {"--wait", "--timeout", "--origin", "--json", "--heal"},
     "spawn": {
         "--repo",
         "--branch",
@@ -71,6 +71,7 @@ _BOOL_FLAGS = {
     "--stop",
     "--list",
     "--refresh",
+    "--heal",
 }
 
 # One usage line per command, so `lb <command> --help` is a real answer rather than a
@@ -96,7 +97,7 @@ _COMMAND_HELP = {
         "| adopt <path> [--session <name>] | link <path> | unlink <path> "
         "| deps <path> [--base <ref>]"
     ),
-    "fleet": "lb fleet [--wait] [--timeout <s>] [--origin bill] [--json]",
+    "fleet": "lb fleet [--wait] [--timeout <s>] [--origin bill] [--json] [--heal]",
     "spawn": (
         "lb spawn --repo <path> --branch <b> --kind ship|scout --brief <file> "
         "[--new] [--base <b>] [--name <n>] [--agent <provider>] [--intent '...'] "

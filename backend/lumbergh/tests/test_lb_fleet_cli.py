@@ -250,3 +250,55 @@ def test_wait_names_the_tasks_that_woke_it(monkeypatch, capsys):
     assert rc == 0
     assert "issue-770" in out.split("fleet[")[0]  # named in the wake line, above the table
     assert "issue-771" not in out.split("fleet[")[0]
+
+
+def test_heal_redelivers_only_to_undelivered_workers(monkeypatch, capsys):
+    posts = []
+
+    def fake_request(method, path, **kw):
+        if method == "POST":
+            posts.append((path, kw.get("json")))
+            return _Resp({"target": kw["json"]["target"]})
+        return _Resp(
+            {
+                "total": 2,
+                "tasks": [
+                    {**_ROW, "task": "stuck", "state": "undelivered"},
+                    {**_ROW, "task": "busy", "state": "working"},
+                ],
+            }
+        )
+
+    monkeypatch.setattr(fleet_cli, "_request", fake_request)
+
+    rc = fleet_cli.run({"--heal": True})
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert posts == [("/api/bill/redeliver", {"target": "stuck"})]
+    assert "re-sent" in out
+
+
+def test_heal_is_a_no_op_when_every_worker_took_its_brief(monkeypatch, capsys):
+    monkeypatch.setattr(
+        fleet_cli,
+        "_request",
+        lambda m, p, **kw: _Resp({"total": 1, "tasks": [{**_ROW, "state": "working"}]}),  # noqa: ARG005
+    )
+
+    fleet_cli.run({"--heal": True})
+
+    assert "no undelivered workers" in capsys.readouterr().out
+
+
+def test_heal_reports_a_repair_that_failed(monkeypatch, capsys):
+    def fake_request(method, path, **kw):  # noqa: ARG001
+        if method == "POST":
+            return _Resp({"detail": {"stage": "brief", "error": "no brief on record"}}, status=400)
+        return _Resp({"total": 1, "tasks": [{**_ROW, "task": "stuck", "state": "undelivered"}]})
+
+    monkeypatch.setattr(fleet_cli, "_request", fake_request)
+
+    fleet_cli.run({"--heal": True})
+
+    assert "no brief on record" in capsys.readouterr().out

@@ -23,7 +23,12 @@ from lumbergh.routers.sessions import SESSION_NAME_PATTERN, create_tmux_session,
 from lumbergh.runs import run_members
 from lumbergh.spawn_delivery import DeliveryResult, deliver_when_ready
 from lumbergh.targets import format_target, parse_target
-from lumbergh.tmux_pty import kill_tmux_session, kill_tmux_window, list_session_windows
+from lumbergh.tmux_pty import (
+    kill_tmux_session,
+    kill_tmux_window,
+    list_session_windows,
+    send_key,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -187,6 +192,7 @@ def _fleet_rows(origin: str | None, with_outcome: bool = False) -> list[dict]:
         origin=origin,
         dead_acked=_dead_acked,
         live_targets=set(idle_monitor.live_targets()),
+        context_of=idle_monitor.context_used,
         overseer_exclude={BILL_SESSION},
     )
     # Stamped here, inside the executor, rather than read per row on the event loop: the
@@ -797,10 +803,13 @@ def spawn(body: SpawnBody):
 
     from lumbergh.routers.settings import get_settings
 
+    mode = body.delivery or worktrees.read_delivery_mode(repo)
     created = worktrees.create(
         repo,
         body.branch,
         created_at=datetime.now(UTC).isoformat(),
+        brief_path=str(brief),
+        delivery=mode,
         create_branch=body.create_branch,
         base_branch=body.base_branch,
         session=None if body.into else name,
@@ -860,7 +869,6 @@ def spawn(body: SpawnBody):
             )
 
     try:
-        mode = body.delivery or worktrees.read_delivery_mode(repo)
         delivery = _deliver_brief(target, brief, body.kind, mode)
     except Exception as e:
         raise _unwind_and_fail(
@@ -893,6 +901,51 @@ def spawn(body: SpawnBody):
         "base_sha": (worktrees.get_entry(workdir) or {}).get("base_sha"),
         "base_note": base.get("note") or None,
     }
+
+
+class RedeliverBody(BaseModel):
+    target: str
+
+
+def _entry_for_target(target: str) -> dict | None:
+    return next((e for e in worktrees.all_entries() if e.get("target") == target), None)
+
+
+@router.post("/redeliver")
+def redeliver(body: RedeliverBody):
+    """Hand a worker the brief it never took — the repair for an `undelivered` row.
+
+    The recorded brief is re-sent rather than a reconstruction of it, so a healed worker
+    is working from exactly what it was spawned with. The input box is cleared first:
+    the whole failure is text sitting in it unsubmitted, and typing over that would
+    submit the brief twice concatenated.
+    """
+    entry = _entry_for_target(body.target)
+    if not entry:
+        raise _fail(
+            "target",
+            f"no tracked worker named `{body.target}`",
+            "run `lb fleet` and use a task name from the table",
+        )
+    brief = Path(entry["brief_path"]) if entry.get("brief_path") else None
+    if not brief or not brief.is_file():
+        raise _fail(
+            "brief",
+            f"no brief on record for `{body.target}`",
+            're-send it by hand with `lb prompt --session <s> "$(cat <brief>)"`',
+        )
+
+    send_key(body.target, "C-u")
+    delivery = _deliver_brief(
+        body.target, brief, entry.get("kind") or "ship", entry.get("delivery") or "commit"
+    )
+    if not delivery.delivered:
+        raise _fail(
+            "delivery",
+            delivery.reason,
+            "inspect the worker's terminal with `lb read --source pane`",
+        )
+    return {"target": body.target, "brief_path": str(brief)}
 
 
 class BriefBody(BaseModel):

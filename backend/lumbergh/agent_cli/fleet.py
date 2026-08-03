@@ -88,12 +88,38 @@ def run(flags: dict) -> int:
             )
         )
 
+    if "--heal" in flags:
+        _heal(rows)
+
     if not rows:
         _emit("fleet: 0 tasks")
         return 0
 
     _emit(render_collection("fleet", [_display(r) for r in rows], _COLS))
     return 0
+
+
+def _heal(rows: list[dict]) -> None:
+    """Re-send the brief to every worker that never took it.
+
+    The repair for `undelivered` is the one the overseer used to perform by hand, so it
+    belongs behind a flag rather than in the read path: `lb fleet` must stay a question,
+    not something that types into a worker's terminal as a side effect of being asked.
+    """
+    stuck = [r["task"] for r in rows if r.get("state") == "undelivered"]
+    if not stuck:
+        _emit("heal: no undelivered workers")
+        return
+    healed = []
+    for task in stuck:
+        resp = _request("POST", "/api/bill/redeliver", json={"target": task})
+        detail = resp.json().get("detail", {}) if resp.status_code >= 400 else {}
+        healed.append({"task": task, "result": detail.get("error", "brief re-sent")})
+    _emit(render_collection("healed", healed, ["task", "result"]))
+    # The table below was read before the repair, and a worker's context readout only
+    # moves on the monitor's next poll — so say that, rather than print a stale board
+    # as if it were the outcome.
+    _emit("note: the fleet below predates the repair — re-run `lb fleet` to confirm")
 
 
 def _display(row: dict) -> dict:

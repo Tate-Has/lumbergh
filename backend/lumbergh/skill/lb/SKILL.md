@@ -28,15 +28,18 @@ authority on syntax — run `lb <command> --help` when unsure.
   first, so output that already appeared still matches.
 - `lb prompt --session <name> "<text>" [--wait]` — send input to a peer; this drives
   another agent, so use it deliberately. `--wait` blocks until its state changes.
-- `lb fleet [--wait] [--timeout <s>] [--origin bill] [--json]` — every task under way: task,
-  repo, branch, kind, state, time in state, whether it `needs` you, its OUTCOME column
-  (the worker's own final `DELIVERED:`/`FAILED:` line, once it's written one), and the repo
+- `lb fleet [--wait] [--timeout <s>] [--origin bill] [--json] [--heal]` — every task under
+  way: task, repo, branch, kind, state, time in state, whether it `needs` you, its OUTCOME
+  column (the worker's own final `DELIVERED:`/`FAILED:` line, once written), and the repo
   and worktree paths. Take a path from a row rather than typing one — `repo_path` is what
   `lb spawn --repo` wants, `path` is what `lb worktree reap` wants.
-  `--wait` blocks until a task needs you (`blocked`, `error`, `dead`, or a report of yours
-  that finished a chunk — the `needs` column) or
+  `--wait` blocks until a task needs you (`blocked`, `error`, `undelivered`, `dead`, or a
+  report of yours that finished a chunk — the `needs` column) or
   the timeout elapses — a timeout is a normal return (exit 0), not a failure, so re-run it
   to keep waiting.
+  `undelivered` is a worker that was stood up but never took its brief: no context consumed
+  and an untouched HEAD. It is not idle and not working — it is doing nothing. `--heal`
+  re-sends the recorded brief to every such worker, which is the whole repair.
 - `lb spawn --repo <path> --branch <b> --kind ship|scout --brief <file> [--new] [--base <b>]
   [--name <n>] [--agent <provider>] [--intent "..."]` — create an isolated worktree, start a
   worker in it, and deliver the brief. Any stage failing (bad kind/brief/repo/name, the
