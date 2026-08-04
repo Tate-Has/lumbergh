@@ -47,6 +47,16 @@ def _worker_changing_deps(repo: Path, branch: str) -> None:
     _git(repo, "checkout", "-q", "master")
 
 
+@pytest.fixture
+def worktrees_db(tmp_path, monkeypatch):
+    from tinydb import TinyDB
+
+    db = TinyDB(tmp_path / "worktrees.json")
+    monkeypatch.setattr(worktrees, "get_worktrees_db", lambda: db)
+    yield db
+    db.close()
+
+
 def _worker_changing_code(repo: Path, branch: str) -> None:
     _git(repo, "checkout", "-q", "-b", branch, "master")
     (repo / "backend" / "app.py").write_text("# touches no manifest\n")
@@ -69,6 +79,26 @@ def _register_run(monkeypatch, repo: Path, branch: str) -> None:
     )
 
 
+@pytest.mark.usefixtures("worktrees_db")
+def test_spawned_worker_reinstalling_deps_leaves_the_shared_checkout_intact(
+    repo_with_linked_venv,
+):
+    """The same hazard on the spawn path: a worker agent that runs the repo's own
+    `npm ci`/`uv sync` must not empty the dependencies out from under the developer's
+    checkout — or every other worktree pointed at it."""
+    repo = repo_with_linked_venv
+
+    result = worktrees.create(
+        repo, "feat-worker", created_at="2026-08-04T00:00:00Z", create_branch=True
+    )
+    wt = Path(result["path"])
+
+    # A shell glob, because that is how a reinstaller reaches a dep directory's contents.
+    subprocess.run("rm -rf backend/.venv/*", shell=True, cwd=wt, check=True)  # noqa: S602
+
+    assert (repo / "backend" / ".venv" / "installed").read_text() == "mcp 1.29.0"
+
+
 def test_land_smoke_that_reinstalls_deps_leaves_the_shared_checkout_intact(
     monkeypatch, repo_with_linked_venv
 ):
@@ -88,35 +118,44 @@ def test_land_smoke_that_reinstalls_deps_leaves_the_shared_checkout_intact(
     assert (repo / "backend" / ".venv" / "installed").read_text() == "mcp 1.29.0"
 
 
-def test_dep_drift_flags_a_symlinked_dep_whose_manifest_changed(tmp_path):
-    wt = tmp_path / "wt"
-    (wt / "backend").mkdir(parents=True)
-    (tmp_path / "real-venv").mkdir()
-    (wt / "backend" / ".venv").symlink_to(tmp_path / "real-venv")
-
-    drift = worktrees.dep_drift(wt, ["backend/pyproject.toml"], ["backend/.venv"])
+def test_manifest_drift_flags_a_borrowed_dep_whose_manifest_changed():
+    drift = worktrees.manifest_drift(["backend/pyproject.toml"], ["backend/.venv"])
 
     assert drift == [{"link": "backend/.venv", "manifests": ["backend/pyproject.toml"]}]
 
 
-def test_dep_drift_ignores_a_manifest_change_in_another_directory(tmp_path):
-    wt = tmp_path / "wt"
-    (wt / "backend").mkdir(parents=True)
-    (tmp_path / "real-venv").mkdir()
-    (wt / "backend" / ".venv").symlink_to(tmp_path / "real-venv")
-
+def test_manifest_drift_ignores_a_manifest_change_in_another_directory():
     # A sibling project's manifest says nothing about backend's environment.
-    drift = worktrees.dep_drift(wt, ["tools/pyproject.toml"], ["backend/.venv"])
+    drift = worktrees.manifest_drift(["tools/pyproject.toml"], ["backend/.venv"])
 
     assert drift == []
 
 
-def test_dep_drift_is_clear_once_the_dep_dir_is_a_real_directory(tmp_path):
+@pytest.mark.usefixtures("worktrees_db")
+def test_dep_drift_flags_a_copied_dep_not_just_a_symlinked_one(repo_with_linked_venv):
+    """A copy is as stale as a symlink once a manifest moves — it just can't destroy the
+    original. Keying this on `is_symlink` is what let the guard go quiet the moment
+    worktrees stopped symlinking their dependencies."""
+    repo = repo_with_linked_venv
+    created = worktrees.create(
+        repo, "feat-deps", created_at="2026-08-04T00:00:00Z", create_branch=True
+    )
+    wt = Path(created["path"])
+    assert not (wt / "backend" / ".venv").is_symlink()
+
+    drift = worktrees.dep_drift(wt, ["backend/pyproject.toml"], repo)
+
+    assert drift == [{"link": "backend/.venv", "manifests": ["backend/pyproject.toml"]}]
+
+
+def test_dep_drift_is_clear_for_a_dep_dir_the_worker_installed_itself(tmp_path):
     wt = tmp_path / "wt"
     (wt / "backend" / ".venv").mkdir(parents=True)
+    repo = tmp_path / "repo"
+    repo.mkdir()
 
-    # Not a symlink: the worker owns this environment, so its gate is honest.
-    drift = worktrees.dep_drift(wt, ["backend/pyproject.toml"], ["backend/.venv"])
+    # Never borrowed from the shared checkout, so this gate is already honest.
+    drift = worktrees.dep_drift(wt, ["backend/pyproject.toml"], repo)
 
     assert drift == []
 

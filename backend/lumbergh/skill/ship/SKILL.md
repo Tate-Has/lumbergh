@@ -29,10 +29,12 @@ Run the lint/format and the test suite it specifies. Don't invent commands the p
 already documents, and don't skip the gate because the change "looks small."
 
 **If your change touches dependencies** (`pyproject.toml`, `uv.lock`, `package.json`, a
-lockfile), run `lb worktree deps .` first. Your worktree's `.venv`/`node_modules` are
-symlinked to the main checkout, so a gate run before you fix that tests the *old* versions
+lockfile), run `lb worktree deps .` first. Your worktree's `.venv`/`node_modules` were
+copied from the main checkout, so a gate run before you fix that tests the *old* versions
 and passes — the worst possible outcome, because it looks like success. If it reports
-drift, `lb worktree unlink .`, install this worktree's own dependencies, then gate.
+drift, install this worktree's own dependencies (the command it prints, if the repo
+defines one), then gate. They're yours to reinstall: nothing you do to them touches the
+main checkout.
 
 ## Deliver — in the mode your task message names
 The message that handed you this task names your delivery MODE. Repos differ — some use

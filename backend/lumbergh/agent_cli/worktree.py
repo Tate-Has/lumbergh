@@ -193,9 +193,8 @@ def _deps(flags, positional) -> int:
     sync = d.get("dep_sync")
     fix = f"run `{sync}` in this worktree" if sync else "install this worktree's own dependencies"
     _emit(
-        f"note: these are symlinked to the shared checkout, so lint and tests would pass "
-        f"against dependencies this branch no longer declares — "
-        f"`lb worktree unlink {positional[0]}`, then {fix}"
+        f"note: these were copied from the shared checkout, so lint and tests would pass "
+        f"against dependencies this branch no longer declares — {fix}"
     )
     return 1
 

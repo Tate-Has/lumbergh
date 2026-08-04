@@ -321,7 +321,7 @@ def test_apply_links_excludes_symlinked_dir_so_status_stays_clean(tmp_path):
     wt = tmp_path / "wt"
     _git(repo, "worktree", "add", "-q", "-b", "work", str(wt), "master")
 
-    worktrees.apply_links(repo, wt, [worktrees.LinkSpec(path="e2e/.venv")])
+    worktrees.apply_links(repo, wt, [worktrees.LinkSpec(path="e2e/.venv", mode="symlink")])
 
     assert (wt / "e2e" / ".venv").is_symlink()
     status = subprocess.run(
@@ -364,7 +364,7 @@ def test_parse_config_reads_links_modes_hooks_and_basedir(tmp_path):
     assert cfg.post_create == ["uv sync"]
     assert cfg.links == [
         worktrees.LinkSpec(path=".venv", mode="copy"),
-        worktrees.LinkSpec(path="node_modules", mode="symlink"),
+        worktrees.LinkSpec(path="node_modules", mode="copy"),
     ]
 
 
@@ -418,7 +418,7 @@ def test_plan_links_skips_when_already_present_in_worktree(tmp_path):
     assert worktrees.plan_links(repo, wt, cfg) == []
 
 
-def test_apply_links_symlink_and_copy(tmp_path):
+def test_apply_links_copies_by_default_and_symlinks_only_on_request(tmp_path):
     repo = _init_repo(tmp_path / "app")
     (repo / ".venv").mkdir()
     (repo / ".venv" / "marker").write_text("v")
@@ -426,16 +426,18 @@ def test_apply_links_symlink_and_copy(tmp_path):
     (repo / "node_modules" / "pkg").write_text("n")
     _write(
         repo / ".lumbergh.toml",
-        '[worktree]\nlinks = [{ path = ".venv", mode = "copy" }, "node_modules"]\n',
+        '[worktree]\nlinks = [{ path = ".venv", mode = "symlink" }, "node_modules"]\n',
     )
     cfg = worktrees.parse_worktree_config(repo)
     wt = tmp_path / "wt"
     wt.mkdir()
     applied = worktrees.apply_links(repo, wt, worktrees.plan_links(repo, wt, cfg))
-    assert {r["path"]: r["mode"] for r in applied} == {".venv": "copy", "node_modules": "symlink"}
-    assert (wt / "node_modules").is_symlink()
-    assert not (wt / ".venv").is_symlink()
-    assert (wt / ".venv" / "marker").read_text() == "v"
+    assert {r["path"]: r["mode"] for r in applied} == {".venv": "symlink", "node_modules": "copy"}
+    assert (wt / ".venv").is_symlink()  # asked for by name
+    # The default: the worktree owns its dependencies, so nothing it runs can reach back
+    # into the shared checkout and empty them.
+    assert not (wt / "node_modules").is_symlink()
+    assert (wt / "node_modules" / "pkg").read_text() == "n"
 
 
 def test_registry_record_get_remove(tmp_path, monkeypatch):
@@ -591,7 +593,8 @@ def test_create_applies_links_and_records(tmp_path, monkeypatch):
     now = "2026-07-28T00:00:00Z"
     created = worktrees.create(repo, "feat/y", created_at=now, create_branch=True, session="kb-9")
     wt = Path(created["path"])
-    assert (wt / ".venv").is_symlink()
+    assert (wt / ".venv" / "m").read_text() == "v"  # the dep is there, and the worktree owns it
+    assert not (wt / ".venv").is_symlink()
     entry = worktrees.get_entry(wt)
     assert entry["target"] == "kb-9"
     assert entry["created_at"] == now
@@ -620,7 +623,7 @@ def test_session_created_worktree_is_registered(tmp_path, monkeypatch):
         worktree=WorktreeConfig(parent_repo=str(repo), branch="feat/z", create_branch=True),
     )
     workdir, _parent, _branch = sessions._resolve_worktree_workdir(body)
-    assert (Path(workdir) / ".venv").is_symlink()
+    assert (Path(workdir) / ".venv" / "m").read_text() == "v"
     assert worktrees.get_entry(Path(workdir)) is not None
 
 

@@ -178,6 +178,11 @@ def test_link_then_unlink_promotes_symlink_to_copy(client, tmp_path):
     repo = _init_repo(tmp_path / "app")
     (repo / ".venv").mkdir()
     (repo / ".venv" / "marker").write_text("v")
+    # A repo that asks for sharing by name is the only way a worktree gets a symlink now,
+    # and the only case `/unlink` has anything to promote.
+    (repo / ".lumbergh.toml").write_text(
+        '[worktree]\nlinks = [{ path = ".venv", mode = "symlink" }]\n'
+    )
 
     r = client.post(
         "/api/worktrees", json={"repo": str(repo), "branch": "feat/z", "create_branch": True}

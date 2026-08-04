@@ -42,7 +42,7 @@ if TYPE_CHECKING:
 # NOTE: do not import get_settings here. The core stays free of the settings/router
 # layer; the caller passes `global_base_dir` in (the router reads the setting).
 
-LinkMode = Literal["symlink", "copy"]
+LinkMode = Literal["copy", "symlink"]
 DEFAULT_LINKS = [".venv", "node_modules", ".env", ".env.local", ".direnv"]
 
 # Which files declare the contents of a linked dependency directory. A change to one
@@ -73,7 +73,13 @@ DEP_MANIFESTS: dict[str, tuple[str, ...]] = {
 @dataclass(frozen=True)
 class LinkSpec:
     path: str
-    mode: LinkMode = "symlink"
+    # `copy` (reflinked where the filesystem can, so it's free on btrfs/xfs) is the default
+    # because a symlinked dependency directory is shared *mutable* state. `npm ci`/`uv sync`
+    # delete a dep directory's *contents* rather than the directory, so through a symlink
+    # they empty the developer's own checkout; anything that writes in place corrupts it
+    # more quietly still. A worktree that runs commands has to own what they may destroy.
+    # `symlink` stays available for a path a repo really does want shared.
+    mode: LinkMode = "copy"
 
 
 @dataclass
@@ -85,10 +91,10 @@ class WorktreeProjectConfig:
 
 def _coerce_link(entry: object) -> LinkSpec:
     if isinstance(entry, str):
-        return LinkSpec(path=entry, mode="symlink")
+        return LinkSpec(path=entry)
     if isinstance(entry, dict) and "path" in entry:
-        mode = entry.get("mode", "symlink")
-        if mode not in ("symlink", "copy"):
+        mode = entry.get("mode", "copy")
+        if mode not in ("copy", "symlink"):
             raise ValueError(f"invalid link mode: {mode!r}")
         return LinkSpec(path=str(entry["path"]), mode=mode)
     raise ValueError(f"invalid link entry: {entry!r}")
@@ -172,13 +178,27 @@ def manifest_drift(changed_paths: Iterable[str], link_paths: Iterable[str]) -> l
     return drift
 
 
-def dep_drift(
-    worktree: Path, changed_paths: Iterable[str], link_paths: Iterable[str]
-) -> list[dict]:
-    """``manifest_drift`` for a worktree that borrows its deps by symlink: a dep
-    directory the worktree owns outright is its own, so its gate is already honest."""
-    linked = [link for link in link_paths if (worktree / link).is_symlink()]
-    return manifest_drift(changed_paths, linked)
+def borrowed_dep_paths(worktree: Path, repo: Path) -> list[str]:
+    """The dependency paths this worktree took from the shared checkout rather than
+    installing for itself.
+
+    Deliberately not "is it a symlink": a clone borrowed the shared checkout's *contents*
+    just as much as a symlink borrowed its directory, and is just as stale the moment a
+    manifest changes — it merely can't destroy the original. The registry says what was
+    materialized; a still-symlinked path counts too, so a worktree adopted from disk (or
+    created before clones existed) keeps its guard. A dep directory the worker installed
+    itself was never borrowed and never appears here.
+    """
+    entry = get_entry(worktree) or {}
+    recorded = [r["path"] for r in entry.get("links_applied", []) if r.get("path")]
+    legacy = [p for p in configured_link_paths(repo) if (worktree / p).is_symlink()]
+    return sorted(set(recorded) | set(legacy))
+
+
+def dep_drift(worktree: Path, changed_paths: Iterable[str], repo: Path) -> list[dict]:
+    """Whether this worktree's borrowed dependency directories still match what its code
+    declares — the question `lb worktree deps` answers before a worker gates."""
+    return manifest_drift(changed_paths, borrowed_dep_paths(worktree, repo))
 
 
 def read_land_smoke(repo: Path) -> str | None:
@@ -582,7 +602,8 @@ def adopt(worktree: Path, created_at: str, session: str | None) -> dict:
 def unlink_path(worktree: Path, rel: str) -> dict:
     target = worktree / rel
     if not target.is_symlink():
-        return {"path": rel, "status": "skipped", "reason": "not a symlink"}
+        # Nothing to break: copied deps (the default) are already the worktree's own.
+        return {"path": rel, "status": "skipped", "reason": "already owned by the worktree"}
     real = target.resolve()
     target.unlink()
     _reflink_copy(real, target)

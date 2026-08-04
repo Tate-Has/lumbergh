@@ -25,13 +25,9 @@ def _materialize_deps(repo: Path, worktree: Path) -> list[str]:
     """Give the assembly worktree its own copy of the repo's gitignored deps (.venv,
     node_modules, .env, …), so ``[land] smoke`` runs against a usable checkout.
 
-    Copies, where `lb spawn`/`worktree create` symlink. `[land] smoke` is an arbitrary
-    operator command, and the ones repos actually configure reinstall dependencies —
-    `npm ci`, `uv sync`, `pnpm install`. Those delete a dependency directory's *contents*,
-    not the directory, so through a symlink they reach into the developer's own checkout
-    and empty it: the gate passes, and the next lint in the main checkout dies on a
-    missing binary that appears nowhere in the code being landed. A throwaway worktree
-    running an unconstrained gate has to own what that gate may destroy.
+    Copied, never symlinked, even where the repo asks for a symlink: `[land] smoke` is an
+    arbitrary operator command, and a worktree running an unconstrained gate has to own
+    what that gate may destroy.
 
     `post_create` is deliberately not run — it's for a workspace a human/agent develops
     in and could be slow or interactive.

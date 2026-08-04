@@ -126,9 +126,7 @@ def deps(body: DepsBody):
         or git_utils.resolve_base_ref(wt, entry.get("base_branch"))
         or git_utils.default_base_ref(wt)
     )
-    drift = worktrees.dep_drift(
-        wt, land.changed_paths(wt, base), worktrees.configured_link_paths(repo)
-    )
+    drift = worktrees.dep_drift(wt, land.changed_paths(wt, base), repo)
     return {
         "path": str(wt),
         "base": base,
