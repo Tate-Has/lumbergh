@@ -47,6 +47,47 @@ def _worker_changing_deps(repo: Path, branch: str) -> None:
     _git(repo, "checkout", "-q", "master")
 
 
+def _worker_changing_code(repo: Path, branch: str) -> None:
+    _git(repo, "checkout", "-q", "-b", branch, "master")
+    (repo / "backend" / "app.py").write_text("# touches no manifest\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", f"{branch}: a change with no dependency in it")
+    _git(repo, "checkout", "-q", "master")
+
+
+def _register_run(monkeypatch, repo: Path, branch: str) -> None:
+    monkeypatch.setattr(
+        "lumbergh.worktrees.all_entries",
+        lambda: [
+            {
+                "target": f"sprint:{branch}",
+                "branch": branch,
+                "parent_repo": str(repo),
+                "run": "sprint",
+            }
+        ],
+    )
+
+
+def test_land_smoke_that_reinstalls_deps_leaves_the_shared_checkout_intact(
+    monkeypatch, repo_with_linked_venv
+):
+    """A gate that reinstalls (`npm ci`, `uv sync`) deletes a dependency directory's
+    *contents*, not the directory itself — so through a link it empties the developer's
+    own checkout, and passes green while doing it. The next lint in the main checkout is
+    the one that fails, for a reason found nowhere in the code being tested."""
+    repo = repo_with_linked_venv
+    _worker_changing_code(repo, "feat-code")
+    _register_run(monkeypatch, repo, "feat-code")
+
+    resp = bill.land_run(
+        bill.LandBody(run="sprint", onto="master", push=False, smoke="rm -rf backend/.venv/*")
+    )
+
+    assert resp["smoke"] == "passed"
+    assert (repo / "backend" / ".venv" / "installed").read_text() == "mcp 1.29.0"
+
+
 def test_dep_drift_flags_a_symlinked_dep_whose_manifest_changed(tmp_path):
     wt = tmp_path / "wt"
     (wt / "backend").mkdir(parents=True)

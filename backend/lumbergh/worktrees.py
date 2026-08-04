@@ -148,26 +148,37 @@ def configured_link_paths(repo: Path) -> list[str]:
     return [spec.path for spec in specs]
 
 
-def dep_drift(
-    worktree: Path, changed_paths: Iterable[str], link_paths: Iterable[str]
-) -> list[dict]:
-    """Linked dependency directories whose manifests this worktree changed.
+def manifest_drift(changed_paths: Iterable[str], link_paths: Iterable[str]) -> list[dict]:
+    """Dependency directories borrowed from the shared checkout whose manifests changed.
 
     Each hit is a place where a gate would run green against dependencies the code no
     longer declares. A manifest counts only when it sits beside the directory it
     describes, so a sibling project's `pyproject.toml` doesn't implicate `backend/.venv`.
+
+    Says nothing about *how* the directory was borrowed — a symlink and a copy taken from
+    the shared checkout are equally stale once a manifest moves. Callers decide which of
+    their paths are borrowed; ``dep_drift`` is the symlink-shaped answer.
     """
     changed = {PurePosixPath(p) for p in changed_paths}
     drift = []
     for link in link_paths:
         rel = PurePosixPath(link)
         manifests = DEP_MANIFESTS.get(rel.name)
-        if not manifests or not (worktree / link).is_symlink():
+        if not manifests:
             continue
         hits = sorted(str(c) for c in changed if c.parent == rel.parent and c.name in manifests)
         if hits:
             drift.append({"link": link, "manifests": hits})
     return drift
+
+
+def dep_drift(
+    worktree: Path, changed_paths: Iterable[str], link_paths: Iterable[str]
+) -> list[dict]:
+    """``manifest_drift`` for a worktree that borrows its deps by symlink: a dep
+    directory the worktree owns outright is its own, so its gate is already honest."""
+    linked = [link for link in link_paths if (worktree / link).is_symlink()]
+    return manifest_drift(changed_paths, linked)
 
 
 def read_land_smoke(repo: Path) -> str | None:

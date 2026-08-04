@@ -21,6 +21,30 @@ def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess:
     )
 
 
+def _materialize_deps(repo: Path, worktree: Path) -> list[str]:
+    """Give the assembly worktree its own copy of the repo's gitignored deps (.venv,
+    node_modules, .env, …), so ``[land] smoke`` runs against a usable checkout.
+
+    Copies, where `lb spawn`/`worktree create` symlink. `[land] smoke` is an arbitrary
+    operator command, and the ones repos actually configure reinstall dependencies —
+    `npm ci`, `uv sync`, `pnpm install`. Those delete a dependency directory's *contents*,
+    not the directory, so through a symlink they reach into the developer's own checkout
+    and empty it: the gate passes, and the next lint in the main checkout dies on a
+    missing binary that appears nowhere in the code being landed. A throwaway worktree
+    running an unconstrained gate has to own what that gate may destroy.
+
+    `post_create` is deliberately not run — it's for a workspace a human/agent develops
+    in and could be slow or interactive.
+    """
+    cfg = worktrees.parse_worktree_config(repo)
+    specs = [
+        worktrees.LinkSpec(path=spec.path, mode="copy")
+        for spec in worktrees.plan_links(repo, worktree, cfg)
+    ]
+    worktrees.apply_links(repo, worktree, specs)
+    return [spec.path for spec in specs]
+
+
 def _commits_ahead(repo: Path, base_ref: str, branch: str) -> list[str] | None:
     """The branch's commits to pick, or None if the branch doesn't resolve.
 
@@ -59,12 +83,7 @@ def assemble(repo: Path, run_id: str, base: str, member_branches: list[str]) -> 
         worktree.rmdir()
         return {"ok": False, "stage": "worktree", "error": add.stderr.strip()}
 
-    # Link the repo's gitignored deps (.venv, node_modules, .env, …) into the assembly
-    # worktree exactly as `lb spawn`/`worktree create` do, so `[land] smoke` runs against a
-    # usable checkout. Links only — `post_create` is for a workspace a human/agent develops
-    # in and could be slow/interactive; assembly is throwaway.
-    cfg = worktrees.parse_worktree_config(repo)
-    worktrees.apply_links(repo, worktree, worktrees.plan_links(repo, worktree, cfg))
+    _materialize_deps(repo, worktree)
 
     picked: dict[str, list[str]] = {}
     for branch in member_branches:
@@ -120,13 +139,12 @@ def stale_members(
 
 
 def checkout_batch(repo: Path, batch_branch: str) -> Path:
-    """Throwaway worktree detached at an existing batch branch, with the repo's
-    gitignored deps linked in, so ``[land] smoke`` can run against the exact tree
+    """Throwaway worktree detached at an existing batch branch, owning a copy of the
+    repo's gitignored deps, so ``[land] smoke`` can run against the exact tree
     a ``--push`` is about to land."""
     worktree = Path(tempfile.mkdtemp(prefix=f"lb-{batch_branch}-"))
     _git(repo, "worktree", "add", "--force", "--detach", str(worktree), batch_branch)
-    cfg = worktrees.parse_worktree_config(repo)
-    worktrees.apply_links(repo, worktree, worktrees.plan_links(repo, worktree, cfg))
+    _materialize_deps(repo, worktree)
     return worktree
 
 
@@ -140,15 +158,13 @@ def changed_paths(worktree: Path, base_ref: str) -> list[str]:
 def prepare_deps(repo: Path, worktree: Path, base: str) -> dict:
     """Make the assembly worktree's dependencies match the code about to be smoked.
 
-    The worktree links `.venv`/`node_modules` to the shared checkout, so a batch that
-    changes a manifest would otherwise be smoke-tested against the versions it just
-    stopped declaring — and pass. Break those links and re-sync when the repo says how
-    (`[worktree] dep_sync`); refuse when it doesn't. Green against the wrong
-    dependencies is worse than a refusal.
+    The worktree's `.venv`/`node_modules` are copied from the shared checkout, so a batch
+    that changes a manifest would otherwise be smoke-tested against the versions it just
+    stopped declaring — and pass. Re-sync when the repo says how (`[worktree] dep_sync`);
+    refuse when it doesn't. Green against the wrong dependencies is worse than a refusal.
     """
-    drift = worktrees.dep_drift(
-        worktree, changed_paths(worktree, f"origin/{base}"), worktrees.configured_link_paths(repo)
-    )
+    borrowed = [p for p in worktrees.configured_link_paths(repo) if (worktree / p).exists()]
+    drift = worktrees.manifest_drift(changed_paths(worktree, f"origin/{base}"), borrowed)
     if not drift:
         return {"ok": True, "resynced": []}
 
@@ -160,14 +176,12 @@ def prepare_deps(repo: Path, worktree: Path, base: str) -> dict:
             "stage": "deps",
             "error": (
                 f"this batch changes {', '.join(manifests)} but "
-                f"{', '.join(d['link'] for d in drift)} is linked to the shared checkout — "
+                f"{', '.join(d['link'] for d in drift)} was copied from the shared checkout — "
                 "smoke would test the old dependencies and pass"
             ),
         }
 
-    for d in drift:
-        worktrees.unlink_path(worktree, d["link"])
-    # The repo's own installer, run in the worktree that now owns its dependencies.
+    # The repo's own installer, run in the worktree that owns its dependencies.
     r = subprocess.run(sync, shell=True, cwd=str(worktree))  # noqa: S602
     if r.returncode != 0:
         return {
