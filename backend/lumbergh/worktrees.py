@@ -365,6 +365,51 @@ def head_untouched(worktree: Path) -> bool:
     return head_sha(worktree) in (None, base)
 
 
+def work_in_progress(worktree: Path, base_sha: str | None = None) -> dict:
+    """What this worker is holding that no other checkout has: uncommitted paths, and
+    commits made since it was created.
+
+    The pair is the difference between a worker that is finished and one whose work
+    exists nowhere but its own tree — the single state where reaping it destroys work,
+    and the one the fleet board could not previously show. ``base_sha`` defaults to the
+    commit the registry recorded at creation.
+
+    Untracked files count: a harness a worker wrote and never added is exactly the work
+    at risk. Ignored files do not — `.venv` is not work.
+
+    Either figure is ``None`` when git could not answer. `0` is the "nothing at stake"
+    reading, so a question that failed must never borrow it.
+    """
+    if base_sha is None:
+        base_sha = (get_entry(worktree) or {}).get("base_sha")
+    return {"dirty": _dirty_count(worktree), "commits": _commits_since(worktree, base_sha)}
+
+
+def _dirty_count(worktree: Path) -> int | None:
+    r = subprocess.run(
+        ["git", "-C", str(worktree), "status", "--porcelain"],
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    return len([ln for ln in r.stdout.splitlines() if ln.strip()]) if r.returncode == 0 else None
+
+
+def _commits_since(worktree: Path, base_sha: str | None) -> int | None:
+    if not base_sha:
+        return None
+    r = subprocess.run(
+        ["git", "-C", str(worktree), "rev-list", "--count", f"{base_sha}..HEAD"],
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    try:
+        return int(r.stdout.strip()) if r.returncode == 0 else None
+    except ValueError:
+        return None
+
+
 def get_entry(path: Path) -> dict | None:
     return get_worktrees_db().get(Query().path == _key(path))
 

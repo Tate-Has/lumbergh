@@ -18,6 +18,11 @@ _COLS = [
     "state",
     "since",
     "needs",
+    # `dirty` + `commits` are the "is this safe to tear down?" pair. An idle worker with
+    # `dirty: 7` / `commits: 0` looks finished and is the one state where reap destroys
+    # work — the overseer used to have to poll git per worker to find it.
+    "dirty",
+    "commits",
     "outcome",
     "repo_path",
     "path",
@@ -136,6 +141,9 @@ def _display(row: dict) -> dict:
     # Bill ends up supervising sessions nobody handed him. The server decides.
     shown["needs"] = "yes" if row.get("attention") else ""
     shown["outcome"] = row.get("outcome") or "-"
+    # `-`, never `0`: git declining to answer must not render as "nothing at stake".
+    shown["dirty"] = "-" if row.get("dirty") is None else str(row["dirty"])
+    shown["commits"] = "-" if row.get("commits") is None else str(row["commits"])
     # A missing path renders as a visible gap rather than an empty cell: Bill is told to
     # copy these into `lb spawn --repo` / `lb worktree reap`, and "" reads like a value.
     shown["repo_path"] = row.get("repo_path") or "-"

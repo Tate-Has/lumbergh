@@ -74,6 +74,12 @@ _BOOL_FLAGS = {
     "--heal",
 }
 
+# Flags that accumulate instead of last-one-wins, per command. `land`/`teardown` take a
+# set of runs: two lanes that become ready together assemble into one batch and land in
+# one push. Everywhere else `--run` names the single run a worker is filed under, where a
+# repeat is a mistake and last-wins is the right reading.
+_REPEATABLE_FLAGS = {"land": {"--run"}, "teardown": {"--run"}}
+
 # One usage line per command, so `lb <command> --help` is a real answer rather than a
 # request the command runs anyway. Bill's AGENTS.md points him here when he is unsure of
 # syntax, and a weak model that can self-serve syntax does not stall. Every key in FLAGS
@@ -107,8 +113,11 @@ _COMMAND_HELP = {
         "lb batch --repo <path> --run <id> --briefs <dir|a.md,b.md> --kind ship|scout "
         "[--base <b>] [--session <n>] [--delivery pr|branch|commit]"
     ),
-    "land": "lb land --run <id> [--onto <base>] [--push] [--smoke '<cmd>'] [--skip-smoke]",
-    "teardown": "lb teardown --run <id> [--dry-run] [--force]",
+    "land": (
+        "lb land --run <id> [--run <id> …] [--onto <base>] [--push] "
+        "[--smoke '<cmd>'] [--skip-smoke]  (repeat --run to land several runs in one push)"
+    ),
+    "teardown": "lb teardown --run <id> [--run <id> …] [--dry-run] [--force]",
     "init": (
         "lb init --repo <path> [--delivery pr|branch|commit] [--smoke '<cmd>'] "
         "[--dep-sync '<install cmd>']"
@@ -156,6 +165,7 @@ def _parse(argv):
     known = FLAGS.get(command)
     if known is None:
         return command, None, None, f"unknown command `{command}`"
+    repeatable = _REPEATABLE_FLAGS.get(command, set())
     flags: dict = {}
     positional: list = []
     i = 0
@@ -171,7 +181,11 @@ def _parse(argv):
                 flags[a] = True
                 i += 1
             else:
-                flags[a] = rest[i + 1] if i + 1 < len(rest) else ""
+                value = rest[i + 1] if i + 1 < len(rest) else ""
+                if a in repeatable:
+                    flags.setdefault(a, []).append(value)
+                else:
+                    flags[a] = value
                 i += 2
         else:
             positional.append(a)

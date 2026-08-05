@@ -48,11 +48,17 @@ authority on syntax — run `lb <command> --help` when unsure.
 - `lb prompt --session <name> "<text>" [--wait]` — send input to a peer; this drives
   another agent, so use it deliberately. `--wait` blocks until its state changes.
 - `lb fleet [--wait] [--timeout <s>] [--origin bill] [--json] [--heal]` — every task under
-  way: task, repo, branch, kind, state, time in state, whether it `needs` you, its OUTCOME
+  way: task, repo, branch, kind, state, time in state, whether it `needs` you, its `dirty`
+  and `commits` counts, its OUTCOME
   column (the worker's own final `DELIVERED:`/`FAILED:` line, once written), and the repo
   and worktree paths. Take a path from a row rather than typing one — `repo_path` is what
   `lb spawn --repo` wants, `path` is what `lb worktree reap` wants.
-  `--wait` blocks until a task needs you (`blocked`, `error`, `undelivered`, `dead`, or a
+  `dirty` counts a worker's uncommitted files and `commits` what it has committed since it
+  started. An **idle worker with `dirty` above 0 is holding work that exists nowhere else**
+  — it looks finished, and tearing it down destroys that work. Ask it to commit; never reap
+  it. `-` is "git could not answer", which is not `0`.
+  `--wait` blocks until a task needs you (`blocked`, `error`, `undelivered`, `dead`, a
+  worker gone idle holding uncommitted work, or a
   report of yours that finished a chunk — the `needs` column) or
   the timeout elapses — a timeout is a normal return (exit 0), not a failure, so re-run it
   to keep waiting.

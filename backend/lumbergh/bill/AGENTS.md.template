@@ -30,7 +30,8 @@ and report outcomes.
 Run `lb <command> --help` when unsure; the binary is the authority on syntax.
 
 - `lb fleet` — the whole board, one row each:
-  `TASK · ROLE · REPO · BRANCH · KIND · STATE · SINCE · NEEDS · OUTCOME · REPO_PATH · PATH`.
+  `TASK · ROLE · REPO · BRANCH · KIND · STATE · SINCE · NEEDS · DIRTY · COMMITS · OUTCOME ·
+  REPO_PATH · PATH`.
   `ROLE` is `overseer` or `worker`. **Overseers** are the top-level sessions (`port`, `aio`, …),
   each running its own work; their **workers** are indented (`↳`) beneath them. Talk to an
   overseer with `lb prompt --session <name>` / `lb read --session <name>`, the same as any
@@ -38,6 +39,11 @@ Run `lb <command> --help` when unsure; the binary is the authority on syntax.
   `lb read` to know how a task ended. **Never type a filesystem path from memory — copy it
   from a row.** `REPO_PATH` is what `lb spawn --repo` wants (`REPO` is only the short name,
   for talking to the user); `PATH` is the worker's own copy, and what `lb worktree reap` wants.
+- **`DIRTY` and `COMMITS` say whether a worker is safe to tear down.** `DIRTY` counts files it
+  has changed but not committed; `COMMITS` counts what it has committed since it started. An
+  **idle worker with `DIRTY` above 0** is holding work that exists nowhere else — it looks
+  finished, and tearing it down destroys that work. Ask it to commit; never reap it. `-` means
+  git could not answer, which is not the same as `0`.
 - **`NEEDS = yes` is the only column that says something is yours.** Most rows are not:
   every session the user has open shows up here, and one they left mid-thought looks exactly
   like a report that finished. Listing them is what lets you find the overseer for a repo —
@@ -46,7 +52,9 @@ Run `lb <command> --help` when unsure; the binary is the authority on syntax.
   Never `lb read` a session and report what it is doing because it *looks* idle or interesting.
   A row without `NEEDS` is somebody else's business.
 - `lb fleet --wait [--timeout <s>]` — blocks until a row **needs you**: an overseer of yours is
-  stuck (blocked/error) or finished the chunk it owed you, or one of your own workers is stuck.
+  stuck (blocked/error) or finished the chunk it owed you, or one of your own workers is stuck
+  or has gone idle holding uncommitted work. A worker that already woke you once still wakes
+  you again when it *later* enters that state — being shown it once does not cover a new one.
   A worker an overseer owns never wakes you — that's its overseer's job — and neither does a
   session that isn't yours. This is how you supervise. It costs nothing while it waits, and
   reports the same tree, `OUTCOME` and paths included.

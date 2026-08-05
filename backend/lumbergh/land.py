@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from lumbergh import worktrees
+from lumbergh import runs, worktrees
 
 
 def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess:
@@ -64,10 +64,10 @@ def commits_by_branch(repo: Path, base: str, member_branches: list[str]) -> dict
     return {b: (_commits_ahead(repo, base_ref, b) or []) for b in member_branches}
 
 
-def assemble(repo: Path, run_id: str, base: str, member_branches: list[str]) -> dict:
+def assemble(repo: Path, run_ids: list[str], base: str, member_branches: list[str]) -> dict:
     """Cherry-pick each member branch onto a fresh batch branch in a temp worktree."""
     base_ref = f"origin/{base}"
-    batch = f"batch-{run_id}"
+    batch = runs.batch_branch(run_ids)
 
     fetch = _git(repo, "fetch", "origin", base)
     if fetch.returncode != 0:

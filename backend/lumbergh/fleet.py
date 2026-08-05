@@ -60,6 +60,7 @@ def snapshot(
     overseer_exclude: set[str] | None = None,
     context_of: Callable[[str], float | None] | None = None,
     babysat_unresolved: set[str] | None = None,
+    work_of: Callable[[str], dict] | None = None,
 ) -> list[dict]:
     dead_acked = dead_acked or set()
     overseer_exclude = overseer_exclude or set()
@@ -118,6 +119,10 @@ def snapshot(
                 "since": round(since) if since is not None else None,
                 "unseen": unseen,
                 "path": row["path"],
+                # What this worker holds that no other checkout does. On the row because
+                # the alternative — the overseer polling git per worker by hand — is what
+                # a near-miss on 2,237 uncommitted lines was found by.
+                **(work_of(row["path"]) if work_of else {"dirty": None, "commits": None}),
             }
         )
 
@@ -167,6 +172,8 @@ def _broken_babysit_row(session: str) -> dict:
         "since": None,
         "unseen": True,
         "path": None,
+        "dirty": None,
+        "commits": None,
         "problem": "babysat but has no live agent — nothing is driving it",
     }
 
@@ -230,6 +237,10 @@ def _overseer_rows(
                 "since": round(since) if since is not None else None,
                 "unseen": unseen_of(name),
                 "path": workdir,
+                # Never read for an overseer: its path is the shared checkout, dirty for
+                # the whole of normal development. Present so every row has one shape.
+                "dirty": None,
+                "commits": None,
             }
         )
     return rows
@@ -249,15 +260,31 @@ def _as_tree(overseers: list[dict], workers: list[dict]) -> list[dict]:
     return ordered
 
 
+def holding_uncommitted_work(row: dict) -> bool:
+    """Whether this row is a worker sitting still on work that exists nowhere else.
+
+    This is the one state in which teardown/reap is the *wrong* move: the run looks
+    finished, and reaping destroys work that was never committed. ``reap`` refuses on a
+    dirty tree, but nothing surfaced the state, so the overseer had to already suspect it.
+
+    Only workers. An overseer's path is the shared checkout, dirty for the whole of
+    normal development — waking on that would make supervision worthless. A ``dirty`` of
+    ``None`` is git declining to answer, which is not evidence of anything.
+    """
+    return row.get("role") == "worker" and row["state"] == "idle" and bool(row.get("dirty"))
+
+
 def needs_attention(row: dict) -> bool:
     """Whether this row has an unhandled action for whoever watches it.
 
-    Intrinsic to the row: it is stuck (blocked/error) or finished a chunk unseen
-    (idle+unseen). *Which* watcher it wakes — Bill for an overseer, an overseer for
-    its own worker — is a scoping decision the caller makes (see ``bill._direct_reports``),
-    not something baked in here.
+    Intrinsic to the row: it is stuck (blocked/error), finished a chunk unseen
+    (idle+unseen), or is idle while holding uncommitted work. *Which* watcher it wakes —
+    Bill for an overseer, an overseer for its own worker — is a scoping decision the
+    caller makes (see ``bill._direct_reports``), not something baked in here.
     """
     if row["state"] in ATTENTION_STATES:
+        return True
+    if holding_uncommitted_work(row):
         return True
     return row["state"] == "idle" and bool(row.get("unseen"))
 

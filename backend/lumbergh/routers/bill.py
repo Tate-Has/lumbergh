@@ -15,6 +15,7 @@ from pydantic import BaseModel
 
 from lumbergh import babysit, bill_watch, fleet, land, session_attention, worktrees
 from lumbergh import bill as bill_bundle
+from lumbergh import runs as run_groups
 from lumbergh.activity.resolve import resolve_adapter
 from lumbergh.activity.resolve import session_meta as _session_meta
 from lumbergh.briefs import enumerate_briefs
@@ -51,6 +52,15 @@ _dead_acked: set[str] = set()
 # soft idle+unseen case is deduplicated. Pruned by `_mark_seen` to overseers still idle+
 # unseen, so a new episode (overseer worked, then went idle again) surfaces afresh.
 _overseer_acked: set[str] = set()
+
+# Workers already surfaced *in their current holding-uncommitted-work episode*. This is a
+# second, independent ack because it dedupes on a different thing: a worker's `unseen`
+# flag dedupes the task, and "seen once" was being read as "seen forever" — so a *later*
+# transition into holding unsaved work was silent, which is how a worker sat wedged on
+# 2,237 uncommitted lines through three consecutive 9-minute waits. Keyed by task and
+# pruned to the workers still holding, so leaving and re-entering the state wakes afresh:
+# dedup on (task, state-class), not on task alone.
+_holding_acked: set[str] = set()
 
 BILL_SESSION = "bill"
 BILL_PROVIDER = "pi"
@@ -100,6 +110,13 @@ def _prune_overseer_acks(rows: list[dict]) -> None:
     )
 
 
+def _prune_holding_acks(rows: list[dict]) -> None:
+    """Forget acks for workers no longer holding uncommitted work, so the *next* time one
+    goes idle on unsaved changes it wakes its overseer again rather than inheriting the
+    ack from an episode it has since left."""
+    _holding_acked.intersection_update(r["task"] for r in rows if fleet.holding_uncommitted_work(r))
+
+
 def _needing(rows: list[dict], viewer: str) -> list[dict]:
     """``viewer``'s direct reports that have an unhandled action for it right now.
 
@@ -107,18 +124,31 @@ def _needing(rows: list[dict], viewer: str) -> list[dict]:
     without clearing the user's overlay); a done worker de-dupes through its own
     ``unseen`` flag, which ``_mark_seen`` clears when its overseer views it."""
     _prune_overseer_acks(rows)
-    needing = []
-    for row in _direct_reports(rows, viewer):
-        if not fleet.needs_attention(row):
-            continue
-        if (
-            row["state"] == "idle"
-            and row.get("role") == "overseer"
-            and row.get("task") in _overseer_acked
-        ):
-            continue
-        needing.append(row)
-    return needing
+    _prune_holding_acks(rows)
+    return [
+        row
+        for row in _direct_reports(rows, viewer)
+        if fleet.needs_attention(row) and not _every_reason_acked(row)
+    ]
+
+
+def _every_reason_acked(row: dict) -> bool:
+    """Whether the viewer has already been shown each thing this row is asking about.
+
+    A row can want attention for more than one reason at once, and each is acked
+    separately — which is the whole point. A worker that delivered a chunk, was seen, and
+    *then* went idle holding uncommitted changes has a fresh reason the earlier ack does
+    not cover; dedup on the task alone treated the two as one and stayed silent.
+
+    Blocked/error/undelivered are never acked: they wake on state, every time.
+    """
+    if row["state"] in fleet.ATTENTION_STATES:
+        return False
+    if row["state"] == "idle" and row.get("unseen"):
+        acked_as_done = row.get("role") == "overseer" and row.get("task") in _overseer_acked
+        if not acked_as_done:
+            return False
+    return not (fleet.holding_uncommitted_work(row) and row["task"] not in _holding_acked)
 
 
 def viewer_woke(rows: list[dict], viewer: str) -> bool:
@@ -195,6 +225,7 @@ def _fleet_rows(origin: str | None, with_outcome: bool = False) -> list[dict]:
         context_of=idle_monitor.context_used,
         overseer_exclude={BILL_SESSION},
         babysat_unresolved=set(babysit.unresolved(set(idle_monitor.live_targets()))),
+        work_of=lambda path: worktrees.work_in_progress(Path(path)),
     )
     # Stamped here, inside the executor, rather than read per row on the event loop: the
     # supervise long poll asks for direct reports every 1.5s and the registries are files.
@@ -222,6 +253,8 @@ def _mark_seen(rows: list[dict], viewer: str) -> None:
     or was reaped) surfaces afresh, and they never leak.
     """
     for row in _direct_reports(rows, viewer):
+        if fleet.holding_uncommitted_work(row):
+            _holding_acked.add(row["task"])
         if row.get("role") == "overseer":
             if row["state"] == "idle" and row.get("unseen") and row["task"] not in _overseer_acked:
                 _overseer_acked.add(row["task"])
@@ -235,6 +268,7 @@ def _mark_seen(rows: list[dict], viewer: str) -> None:
             _dead_acked.add(row["path"])
     _dead_acked.intersection_update(r["path"] for r in rows if r.get("state") == "dead")
     _prune_overseer_acks(rows)
+    _prune_holding_acks(rows)
     bill_watch.prune({r["task"] for r in rows if r.get("role") == "overseer"})
 
 
@@ -836,7 +870,11 @@ def spawn(body: SpawnBody):
     except Exception:
         logger.warning("could not install worker skills for %s", target, exc_info=True)
 
-    launch = get_launch_command(body.agent_provider, get_settings().get("defaultAgent"))
+    # `fresh`: a worker is spawned to do the work its brief describes, never to pick up
+    # whatever conversation last ran in this directory. Worktree paths are derived from
+    # the branch name and so get reused, and a resumed agent answers the brief with its
+    # predecessor's already-delivered outcome.
+    launch = get_launch_command(body.agent_provider, get_settings().get("defaultAgent"), fresh=True)
     try:
         if body.into:
             create_tmux_window(body.into, name, workdir, launch_command=launch)
@@ -1091,14 +1129,19 @@ def batch(body: BatchBody):
 
 
 class LandBody(BaseModel):
-    run: str
+    # One id or several: two runs that become ready together assemble into one batch, so
+    # they land in one push and CI fires once. `--onto` resolves against the remote and
+    # `lb land` leaves its batch branch purely local, so chaining lands is not an option.
+    run: str | list[str]
     onto: str | None = None
     push: bool = False
     smoke: str | None = None
     skip_smoke: bool = False
 
 
-def _land_existing_batch(body: LandBody, repo: Path, base: str, batch_branch: str, member_branches):
+def _land_existing_batch(
+    body: LandBody, run_ids: list[str], repo: Path, base: str, batch_branch: str, member_branches
+):
     """Land the batch branch a prior no-push `land` left in place — push *that*
     ref, never a fresh re-assembly. Rebuilding here would discard any commit the
     overseer added to the inspected branch and could push a tree that smoke never
@@ -1109,7 +1152,7 @@ def _land_existing_batch(body: LandBody, repo: Path, base: str, batch_branch: st
         raise _fail(
             "stale",
             f"workers moved since `{batch_branch}` was assembled: {', '.join(stale)}",
-            f"re-assemble with `lb land --run {body.run}` (no --push), then --push",
+            f"re-assemble with `lb land {_run_flags(run_ids)}` (no --push), then --push",
         )
 
     smoke_state = "skipped"
@@ -1143,7 +1186,7 @@ def _land_existing_batch(body: LandBody, repo: Path, base: str, batch_branch: st
         raise _fail("push", push.get("error", "push failed"), "check the remote and retry")
     land.delete_batch(repo, batch_branch)
     return {
-        "run": body.run,
+        **_run_identity(run_ids),
         "batch": batch_branch,
         "base": base,
         "pushed": True,
@@ -1153,12 +1196,32 @@ def _land_existing_batch(body: LandBody, repo: Path, base: str, batch_branch: st
     }
 
 
+def _run_flags(run_ids: list[str]) -> str:
+    """The ``--run`` flags that reproduce this land, for help text that can be pasted."""
+    return " ".join(f"--run {r}" for r in run_ids)
+
+
+def _run_identity(run_ids: list[str]) -> dict:
+    """What a land calls itself. ``run`` stays a single string every existing reader can
+    print; ``runs`` is the list, so a multi-run land is machine-readable as one."""
+    return {"run": "+".join(run_ids), "runs": run_ids}
+
+
 @router.post("/land")
 def land_run(body: LandBody):
-    """Assemble a run's branches, smoke-test, and (only on explicit go) single-push."""
-    members = run_members(body.run)
-    if not members:
-        raise _fail("run", f"no workers in run `{body.run}`", "check the --run id")
+    """Assemble one or more runs' branches, smoke-test, and (only on explicit go)
+    single-push. Several runs assemble onto a single batch branch so a set of lanes that
+    became ready together lands in one push, and CI builds it once."""
+    run_ids = run_groups.normalize(body.run)
+    if not run_ids:
+        raise _fail("run", "no run id given", "pass --run <id> (repeatable)")
+    members, empty = run_groups.group_members(run_ids, run_members)
+    if empty:
+        raise _fail(
+            "run",
+            f"no workers in run{'s' if len(empty) > 1 else ''} `{'`, `'.join(empty)}`",
+            "check the --run id",
+        )
     repos = {m.get("parent_repo") for m in members}
     repo_path = next(iter(repos)) if len(repos) == 1 else None
     if repo_path is None:
@@ -1166,7 +1229,7 @@ def land_run(body: LandBody):
     repo = Path(repo_path)
     base = body.onto or "main"
     member_branches = [m["branch"] for m in members]
-    batch_branch = f"batch-{body.run}"
+    batch_branch = run_groups.batch_branch(run_ids)
 
     # Membership, not name matching, decides who is in a batch — so a member whose
     # branch can't be resolved is a hard error naming the worker, never a silent
@@ -1184,12 +1247,14 @@ def land_run(body: LandBody):
     # `--push` against a batch a prior `land` already assembled lands that exact
     # branch — the one the overseer was told to inspect — rather than rebuilding.
     if body.push and land.batch_exists(repo, batch_branch):
-        return _land_existing_batch(body, repo, base, batch_branch, member_branches)
-    return _assemble_and_land(body, repo, base, member_branches)
+        return _land_existing_batch(body, run_ids, repo, base, batch_branch, member_branches)
+    return _assemble_and_land(body, run_ids, repo, base, member_branches)
 
 
-def _assemble_and_land(body: LandBody, repo: Path, base: str, member_branches: list[str]) -> dict:
-    result = land.assemble(repo, body.run, base, member_branches)
+def _assemble_and_land(
+    body: LandBody, run_ids: list[str], repo: Path, base: str, member_branches: list[str]
+) -> dict:
+    result = land.assemble(repo, run_ids, base, member_branches)
     if not result["ok"]:
         raise _fail(
             result["stage"],
@@ -1233,7 +1298,7 @@ def _assemble_and_land(body: LandBody, repo: Path, base: str, member_branches: l
         # drops it.
         land.remove_worktree(repo, worktree)
         return {
-            "run": body.run,
+            **_run_identity(run_ids),
             "batch": batch_branch,
             "base": base,
             "pushed": False,
@@ -1242,7 +1307,8 @@ def _assemble_and_land(body: LandBody, repo: Path, base: str, member_branches: l
             "smoke": smoke_state,
             "next": (
                 f"batch branch `{batch_branch}` is assembled and left in place — inspect it, "
-                f"then re-run with --push to land it, or `lb teardown --run {body.run}` to drop it"
+                f"then re-run with --push to land it, or `lb teardown "
+                f"{_run_flags(run_ids)}` to drop it"
             ),
         }
 
@@ -1252,7 +1318,7 @@ def _assemble_and_land(body: LandBody, repo: Path, base: str, member_branches: l
     if not push["ok"]:
         raise _fail("push", push.get("error", "push failed"), "check the remote and retry")
     return {
-        "run": body.run,
+        **_run_identity(run_ids),
         "batch": batch_branch,
         "base": base,
         "pushed": True,
@@ -1264,7 +1330,9 @@ def _assemble_and_land(body: LandBody, repo: Path, base: str, member_branches: l
 
 
 class TeardownBody(BaseModel):
-    run: str
+    # Repeatable, so the run set that landed together is the run set torn down together —
+    # anything less leaves the combined batch branch behind with nothing naming it.
+    run: str | list[str]
     force: bool = False
     dry_run: bool = False
     # See ReapBody.caller_pid: an overseer can be sitting in a worktree it tears down.
@@ -1274,7 +1342,8 @@ class TeardownBody(BaseModel):
 @router.post("/teardown")
 def teardown(body: TeardownBody):
     """Kill each run member's window and reap its worktree; refuse unlanded work."""
-    members = run_members(body.run)
+    run_ids = run_groups.normalize(body.run)
+    members, _empty = run_groups.group_members(run_ids, run_members)
     results, refused = [], []
     for m in members:
         target = m.get("target")
@@ -1330,5 +1399,10 @@ def teardown(body: TeardownBody):
     # was none, or if a member's repo has no such branch).
     for repo_path in {m.get("parent_repo") for m in members} if not body.dry_run else set():
         if repo_path:
-            land.delete_batch(Path(repo_path), f"batch-{body.run}")
-    return {"run": body.run, "dry_run": body.dry_run, "results": results, "refused": refused}
+            land.delete_batch(Path(repo_path), run_groups.batch_branch(run_ids))
+    return {
+        **_run_identity(run_ids),
+        "dry_run": body.dry_run,
+        "results": results,
+        "refused": refused,
+    }
