@@ -55,6 +55,22 @@ authority on syntax — run `lb <command> --help` when unsure.
   the branch's upstream when the local copy is behind it — `lb land --push` leaves local
   branches stale — and prints a `base_note` whenever local and upstream disagree.
 
+## Bill's files, when you can't reach his filesystem
+
+The briefs you dispatch and the user's standing preferences live in Bill's home, on the
+machine running the Lumbergh server. If you are occupying the Bill role from another host
+you can reach the server but not that directory — use these instead of file tools:
+
+- `lb brief write --name <slug> [--file <path>|-]` — write `briefs/<slug>.md` from a file or
+  from stdin. You send a slug, never a path: the server resolves it against its own home and
+  prints the resulting path, which is exactly what `lb spawn --brief` wants (spawn sends the
+  path and the *server* opens it, so a path from your own filesystem would mean nothing).
+- `lb prefs read` — the user's standing preferences. Read them before answering a worker's
+  question; the answer is often already there.
+- `lb prefs add "<text>" --reason "<why>"` — append one dated bullet when the user states a
+  standing preference or corrects you. The server stamps the date and formats the bullet.
+  Append-only by design: nothing here can rewrite or reorder the file, which is the user's.
+
 ## Worktrees
 
 `lb worktree` manages the isolated repo copies workers run in. `lb spawn` already creates

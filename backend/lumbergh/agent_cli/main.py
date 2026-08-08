@@ -56,6 +56,8 @@ FLAGS = {
     "land": {"--run", "--onto", "--push", "--smoke", "--skip-smoke"},
     "teardown": {"--run", "--force", "--dry-run"},
     "babysit": {"--session", "--stop", "--list", "--refresh"},
+    "brief": {"--name", "--file"},
+    "prefs": {"--reason"},
 }
 _BOOL_FLAGS = {
     "--full",
@@ -126,6 +128,11 @@ _COMMAND_HELP = {
         "lb babysit --session <name> | --refresh --session <name> | "
         "--stop --session <name> | --list"
     ),
+    "brief": (
+        "lb brief write --name <slug> [--file <path>|-]  (body from --file, or piped on "
+        "stdin; prints the server-side path `lb spawn --brief` wants)"
+    ),
+    "prefs": 'lb prefs read | lb prefs add "<text>" --reason "<why>"',
 }
 
 
@@ -231,6 +238,8 @@ def main(argv=None) -> int:
         "teardown": lambda: _cmd_teardown(flags),
         "init": lambda: _cmd_init(flags),
         "babysit": lambda: _cmd_babysit(flags),
+        "brief": lambda: _cmd_brief(positional, flags),
+        "prefs": lambda: _cmd_prefs(positional, flags),
     }
     handler = dispatch.get(command)
     if handler is None:
@@ -496,6 +505,18 @@ def _cmd_babysit(flags) -> int:
     from lumbergh.agent_cli import babysit as babysit_cli
 
     return babysit_cli.run(flags)
+
+
+def _cmd_brief(positional, flags) -> int:
+    from lumbergh.agent_cli import brief as brief_cli
+
+    return brief_cli.run(positional, flags)
+
+
+def _cmd_prefs(positional, flags) -> int:
+    from lumbergh.agent_cli import prefs as prefs_cli
+
+    return prefs_cli.run(positional, flags)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 import asyncio
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -1481,6 +1482,132 @@ def test_write_brief_creates_missing_parent_directories(client, tmp_path, monkey
     assert nested.read_text() == "hi"
 
 
+def test_write_brief_resolves_a_slug_against_the_servers_own_home(client, tmp_path, monkeypatch):
+    """A caller on another host cannot know what ``home()`` is here, so it sends a slug and
+    the server resolves it — and answers with the path ``lb spawn --brief`` will want."""
+    home = tmp_path / "bill"
+    monkeypatch.setattr(bill.bill_bundle, "home", lambda: home)
+
+    r = client.post("/api/bill/brief", json={"name": "flaky-login", "body": "# Task: x\n"})
+
+    assert r.status_code == 200
+    assert r.json()["path"] == str(home / "briefs" / "flaky-login.md")
+    assert (home / "briefs" / "flaky-login.md").read_text() == "# Task: x\n"
+
+
+@pytest.mark.parametrize("slug", ["../escape", "briefs/../../w", "sub/w", "Flaky_Login", ".", "-x"])
+def test_write_brief_refuses_a_name_that_is_not_a_slug(client, tmp_path, monkeypatch, slug):
+    monkeypatch.setattr(bill.bill_bundle, "home", lambda: tmp_path / "bill")
+
+    r = client.post("/api/bill/brief", json={"name": slug, "body": "x"})
+
+    assert r.status_code == 400
+    assert r.json()["detail"]["stage"] == "name"
+    assert not list(tmp_path.rglob("*.md"))
+
+
+def test_write_brief_needs_a_name_or_a_path(client, tmp_path, monkeypatch):
+    monkeypatch.setattr(bill.bill_bundle, "home", lambda: tmp_path / "bill")
+    r = client.post("/api/bill/brief", json={"body": "x"})
+    assert r.status_code == 400
+
+
+def test_read_preferences_returns_the_file_verbatim(client, tmp_path, monkeypatch):
+    home = tmp_path / "bill"
+    home.mkdir()
+    text = "# prefs\n\n- 2026-07-28: Small PRs. Reason: phone review.\n"
+    (home / "preferences.md").write_text(text)
+    monkeypatch.setattr(bill.bill_bundle, "home", lambda: home)
+
+    body = client.get("/api/bill/preferences").json()
+
+    assert body["body"] == text
+    assert body["exists"] is True
+    assert body["path"] == str(home / "preferences.md")
+
+
+def test_read_preferences_on_a_home_that_was_never_materialized(client, tmp_path, monkeypatch):
+    monkeypatch.setattr(bill.bill_bundle, "home", lambda: tmp_path / "bill")
+    body = client.get("/api/bill/preferences").json()
+    assert body == {"path": str(tmp_path / "bill" / "preferences.md"), "exists": False, "body": ""}
+
+
+def test_add_preference_appends_one_dated_bullet_and_touches_nothing_else(
+    client, tmp_path, monkeypatch
+):
+    home = tmp_path / "bill"
+    home.mkdir()
+    before = "# prefs\n\n- 2026-07-28: Small PRs. Reason: phone review.\n"
+    (home / "preferences.md").write_text(before)
+    monkeypatch.setattr(bill.bill_bundle, "home", lambda: home)
+
+    r = client.post(
+        "/api/bill/preferences", json={"text": "Never force-push main.", "reason": "it is shared."}
+    )
+
+    after = (home / "preferences.md").read_text()
+    assert after.startswith(before)
+    assert after.removeprefix(before).splitlines() == [
+        f"- {datetime.now(UTC).strftime('%Y-%m-%d')}: Never force-push main. Reason: it is shared."
+    ]
+    assert r.json()["bullet"] in after
+
+
+def test_add_preference_seeds_the_file_when_it_does_not_exist_yet(client, tmp_path, monkeypatch):
+    monkeypatch.setattr(bill.bill_bundle, "home", lambda: tmp_path / "bill")
+
+    client.post("/api/bill/preferences", json={"text": "Use uv.", "reason": "one toolchain."})
+
+    text = (tmp_path / "bill" / "preferences.md").read_text()
+    assert text.startswith("# The user's standing preferences")
+    assert text.endswith("Use uv. Reason: one toolchain.\n")
+
+
+def test_add_preference_keeps_a_multiline_text_on_a_single_bullet(client, tmp_path, monkeypatch):
+    """One bullet per preference is the file's whole format; a caller's stray newline must
+    not turn one preference into a bullet plus an orphan line."""
+    monkeypatch.setattr(bill.bill_bundle, "home", lambda: tmp_path / "bill")
+
+    r = client.post(
+        "/api/bill/preferences", json={"text": "Small\nPRs.", "reason": "phone\nreview."}
+    )
+
+    assert r.json()["bullet"].endswith("Small PRs. Reason: phone review.")
+
+
+def test_add_preference_never_rewrites_a_file_it_cannot_append_to(client, tmp_path, monkeypatch):
+    """A file with no trailing newline must gain one, not a bullet glued to its last line."""
+    home = tmp_path / "bill"
+    home.mkdir()
+    (home / "preferences.md").write_text("# prefs\n\n- 2026-07-28: Small PRs.")
+    monkeypatch.setattr(bill.bill_bundle, "home", lambda: home)
+
+    client.post("/api/bill/preferences", json={"text": "Use uv.", "reason": "one toolchain."})
+
+    lines = (home / "preferences.md").read_text().splitlines()
+    assert lines[-2] == "- 2026-07-28: Small PRs."
+    assert lines[-1].endswith("Use uv. Reason: one toolchain.")
+
+
+@pytest.mark.parametrize(
+    "payload", [{"text": "", "reason": "why"}, {"text": "  \n ", "reason": "why"}]
+)
+def test_add_preference_refuses_an_empty_preference(client, tmp_path, monkeypatch, payload):
+    monkeypatch.setattr(bill.bill_bundle, "home", lambda: tmp_path / "bill")
+    r = client.post("/api/bill/preferences", json=payload)
+    assert r.status_code == 400
+    assert not (tmp_path / "bill" / "preferences.md").exists()
+
+
+def test_add_preference_requires_the_reason(client, tmp_path, monkeypatch):
+    """AGENTS.md promises the file records *why* each preference exists; a bullet without
+    one is the shape this endpoint exists to enforce."""
+    monkeypatch.setattr(bill.bill_bundle, "home", lambda: tmp_path / "bill")
+    r = client.post("/api/bill/preferences", json={"text": "Use uv."})
+    assert r.status_code == 400
+    assert r.json()["detail"]["stage"] == "reason"
+
+
 def test_spawn_accepts_a_brief_path_relative_to_bills_home(client, tmp_path, monkeypatch):
     """The invocation AGENTS.md documents: Bill writes ``briefs/<slug>.md`` from his home,
     then spawns with ``--brief briefs/<slug>.md``. Resolving that against the *server's*
@@ -1522,6 +1649,48 @@ def test_spawn_accepts_a_brief_path_relative_to_bills_home(client, tmp_path, mon
     assert r.status_code == 200, r.text
     assert r.json()["brief_path"] == str(home / "briefs" / "flaky-login.md")
     assert str(home / "briefs" / "flaky-login.md") in sent["text"]
+
+
+def test_a_brief_written_by_slug_can_be_spawned_by_the_path_that_came_back(
+    client, tmp_path, monkeypatch
+):
+    """The whole point of the slug form: a caller with no filesystem access writes a brief,
+    then hands the returned path straight to spawn — which reads it on *this* side."""
+    home = tmp_path / "bill"
+    repo = tmp_path / "app"
+    (repo / ".git").mkdir(parents=True)
+
+    monkeypatch.setattr(bill.bill_bundle, "home", lambda: home)
+    monkeypatch.setattr("lumbergh.routers.sessions.get_live_sessions", dict)
+    monkeypatch.setattr(
+        bill.worktrees,
+        "create",
+        lambda *a, **kw: {"path": str(tmp_path / "wt"), "links_applied": []},  # noqa: ARG005
+    )
+    monkeypatch.setattr(bill, "create_tmux_session", lambda *a, **kw: None)  # noqa: ARG005
+    monkeypatch.setattr(bill, "_store_session", lambda **kw: None)  # noqa: ARG005
+    monkeypatch.setattr(
+        bill,
+        "deliver_when_ready",
+        lambda *a, **kw: bill.DeliveryResult(True, ""),  # noqa: ARG005
+    )
+
+    written = client.post(
+        "/api/bill/brief", json={"name": "flaky-login", "body": "# Task: x\n"}
+    ).json()
+    r = client.post(
+        "/api/bill/spawn",
+        json={
+            "repo": str(repo),
+            "branch": "feat/x",
+            "kind": "ship",
+            "brief_path": written["path"],
+            "name": written["name"],
+        },
+    )
+
+    assert r.status_code == 200, r.text
+    assert r.json()["brief_path"] == written["path"]
 
 
 def test_spawn_help_for_a_missing_brief_names_the_path_it_looked_in(client, tmp_path, monkeypatch):

@@ -990,25 +990,86 @@ def redeliver(body: RedeliverBody):
 
 
 class BriefBody(BaseModel):
-    path: str
     body: str
+    name: str | None = None
+    path: str | None = None
 
 
 @router.post("/brief")
 def write_brief(body: BriefBody):
-    """Write a brief, refusing any path outside Bill's ``briefs/`` directory.
+    """Write a brief into Bill's ``briefs/`` directory, and nowhere else.
 
     Bill writes his own briefs with his own file tools; this exists for callers that
-    can't reach his home directly — a future UI showing a brief before spawn, or an
-    E2E client that only ever sends path strings across a possible host/VM split.
+    can't reach his home directly — a UI showing a brief before spawn, or a Bill
+    occupying the role from another host and speaking only HTTP.
+
+    ``name`` is the form such a caller wants: a slug, resolved against *this* server's
+    home, so the client never has to know a path here and cannot express one that
+    escapes ``briefs/``. ``path`` stays for a caller that already knows the layout
+    (the E2E suite, a local UI) and is jailed to the same directory. The answer always
+    carries the resolved path, which is what ``spawn``'s ``brief_path`` needs — that is
+    read on the server, so a caller's own path would be meaningless across a host split.
     """
-    target = Path(body.path).expanduser().resolve()
-    home_dir = bill_bundle.home().resolve()
-    if not target.is_relative_to(home_dir / "briefs"):
-        raise _fail("path", f"{target} is outside {home_dir / 'briefs'}", "write under briefs/")
+    briefs_dir = bill_bundle.home().resolve() / "briefs"
+    if body.name:
+        if not bill_bundle.SLUG.match(body.name):
+            raise _fail("name", f"`{body.name}` is not a slug", bill_bundle.SLUG_HELP)
+        target = briefs_dir / f"{body.name}.md"
+    elif body.path:
+        target = Path(body.path).expanduser().resolve()
+        if not target.is_relative_to(briefs_dir):
+            raise _fail("path", f"{target} is outside {briefs_dir}", "write under briefs/")
+    else:
+        raise _fail(
+            "name",
+            "no brief name given",
+            f"pass a slug as `name` — {bill_bundle.SLUG_HELP}",
+        )
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(body.body)
-    return {"path": str(target)}
+    return {"path": str(target), "name": target.stem, "bytes": len(body.body.encode())}
+
+
+class PreferenceBody(BaseModel):
+    text: str
+    reason: str = ""
+
+
+@router.get("/preferences")
+def get_preferences():
+    """Bill's standing preferences, for a Bill who cannot read the file himself.
+
+    ``AGENTS.md`` has him read it before answering any worker's question, so an occupant
+    of the role on another host needs it over the wire. Absent is a normal answer, not an
+    error: a home that was never materialized simply has no preferences yet.
+    """
+    path = bill_bundle.preferences_path()
+    return {"path": str(path), "exists": path.is_file(), "body": bill_bundle.read_preferences()}
+
+
+@router.post("/preferences")
+def add_preference(body: PreferenceBody):
+    """Append exactly one dated bullet to ``preferences.md``.
+
+    The endpoint stamps the date and formats the bullet so the file's shape is enforced
+    here rather than trusted from a caller that ``AGENTS.md`` merely *asks* to format it.
+    There is deliberately no way to replace the file: it is the user's, they edit it by
+    hand, and an API that can truncate their standing opinions is a footgun with no use
+    case. The reason is required for the same reason the format is — a preference whose
+    rationale is lost cannot be re-judged later.
+    """
+    if not body.text.strip():
+        raise _fail("text", "no preference text given", 'lb prefs add "<text>" --reason "<why>"')
+    if not body.reason.strip():
+        raise _fail(
+            "reason",
+            "no reason given",
+            "every preference records why it exists — pass --reason",
+        )
+    path, bullet = bill_bundle.append_preference(
+        datetime.now(UTC).strftime("%Y-%m-%d"), body.text, body.reason
+    )
+    return {"path": str(path), "bullet": bullet}
 
 
 class InitBody(BaseModel):
