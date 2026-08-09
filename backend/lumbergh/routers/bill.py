@@ -19,6 +19,11 @@ from lumbergh import runs as run_groups
 from lumbergh.activity.resolve import resolve_adapter
 from lumbergh.activity.resolve import session_meta as _session_meta
 from lumbergh.briefs import enumerate_briefs
+from lumbergh.db_utils import (
+    get_project_db,
+    get_single_document_items,
+    save_single_document_items,
+)
 from lumbergh.idle_monitor import idle_monitor, tmux_ref
 from lumbergh.routers.sessions import SESSION_NAME_PATTERN, create_tmux_session, create_tmux_window
 from lumbergh.runs import run_members
@@ -537,6 +542,15 @@ def start_babysit(body: BabysitBody):
     just works. Defaults apply when a repo has no config, so an unresolvable repo is fine.
     """
     from lumbergh import babysit
+    from lumbergh.agent_cli import skill
+
+    # Best-effort: the default refresh ritual sends `/next`, and a session handed a command
+    # that does not resolve is worse than one left alone. Never fail the registration over
+    # it — a repo with its own `on_refresh` doesn't need the skill at all.
+    try:
+        skill.ensure_babysit_skills()
+    except Exception:
+        logger.warning("could not install the babysit skill for %s", body.session, exc_info=True)
 
     repo = body.repo
     if repo is None:
@@ -1142,6 +1156,71 @@ def init(body: InitBody):
         "added": added,
         "unchanged": present,
     }
+
+
+class TodoAddBody(BaseModel):
+    repo: str
+    text: str
+    description: str | None = None
+
+
+class TodoDoneBody(BaseModel):
+    repo: str
+    index: int
+
+
+def _todos_table(repo: str):
+    """The project's todo table, keyed by repo rather than by session.
+
+    The dashboard reaches the same table through a session's workdir; an agent has only
+    the directory it is sitting in. A path that isn't there is refused rather than
+    silently opening a fresh backlog under a typo'd hash.
+    """
+    path = Path(repo).expanduser()
+    if not path.is_dir():
+        raise _fail("repo", f"{path} is not a directory", "pass the repo's root path")
+    return get_project_db(path).table("todos")
+
+
+@router.get("/todos")
+def bill_todos(repo: str):
+    """The repo's whole backlog, in the order the dashboard shows it."""
+    return {"todos": get_single_document_items(_todos_table(repo))}
+
+
+@router.post("/todos/add")
+def add_bill_todo(body: TodoAddBody):
+    if not body.text.strip():
+        raise _fail("text", "no todo text given", 'lb todo add "<text>"')
+    table = _todos_table(body.repo)
+    todos = get_single_document_items(table)
+    todo = {"text": body.text.strip(), "done": False, "description": body.description}
+    todos.append(todo)
+    save_single_document_items(table, todos)
+    return {"todo": todo, "index": len(todos)}
+
+
+@router.post("/todos/done")
+def finish_bill_todo(body: TodoDoneBody):
+    """Tick off item ``index``, counting from 1 over the whole list.
+
+    The mutation happens here, not as a read-modify-write in the CLI, so it cannot lose a
+    concurrent edit from the dashboard. ``index`` counts done items too, so the numbers
+    `lb todo` prints are the numbers this accepts.
+    """
+    table = _todos_table(body.repo)
+    todos = get_single_document_items(table)
+    if not todos:
+        raise _fail("index", "the backlog is empty", 'add one with `lb todo add "<text>"`')
+    if not 1 <= body.index <= len(todos):
+        raise _fail(
+            "index",
+            f"no todo {body.index} — the backlog runs 1..{len(todos)}",
+            "run `lb todo` for the current numbering",
+        )
+    todos[body.index - 1]["done"] = True
+    save_single_document_items(table, todos)
+    return {"todo": todos[body.index - 1], "index": body.index}
 
 
 class BatchBody(BaseModel):

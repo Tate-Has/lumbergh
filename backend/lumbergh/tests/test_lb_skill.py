@@ -27,6 +27,18 @@ def test_install_can_target_a_subset_of_skills(tmp_path):
     assert len(written) == 2
 
 
+def test_the_babysit_skill_is_installed_where_a_babysat_session_will_look(monkeypatch, tmp_path):
+    """The default refresh ritual sends `/next`, so it has to be on disk before the first
+    cycle — a session that clears its context and is then handed an unresolvable command is
+    worse off than one left alone."""
+    monkeypatch.setattr(skill, "_WORKER_SKILL_DIRS", [tmp_path])
+
+    written = skill.ensure_babysit_skills()
+
+    assert (tmp_path / "next" / "SKILL.md").read_text() == skill.SKILLS["next"]
+    assert written == [tmp_path / "next" / "SKILL.md"]
+
+
 def _run(monkeypatch, argv):
     out = []
     monkeypatch.setattr(cli, "_emit", out.append)

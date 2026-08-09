@@ -214,11 +214,82 @@ End your final message with exactly one line, nothing after it:
 That line is the contract the fleet reads to know how your task ended.
 """
 
-# The lb skill is for a coordinator; ship/scout are for workers. See the module docstring.
+_NEXT_SKILL_MD = """\
+---
+name: next
+description: >
+  Take the next item off this repo's Lumbergh backlog, do it, commit it locally, and tick
+  it off — the one-task-at-a-time loop a babysat session runs after each `/clear`. Use when
+  you are asked to work the backlog, pick up the next todo, or continue where the last
+  cycle left off. Do NOT use to push, open PRs, or spawn other sessions.
+---
+
+# next — work one item off the backlog
+
+You are a session Lumbergh is babysitting. Your context was just cleared, so the backlog —
+not your memory — is the state that survived. Take one item, do it, record that you did,
+and stop. Something else decides whether the loop runs again.
+
+## 1. Ask what is next
+
+```
+lb todo next
+```
+
+**Exit code 1 means the backlog is empty.** Print exactly this line and nothing after it,
+then stop:
+
+```
+⟳ BACKLOG-EMPTY
+```
+
+Otherwise it prints the item's `index`, `text` and `description`. Keep the index — you
+need it in step 3.
+
+## 2. Do the work
+
+Work that one item, and only that item. Follow the repo's own conventions: read its
+`CLAUDE.md` / `AGENTS.md` and do what they say about tests, lint, and style. Run the
+project's own validation gate before you call the work done.
+
+When you are finished, **commit locally**.
+
+**Never push, never open a PR, never touch a remote.** Progress stays reviewable on this
+machine; the user decides what leaves it. This is the whole guardrail on an unattended
+loop, so do not talk yourself out of it because the change is small or the branch is
+yours.
+
+Do not spawn workers or worktrees. This loop is one session doing one thing at a time.
+
+## 3. Record what happened
+
+```
+lb todo done <index>
+```
+
+Tick it off only when it is genuinely finished. If you ran out of road partway — blocked,
+out of context, the item turned out to be bigger than it read — leave it undone and append
+one line to the project scratchpad saying where you got to, so the next cycle starts from
+there instead of from scratch.
+
+## 4. Hand back
+
+Print exactly this line, on its own, with nothing after it:
+
+```
+⟳ REFRESH-READY
+```
+
+That sentinel is what tells the babysit loop this cycle is over.
+"""
+
+# The lb skill is for a coordinator; ship/scout are for workers; next is for a babysat
+# session working its own repo's backlog. See the module docstring.
 SKILLS: dict[str, str] = {
     "lb": _LB_SKILL_MD,
     "ship": _SHIP_SKILL_MD,
     "scout": _SCOUT_SKILL_MD,
+    "next": _NEXT_SKILL_MD,
 }
 
 # Back-compat alias: `lb skill` (no argument) prints the coordinator skill.
@@ -241,6 +312,11 @@ _WORKER_SKILL_DIRS = [
 ]
 WORKER_SKILLS = ["ship", "scout"]
 
+# The skill a babysat session is handed after each `/clear`. It goes in on the babysit
+# path rather than the spawn path because the session being babysat is usually the user's
+# own, which Lumbergh never spawned and so never seeded.
+BABYSIT_SKILLS = ["next"]
+
 
 def committed_path(name: str = "lb") -> Path:
     return Path(__file__).resolve().parent.parent / "skill" / name / "SKILL.md"
@@ -253,6 +329,16 @@ def ensure_worker_skills() -> list[Path]:
     of restating the delivery contract every time. Idempotent; safe to call on every spawn.
     """
     return install(_WORKER_SKILL_DIRS, names=WORKER_SKILLS)
+
+
+def ensure_babysit_skills() -> list[Path]:
+    """Put the `next` skill where a babysat session will find it after its `/clear`.
+
+    The default refresh ritual sends `/next`, so the skill has to exist before the first
+    cycle or the session clears its context and is handed a command that does not resolve.
+    Idempotent; safe to call every time babysitting starts.
+    """
+    return install(_WORKER_SKILL_DIRS, names=BABYSIT_SKILLS)
 
 
 def detect_dirs() -> list[Path]:

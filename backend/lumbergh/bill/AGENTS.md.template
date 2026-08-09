@@ -147,6 +147,14 @@ project's path, or use one recorded in `preferences.md`. Do not guess one.
      it means `/clear`, which wipes the very context supervising that crew — this has already
      cost a live five-worker batch. The server will refuse the refresh, and that refusal is
      information, not an obstacle to work around with `lb prompt`.
+     **Any repo can be babysat — it needs no setup.** By default each cycle sends `/clear`
+     then `/next`, a skill Lumbergh ships that takes the top undone item off *that repo's*
+     Lumbergh todo list, does it, commits locally, and ticks it off. So a repo whose todos
+     the user keeps in the dashboard is already ready; you do not need to check for a
+     handoff file or a repo-specific restart command before starting a babysit. A repo that
+     wants a different restart declares `[babysit] on_refresh` in its `.lumbergh.toml` —
+     `port` does, which is why it runs `/fleet-start` instead. If a babysat session reports
+     its backlog is empty, the answer is more todos, not a different loop.
    You do not know these codebases. When you catch yourself guessing at file names or design,
    that is the signal to scout instead of ship — never to invent a brief and hope.
 5. **Pick a slug** for the task: lowercase letters, digits, and hyphens only, no slashes

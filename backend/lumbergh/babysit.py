@@ -34,7 +34,7 @@ _TAIL_EVENTS = 12
 DEFAULTS: dict = {
     "refresh_ready": "⟳ REFRESH-READY",
     "backlog_empty": "⟳ BACKLOG-EMPTY",
-    "on_refresh": ["/clear", "/fleet-start"],
+    "on_refresh": ["/clear", "/next"],
 }
 
 REFRESH = "refresh"
@@ -50,8 +50,10 @@ NOT_BABYSAT = "not-babysat"
 def read_config(repo: Path | None) -> dict:
     """The babysit contract for ``repo`` — sentinels and refresh commands.
 
-    Defaults match the ``port`` convention, so a repo that adopts it needs no config.
-    ``[babysit]`` in ``.lumbergh.toml`` overrides any of the three keys.
+    The default ritual is ``/clear`` then ``/next`` — the skill Lumbergh ships, which works
+    its own todo list — so any repo with todos can be babysat with no config at all. A repo
+    with its own restart command points ``[babysit] on_refresh`` in ``.lumbergh.toml`` at it;
+    that section overrides any of the three keys.
     """
     cfg = dict(DEFAULTS)
     if repo is None:

@@ -58,6 +58,7 @@ FLAGS = {
     "babysit": {"--session", "--stop", "--list", "--refresh"},
     "brief": {"--name", "--file"},
     "prefs": {"--reason"},
+    "todo": {"--repo", "--description"},
 }
 _BOOL_FLAGS = {
     "--full",
@@ -133,6 +134,11 @@ _COMMAND_HELP = {
         "stdin; prints the server-side path `lb spawn --brief` wants)"
     ),
     "prefs": 'lb prefs read | lb prefs add "<text>" --reason "<why>"',
+    "todo": (
+        'lb todo [--repo <path>] | lb todo next | lb todo done <n> | lb todo add "<text>" '
+        '[--description "<why>"]  (--repo defaults to the cwd; `next` exits 1 when nothing '
+        "is left)"
+    ),
 }
 
 
@@ -240,6 +246,7 @@ def main(argv=None) -> int:
         "babysit": lambda: _cmd_babysit(flags),
         "brief": lambda: _cmd_brief(positional, flags),
         "prefs": lambda: _cmd_prefs(positional, flags),
+        "todo": lambda: _cmd_todo(positional, flags),
     }
     handler = dispatch.get(command)
     if handler is None:
@@ -517,6 +524,12 @@ def _cmd_prefs(positional, flags) -> int:
     from lumbergh.agent_cli import prefs as prefs_cli
 
     return prefs_cli.run(positional, flags)
+
+
+def _cmd_todo(positional, flags) -> int:
+    from lumbergh.agent_cli import todo as todo_cli
+
+    return todo_cli.run(positional, flags)
 
 
 if __name__ == "__main__":

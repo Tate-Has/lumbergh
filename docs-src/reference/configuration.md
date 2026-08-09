@@ -97,6 +97,33 @@ Use `--tailscale-only` to bind exclusively to the Tailscale interface. This ensu
 LUMBERGH_DATA_DIR=/data/lumbergh lumbergh
 ```
 
+## Per-repo config: `.lumbergh.toml`
+
+A repo can declare how Lumbergh treats it by committing a `.lumbergh.toml` at its root. Every section is optional — the defaults work with no file at all.
+
+### `[babysit]` — the keep-alive loop
+
+Babysitting keeps a session moving without you: each time it goes idle having printed the "refresh" sentinel, Lumbergh sends it a `/clear` followed by a restart command, so it starts the next piece of work with a fresh context.
+
+By default the restart is `/next`, a skill Lumbergh installs for you. It takes the top undone item off **that repo's todo list** (the same list the dashboard shows), works it, commits locally, ticks it off, and prints the refresh sentinel to ask for the next cycle. So any repo whose todos you keep in the dashboard can be babysat with no setup. When the backlog runs dry the session prints the "backlog empty" sentinel and the loop stops cleanly.
+
+The `/next` skill commits locally and **never pushes, opens a PR, or touches a remote** — progress stays reviewable on your machine. Note that this is an instruction to the agent, not a mechanical block.
+
+If your repo has its own restart command, point `on_refresh` at it:
+
+```toml
+[babysit]
+# Sent in order after the session asks to refresh. The first is almost always /clear.
+on_refresh = ["/clear", "/my-own-restart-skill"]
+
+# The sentinels Lumbergh watches for in the session's output. Override if they collide
+# with something your project prints.
+refresh_ready = "⟳ REFRESH-READY"
+backlog_empty = "⟳ BACKLOG-EMPTY"
+```
+
+Any key you leave out keeps its default.
+
 ## Theme
 
 Toggle between **dark** and **light** mode using the button in the top-right corner of the dashboard. Your preference is persisted to `localStorage` and restored on next visit.

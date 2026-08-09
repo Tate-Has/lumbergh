@@ -68,7 +68,7 @@ class TestConfig:
     def test_defaults_when_no_repo(self, babysit):
         cfg = babysit.read_config(None)
         assert cfg["refresh_ready"] == "⟳ REFRESH-READY"
-        assert cfg["on_refresh"] == ["/clear", "/fleet-start"]
+        assert cfg["on_refresh"] == ["/clear", "/next"]
 
     def test_defaults_when_no_dotfile(self, babysit, tmp_path):
         assert babysit.read_config(tmp_path)["backlog_empty"] == "⟳ BACKLOG-EMPTY"
@@ -127,7 +127,7 @@ class TestOnIdle:
         sent, cleared = self._wire(babysit, monkeypatch, "⟳ REFRESH-READY")
         action = asyncio.run(babysit.on_idle("port"))
         assert action == babysit.REFRESH
-        assert sent == [(PORT_REF, "/clear"), (PORT_REF, "/fleet-start")]
+        assert sent == [(PORT_REF, "/clear"), (PORT_REF, "/next")]
         assert cleared == ["port"]
 
     def test_empty_stops_the_babysit(self, babysit, monkeypatch):
@@ -177,7 +177,7 @@ class TestRefresh:
         babysit.start("port", None, "t")
         sent, cleared = self._wire(babysit, monkeypatch)
         assert asyncio.run(babysit.refresh("port")) == (babysit.REFRESHED, [])
-        assert sent == [(PORT_REF, "/clear"), (PORT_REF, "/fleet-start")]
+        assert sent == [(PORT_REF, "/clear"), (PORT_REF, "/next")]
         assert cleared == ["port"]
 
     def test_unbabysat_session_refuses(self, babysit, monkeypatch):
@@ -227,4 +227,33 @@ class TestRefreshHoldsWhileWorkersRun:
         babysit.start("port", None, "t")
         sent = self._wire(babysit, monkeypatch, [])
         assert asyncio.run(babysit.refresh("port")) == (babysit.REFRESHED, [])
-        assert sent == [(PORT_REF, "/clear"), (PORT_REF, "/fleet-start")]
+        assert sent == [(PORT_REF, "/clear"), (PORT_REF, "/next")]
+
+
+@pytest.mark.usefixtures("babysit")
+class TestStartInstallsTheSkillItWillSend:
+    def test_starting_a_babysit_puts_the_next_skill_on_disk(self, tmp_path, monkeypatch):
+        """The session being babysat is usually the user's own, which Lumbergh never
+        spawned and so never seeded. Without this it gets `/clear` then a `/next` that
+        does not resolve — worse than being left alone."""
+        from lumbergh.agent_cli import skill
+        from lumbergh.routers import bill
+
+        skills_dir = tmp_path / "skills"
+        monkeypatch.setattr(skill, "_WORKER_SKILL_DIRS", [skills_dir])
+        monkeypatch.setattr(bill, "_session_meta", lambda _s: {"workdir": "/repo/port"})
+
+        bill.start_babysit(bill.BabysitBody(session="port"))
+
+        assert (skills_dir / "next" / "SKILL.md").read_text() == skill.SKILLS["next"]
+
+    def test_a_failed_install_does_not_fail_the_registration(self, monkeypatch):
+        from lumbergh.agent_cli import skill
+        from lumbergh.routers import bill
+
+        monkeypatch.setattr(bill, "_session_meta", lambda _s: {"workdir": "/repo/port"})
+        monkeypatch.setattr(
+            skill, "ensure_babysit_skills", lambda: (_ for _ in ()).throw(OSError("read-only fs"))
+        )
+
+        assert bill.start_babysit(bill.BabysitBody(session="port"))["session"] == "port"

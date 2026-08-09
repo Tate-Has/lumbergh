@@ -19,6 +19,17 @@ A per-session checklist for tracking what you've asked the AI to do.
 !!! tip "A practical workflow"
     Before kicking off a session, jot down the tasks you want the AI to tackle. Check them off as you review the diffs. This keeps you organized when managing multiple sessions.
 
+The list is also the backlog an agent can work on its own. From inside the repo it reads and ticks off the same items you see here:
+
+```bash
+lb todo             # the whole list, numbered
+lb todo next        # the first unchecked item
+lb todo done 3      # tick one off
+lb todo add "..."   # append one
+```
+
+That is what the babysit loop runs on — see [`[babysit]` configuration](../reference/configuration.md#babysit-the-keep-alive-loop).
+
 ## Scratchpad
 
 A freeform text area for notes, context, or anything else you want to keep alongside the session. Each session has its own scratchpad.
