@@ -14,6 +14,7 @@ from pathlib import Path
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request, Response, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -189,6 +190,11 @@ app.add_middleware(
 )
 app.add_middleware(AuthMiddleware)
 app.add_middleware(ETagMiddleware)
+# Outermost, so it compresses what ETag has already hashed — the ETag stays a
+# fingerprint of the real content and 304s keep working. The git graph is the
+# reason: a 1000-commit payload is ~470KB raw and gets polled every 5 seconds,
+# which is unusable from a phone.
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 
 @app.get("/api/health")
