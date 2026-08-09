@@ -12,6 +12,7 @@ import {
 import { getApiBase } from '../../config'
 import type { GraphData, GraphWorktree } from '../diff/types'
 import GraphToolbar from './GraphToolbar'
+import { applyGraphResponse } from './graphSync'
 import { computeGraphLayout, laneColor } from './graphLayout'
 import { relativeDate } from '../../utils/relativeDate'
 import { useClickOutside } from '../../hooks/useClickOutside'
@@ -784,29 +785,35 @@ export default function GitGraph({
   }, [graphData])
 
   const etagRef = useRef<string>('')
+  const versionRef = useRef<string>('')
+  const graphDataRef = useRef<GraphData | null>(null)
+  graphDataRef.current = graphData
 
   const fetchGraph = useCallback(async () => {
     if (!sessionName) return
     try {
       const headers: Record<string, string> = {}
       if (etagRef.current) headers['If-None-Match'] = etagRef.current
+      const cursor = versionRef.current ? `&since=${versionRef.current}` : ''
       const res = await fetch(
-        `${getApiBase()}/sessions/${sessionName}/git/graph?limit=${commitLimit}&mine=${mineOnly}`,
+        `${getApiBase()}/sessions/${sessionName}/git/graph?limit=${commitLimit}&mine=${mineOnly}${cursor}`,
         { headers }
       )
       if (res.status === 304) return // Not modified
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       etagRef.current = res.headers.get('etag') || ''
-      const data: GraphData = await res.json()
-      // Hashes arrive abbreviated and shortHash is not sent — it is pure
-      // duplication on a payload where every hash byte survives gzip. Derive it
-      // once here so the rest of the component keeps reading commit.shortHash.
-      for (const commit of data.commits) commit.shortHash = commit.hash.slice(0, 7)
-      setGraphData(data)
+
+      const { graph, cursorValid } = applyGraphResponse(graphDataRef.current, await res.json())
+      // A cursor we could not apply is dropped so the next poll asks for a full
+      // keyframe. Re-fetching is cheap; rendering a half-merged graph is not.
+      versionRef.current = cursorValid ? (graph?.version ?? '') : ''
+      setError(null)
       setLoading(false)
+      if (!graph) return
+      setGraphData(graph)
       if (!didAutoSelect.current) {
         didAutoSelect.current = true
-        autoSelectCommit(data, onSelectCommitRef.current)
+        autoSelectCommit(graph, onSelectCommitRef.current)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch graph')
@@ -818,12 +825,17 @@ export default function GitGraph({
     setMineOnly((on) => {
       const next = !on
       localStorage.setItem(mineOnlyStorageKey, String(next))
-      // The ETag tracks the unfiltered payload; keeping it would 304 the
-      // response and leave the graph showing the shape we just turned off.
-      etagRef.current = ''
       return next
     })
   }, [mineOnlyStorageKey])
+
+  // A cursor only describes one shape of payload. Changing session, limit or
+  // filter makes it meaningless, so drop it and take a fresh keyframe. Declared
+  // above the polling effect so it runs before the next fetch.
+  useEffect(() => {
+    versionRef.current = ''
+    etagRef.current = ''
+  }, [sessionName, commitLimit, mineOnly])
 
   // Fetch on mount + poll every 5s (matches diff polling cadence)
   // Also re-fetch when refreshTrigger bumps (after git actions)

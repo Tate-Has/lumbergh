@@ -84,6 +84,8 @@ export interface GraphData {
   /** `available` is false when no git identity could be resolved, which
    *  disables the "just mine" filter rather than showing an empty graph. */
   mine?: { available: boolean; active: boolean }
+  /** Content hash of this payload; offered back as `since` to get only what changed. */
+  version?: string
 }
 
 export interface GraphEdge {

@@ -19,6 +19,7 @@ from pathlib import Path
 
 from lumbergh.git_identity import graph_identity
 from lumbergh.git_utils import get_full_diff_with_untracked, get_graph_log
+from lumbergh.graph_delta import GraphHistory
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +81,9 @@ class DiffCache:
     def __init__(self):
         self._diff_cache: dict[str, dict] = {}  # session_name -> diff data
         self._graph_cache: dict[str, dict] = {}  # session_name -> graph data
+        # Commit orderings behind recent versions, so a returning client can be
+        # sent just what it lacks instead of the whole graph.
+        self.graph_history = GraphHistory()
         self._graph_limits: dict[str, tuple[int, bool]] = {}  # session_name -> (limit, mine_only)
         self._fingerprints: dict[str, tuple] = {}  # session_name -> last fingerprint
         self._last_interest: dict[str, float] = {}  # session_name -> timestamp
@@ -152,6 +156,7 @@ class DiffCache:
         # Clean up expired entries
         for name in expired:
             del self._last_interest[name]
+            self.graph_history.forget(name)
             self._diff_cache.pop(name, None)
             self._graph_cache.pop(name, None)
             self._fingerprints.pop(name, None)

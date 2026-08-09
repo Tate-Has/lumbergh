@@ -3,6 +3,7 @@ Git utilities for the Lumbergh backend using GitPython.
 """
 
 import hashlib
+import json
 import logging
 import os
 import subprocess
@@ -647,7 +648,7 @@ def get_graph_log(
             "unstaged": sum(1 for f in status if f["status"] == "untracked"),
         }
 
-    return {
+    payload = {
         "commits": commits,
         "branches": branches,
         "head": {"hash": head_hash, "branch": head_branch},
@@ -655,6 +656,23 @@ def get_graph_log(
         "worktrees": _build_graph_worktrees(cwd, session_paths),
         "mine": {"available": bool(identity), "active": filtering},
     }
+    payload["version"] = graph_version(payload)
+    return payload
+
+
+def graph_version(payload: dict) -> str:
+    """A token identifying exactly this graph payload.
+
+    Hashing the content rather than stamping a time is what makes incremental
+    updates safe: git history is not append-only, and a rebase or amend rewrites
+    commits that carry older timestamps than the client's cursor.  A content
+    hash cannot miss those — the version simply stops matching.
+
+    Equal versions therefore guarantee equal bytes, which is what lets the
+    server answer "unchanged" without re-sending anything.
+    """
+    body = {k: v for k, v in payload.items() if k != "version"}
+    return hashlib.md5(json.dumps(body, sort_keys=True, default=str).encode()).hexdigest()[:16]
 
 
 def get_commit_log(cwd: Path, limit: int = 20) -> list[dict]:

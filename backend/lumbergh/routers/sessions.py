@@ -65,6 +65,7 @@ from lumbergh.git_utils import (
     reword_commit,
     stage_all_and_commit,
 )
+from lumbergh.graph_delta import build_response
 from lumbergh.models import (
     AmendInput,
     BranchTargetInput,
@@ -1379,25 +1380,34 @@ async def session_git_diff_stats(name: str):
 
 
 @router.get("/{name}/git/graph")
-async def session_git_graph(name: str, limit: int = 100, mine: bool = False):
-    """Get commit graph data for metro-style visualization (served from background cache)."""
+async def session_git_graph(
+    name: str, limit: int = 100, mine: bool = False, since: str | None = None
+):
+    """Get commit graph data for metro-style visualization (served from background cache).
+
+    ``since`` is a version token from an earlier response.  When the server
+    still remembers it, only the commits the client is missing come back.
+    """
     from lumbergh.diff_cache import diff_cache
 
     diff_cache.mark_active(name)
     diff_cache.set_graph_params(name, limit, mine)
-    cached = diff_cache.get_graph(name)
-    if cached is not None:
-        return cached
+    payload = diff_cache.get_graph(name)
 
-    # Cache miss (first request before background loop runs) — compute inline
-    workdir = get_session_workdir(name)
-    try:
-        identity = graph_identity(workdir)
-        return await _run_git(get_graph_log, workdir, limit, get_session_path_map(), identity, mine)
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    if payload is None:
+        # Cache miss (first request before background loop runs) — compute inline
+        workdir = get_session_workdir(name)
+        try:
+            identity = graph_identity(workdir)
+            payload = await _run_git(
+                get_graph_log, workdir, limit, get_session_path_map(), identity, mine
+            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    return build_response(payload, since, diff_cache.graph_history, name)
 
 
 @router.get("/{name}/git/log")
