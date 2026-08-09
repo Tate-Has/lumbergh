@@ -1260,9 +1260,17 @@ def _resolve_tracking_info(repo: Repo, branch) -> dict | tuple[str, str]:
 
 
 def _fetch_remote(repo: Repo, remote_name: str) -> tuple[bool, str | None]:
-    """Fetch from remote, returning (fetch_failed, http_warning_override)."""
+    """Fetch from remote, returning (fetch_failed, http_warning_override).
+
+    Prunes, because a plain fetch only ever adds remote-tracking refs.  Every
+    branch squash-merged and auto-deleted on the forge leaves one behind
+    permanently, and the graph draws them all — on repos with a bot opening
+    dependency PRs they end up outnumbering the live branches.  Pruning drops
+    only the local bookkeeping for branches the remote no longer has; local
+    branches and commits are not its business.
+    """
     try:
-        repo.remote(remote_name).fetch()
+        repo.remote(remote_name).fetch(prune=True)
         return (False, None)
     except GitCommandError as e:
         error_msg = str(e)
