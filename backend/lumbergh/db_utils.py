@@ -5,12 +5,15 @@ TinyDB utilities for the Lumbergh backend.
 import hashlib
 import json
 import logging
+import os
 import subprocess
 import threading
 import time
 from pathlib import Path
 
 from tinydb import TinyDB
+from tinydb.storages import JSONStorage
+from tinydb.table import Table
 
 from lumbergh.constants import CONFIG_DIR, PROJECTS_DIR, SESSIONS_DATA_DIR
 
@@ -31,13 +34,95 @@ _db_cache: dict[Path, TinyDB] = {}
 _db_cache_mutex = threading.Lock()
 
 
+class _SerializedJSONStorage(JSONStorage):
+    """A JSONStorage whose file access is serialized across threads.
+
+    TinyDB opens the backing file once, and every caller of ``_get_cached_db``
+    shares that one handle.  ``JSONStorage.write`` is ``seek(0)`` → write →
+    ``truncate()`` against a file position that is therefore shared state: let
+    two threads interleave and the shorter document's bytes land at the longer
+    one's offset, leaving two concatenated documents that no later read can
+    parse.  That took the whole fleet API down until the file was repaired by
+    hand, so the lock guards reads too — a reader mid-write sees a torn file.
+    """
+
+    def __init__(self, path, **kwargs):
+        super().__init__(path, **kwargs)
+        self.path = Path(path)
+        self.lock = threading.RLock()
+
+    def read(self):
+        with self.lock:
+            try:
+                return super().read()
+            except json.JSONDecodeError:
+                self._repair()
+                return super().read()
+
+    def write(self, data):
+        with self.lock:
+            super().write(data)
+
+    def _repair(self) -> None:
+        """Salvage a file left holding more than one JSON document.
+
+        The complete document at offset 0 is the write that landed; whatever
+        follows it is a losing writer's staler, shorter tail.  Rewriting
+        through the open handle rather than the path keeps the inode, so the
+        handle other threads hold stays pointed at the repaired file.
+        """
+        self._handle.seek(0)
+        raw = self._handle.read()
+
+        backup = self.path.with_suffix(f".json.corrupt-{int(time.time())}")
+        try:
+            backup.write_text(raw)
+        except OSError as e:
+            logger.error(f"Could not back up corrupt DB {self.path}: {e}")
+
+        try:
+            recovered, _ = json.JSONDecoder().raw_decode(raw.lstrip())
+            logger.warning(f"Repaired corrupt DB {self.path}; original saved to {backup}")
+        except json.JSONDecodeError:
+            recovered = {}
+            logger.error(f"DB {self.path} was unrecoverable; reset to empty, original at {backup}")
+
+        self._handle.seek(0)
+        self._handle.write(json.dumps(recovered))
+        self._handle.flush()
+        os.fsync(self._handle.fileno())
+        self._handle.truncate()
+
+
+class _SerializedTable(Table):
+    """Holds the storage lock across a whole read-modify-write.
+
+    Every mutating TinyDB operation reads the entire file, edits it in memory
+    and writes it back.  Locking only the storage would keep the file parseable
+    but still let concurrent inserts drop each other.
+    """
+
+    def _read_table(self):
+        with self._storage.lock:
+            return super()._read_table()
+
+    def _update_table(self, updater):
+        with self._storage.lock:
+            super()._update_table(updater)
+
+
+class _SerializedTinyDB(TinyDB):
+    table_class = _SerializedTable
+    default_storage_class: type[JSONStorage] = _SerializedJSONStorage
+
+
 def _get_cached_db(path: Path) -> TinyDB:
     """Return a process-wide cached TinyDB for ``path``, creating it once."""
     key = path.resolve() if path.exists() else path
     with _db_cache_mutex:
         db = _db_cache.get(key)
         if db is None:
-            db = TinyDB(path)
+            db = _SerializedTinyDB(path)
             _db_cache[key] = db
         return db
 
