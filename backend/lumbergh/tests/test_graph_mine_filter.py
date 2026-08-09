@@ -7,6 +7,7 @@ the trunk that keeps the result readable.
 
 import os
 import subprocess
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -29,13 +30,22 @@ def _git(cwd: Path, *args: str, env: dict | None = None) -> str:
     return result.stdout.strip()
 
 
-def _commit(repo: Path, message: str, author: str = ME, committer: str | None = None) -> None:
+def _commit(
+    repo: Path,
+    message: str,
+    author: str = ME,
+    committer: str | None = None,
+    days_ago: int = 0,
+) -> None:
+    when = (datetime.now(UTC) - timedelta(days=days_ago)).isoformat()
     env = {
         **os.environ,
         "GIT_AUTHOR_EMAIL": author,
         "GIT_AUTHOR_NAME": "author",
         "GIT_COMMITTER_EMAIL": committer or author,
         "GIT_COMMITTER_NAME": "committer",
+        "GIT_AUTHOR_DATE": when,
+        "GIT_COMMITTER_DATE": when,
     }
     (repo / "f").write_text(message)
     _git(repo, "add", "-A")
@@ -54,11 +64,11 @@ def repo(tmp_path):
     return path
 
 
-def _branch(repo: Path, name: str, commits: list[tuple[str, str]]) -> None:
+def _branch(repo: Path, name: str, commits: list[tuple[str, str]], days_ago: int = 0) -> None:
     """Create ``name`` off the current HEAD and commit ``(message, author)`` pairs."""
     _git(repo, "checkout", "-q", "-b", name)
     for message, author in commits:
-        _commit(repo, message, author=author)
+        _commit(repo, message, author=author, days_ago=days_ago)
     _git(repo, "checkout", "-q", "main")
 
 
@@ -174,6 +184,41 @@ class TestMineFilter:
 
         assert "theirs" in _branches_in_graph(graph)
         assert graph["mine"] == {"available": False, "active": False}
+
+    def test_abandoned_branches_drop_out_even_though_they_are_mine(self, repo):
+        """A year-old branch is history, not work in progress."""
+        _branch(repo, "abandoned", [("my ancient work", ME)], days_ago=400)
+        _branch(repo, "current", [("my recent work", ME)])
+
+        graph = get_graph_log(repo, identity=resolve_identity(repo), mine_only=True)
+
+        assert "current" in _branches_in_graph(graph)
+        assert "abandoned" not in _branches_in_graph(graph)
+
+    def test_age_cutoff_is_configurable(self, repo):
+        _branch(repo, "middling", [("work from a while back", ME)], days_ago=120)
+
+        identity = resolve_identity(repo, max_age_days=365)
+        graph = get_graph_log(repo, identity=identity, mine_only=True)
+
+        assert "middling" in _branches_in_graph(graph)
+
+    def test_age_cutoff_can_be_disabled(self, repo):
+        _branch(repo, "abandoned", [("my ancient work", ME)], days_ago=400)
+
+        identity = resolve_identity(repo, max_age_days=0)
+        graph = get_graph_log(repo, identity=identity, mine_only=True)
+
+        assert "abandoned" in _branches_in_graph(graph)
+
+    def test_current_branch_survives_the_age_cutoff(self, repo):
+        """You are standing in it, so it stays however old it is."""
+        _branch(repo, "ancient-but-checked-out", [("my ancient work", ME)], days_ago=400)
+        _git(repo, "checkout", "-q", "ancient-but-checked-out")
+
+        graph = get_graph_log(repo, identity=resolve_identity(repo), mine_only=True)
+
+        assert "ancient-but-checked-out" in _branches_in_graph(graph)
 
     def test_branches_payload_stays_unfiltered(self, repo):
         """BranchSelector still has to offer other people's branches to check out."""

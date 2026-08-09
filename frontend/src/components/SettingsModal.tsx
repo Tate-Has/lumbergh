@@ -23,6 +23,7 @@ interface Settings {
   gitGraphCommits: number
   myEmails?: string[]
   mineLookbackCommits?: number
+  mineMaxBranchAgeDays?: number
   ai: AISettingsData
   defaultAgent?: string
   agentProviders?: Record<string, { label: string }>
@@ -45,6 +46,7 @@ export default function SettingsModal({ onClose }: Props) {
   const [gitGraphCommits, setGitGraphCommits] = useState('100')
   const [myEmails, setMyEmails] = useState('')
   const [mineLookbackCommits, setMineLookbackCommits] = useState('5')
+  const [mineMaxBranchAgeDays, setMineMaxBranchAgeDays] = useState('90')
   const [aiProvider, setAiProvider] = useState('ollama')
   const [providerConfigs, setProviderConfigs] =
     useState<Record<string, AIProviderConfig>>(getDefaultProviderConfigs)
@@ -93,6 +95,8 @@ export default function SettingsModal({ onClose }: Props) {
     if (data.gitGraphCommits) setGitGraphCommits(String(data.gitGraphCommits))
     setMyEmails((data.myEmails ?? []).join(', '))
     if (data.mineLookbackCommits) setMineLookbackCommits(String(data.mineLookbackCommits))
+    if (data.mineMaxBranchAgeDays != null)
+      setMineMaxBranchAgeDays(String(data.mineMaxBranchAgeDays))
   }, [])
 
   const applyBillSettings = useCallback((bill: Settings['bill']) => {
@@ -158,6 +162,8 @@ export default function SettingsModal({ onClose }: Props) {
         .filter(Boolean)
       const parsedLookback = parseInt(mineLookbackCommits) || 5
       payload.mineLookbackCommits = Math.min(50, Math.max(1, parsedLookback))
+      const parsedAge = parseInt(mineMaxBranchAgeDays)
+      payload.mineMaxBranchAgeDays = Math.min(3650, Math.max(0, isNaN(parsedAge) ? 90 : parsedAge))
       payload.telemetryConsent = telemetryConsent
       payload.defaultAgent = defaultAgent
       payload.bill = {
@@ -253,6 +259,8 @@ export default function SettingsModal({ onClose }: Props) {
                 onMyEmailsChange={setMyEmails}
                 mineLookbackCommits={mineLookbackCommits}
                 onMineLookbackCommitsChange={setMineLookbackCommits}
+                mineMaxBranchAgeDays={mineMaxBranchAgeDays}
+                onMineMaxBranchAgeDaysChange={setMineMaxBranchAgeDays}
                 defaultAgent={defaultAgent}
                 onDefaultAgentChange={setDefaultAgent}
                 agentProviders={agentProviders}

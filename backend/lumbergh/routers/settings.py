@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 from lumbergh import bill as bill_bundle
 from lumbergh.db_utils import get_settings_db
-from lumbergh.git_identity import DEFAULT_LOOKBACK, MAX_LOOKBACK
+from lumbergh.git_identity import DEFAULT_LOOKBACK, DEFAULT_MAX_AGE_DAYS, MAX_LOOKBACK
 from lumbergh.providers import DEFAULT_PROVIDER, PROVIDERS
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
@@ -35,6 +35,7 @@ def _get_defaults() -> dict:
         "gitGraphCommits": 100,
         "myEmails": [],
         "mineLookbackCommits": DEFAULT_LOOKBACK,
+        "mineMaxBranchAgeDays": DEFAULT_MAX_AGE_DAYS,
         "defaultAgent": DEFAULT_PROVIDER,
         "bill": {"harness": "pi", "personality": "professional", "customPersonality": ""},
         "tabVisibility": {
@@ -111,6 +112,7 @@ class SettingsUpdate(BaseModel):
     gitGraphCommits: int | None = None  # noqa: N815 - API field name
     myEmails: list[str] | None = None  # noqa: N815 - API field name
     mineLookbackCommits: int | None = None  # noqa: N815 - API field name
+    mineMaxBranchAgeDays: int | None = None  # noqa: N815 - API field name
     ai: AISettings | None = None
     defaultAgent: str | None = None  # noqa: N815 - API field name
     tabVisibility: TabVisibility | None = None  # noqa: N815 - API field name
@@ -233,6 +235,14 @@ def _validate_mine_filter(updates: SettingsUpdate, update_data: dict[str, object
                 detail=f"Mine lookback must be between 1 and {MAX_LOOKBACK} commits",
             )
         update_data["mineLookbackCommits"] = updates.mineLookbackCommits
+
+    if updates.mineMaxBranchAgeDays is not None:
+        if not 0 <= updates.mineMaxBranchAgeDays <= 3650:
+            raise HTTPException(
+                status_code=400,
+                detail="Branch age cutoff must be between 0 and 3650 days (0 disables it)",
+            )
+        update_data["mineMaxBranchAgeDays"] = updates.mineMaxBranchAgeDays
 
 
 def _normalize_emails(raw: list[str]) -> list[str]:

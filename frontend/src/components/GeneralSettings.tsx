@@ -10,6 +10,8 @@ interface Props {
   onMyEmailsChange: (value: string) => void
   mineLookbackCommits: string
   onMineLookbackCommitsChange: (value: string) => void
+  mineMaxBranchAgeDays: string
+  onMineMaxBranchAgeDaysChange: (value: string) => void
   defaultAgent: string
   onDefaultAgentChange: (value: string) => void
   agentProviders: Record<string, { label: string }>
@@ -110,6 +112,8 @@ export default function GeneralSettings({
   onMyEmailsChange,
   mineLookbackCommits,
   onMineLookbackCommitsChange,
+  mineMaxBranchAgeDays,
+  onMineMaxBranchAgeDaysChange,
   onGitGraphCommitsChange,
   defaultAgent,
   onDefaultAgentChange,
@@ -247,6 +251,23 @@ export default function GeneralSettings({
           <p className="text-xs text-text-muted mt-1">
             How far back a branch is searched for your commits before it stops counting as yours
             (1-50)
+          </p>
+        </div>
+        <div>
+          <label className="block text-sm text-text-tertiary mb-1">
+            Ignore Branches Older Than
+          </label>
+          <input
+            type="number"
+            min={0}
+            max={3650}
+            value={mineMaxBranchAgeDays}
+            onChange={(e) => onMineMaxBranchAgeDaysChange(e.target.value)}
+            className="w-32 px-3 py-2 bg-input-bg text-text-primary rounded-[var(--radius-lg)] border border-input-border focus:outline-none focus:border-action/50 font-mono text-sm"
+          />
+          <p className="text-xs text-text-muted mt-1">
+            Days since a branch last saw work before it drops out of &ldquo;Just mine&rdquo;.
+            Abandoned branches otherwise crowd out live ones. 0 keeps them all.
           </p>
         </div>
         {Object.keys(agentProviders).length > 1 && (
