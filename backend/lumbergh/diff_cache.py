@@ -17,6 +17,7 @@ import subprocess
 import time
 from pathlib import Path
 
+from lumbergh.git_identity import graph_identity
 from lumbergh.git_utils import get_full_diff_with_untracked, get_graph_log
 
 logger = logging.getLogger(__name__)
@@ -79,7 +80,7 @@ class DiffCache:
     def __init__(self):
         self._diff_cache: dict[str, dict] = {}  # session_name -> diff data
         self._graph_cache: dict[str, dict] = {}  # session_name -> graph data
-        self._graph_limits: dict[str, int] = {}  # session_name -> last requested limit
+        self._graph_limits: dict[str, tuple[int, bool]] = {}  # session_name -> (limit, mine_only)
         self._fingerprints: dict[str, tuple] = {}  # session_name -> last fingerprint
         self._last_interest: dict[str, float] = {}  # session_name -> timestamp
         self._task: asyncio.Task | None = None
@@ -127,12 +128,16 @@ class DiffCache:
         """Return cached graph data (instant, no blocking)."""
         return self._graph_cache.get(session_name)
 
-    def set_graph_limit(self, session_name: str, limit: int) -> None:
-        """Track the requested graph limit for background computation."""
-        if self._graph_limits.get(session_name) != limit:
-            self._graph_limits[session_name] = limit
-            # Invalidate graph cache when limit changes
+    def set_graph_params(self, session_name: str, limit: int, mine: bool = False) -> None:
+        """Track the requested graph limit and filter for background computation."""
+        params = (limit, mine)
+        if self._graph_limits.get(session_name) != params:
+            self._graph_limits[session_name] = params
+            # Invalidate graph cache when the requested shape changes. The
+            # fingerprint goes too, or the next poll sees unchanged git state
+            # and never refills the cache it just dropped.
             self._graph_cache.pop(session_name, None)
+            self._fingerprints.pop(session_name, None)
 
     def _active_sessions(self) -> list[str]:
         """Return session names with recent API interest."""
@@ -189,8 +194,11 @@ class DiffCache:
 
             # Compute graph
             try:
-                limit = self._graph_limits.get(session_name, 100)
-                result = await asyncio.to_thread(get_graph_log, workdir, limit, session_paths)
+                limit, mine_only = self._graph_limits.get(session_name, (100, False))
+                identity = await asyncio.to_thread(graph_identity, workdir)
+                result = await asyncio.to_thread(
+                    get_graph_log, workdir, limit, session_paths, identity, mine_only
+                )
                 self._graph_cache[session_name] = result
             except Exception as e:
                 logger.warning(f"Graph cache: failed for {session_name}: {e}")

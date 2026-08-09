@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 # Prevent git from prompting for credentials in the terminal.
 # HTTP repos that require auth will fail fast instead of blocking the server.
@@ -16,6 +17,8 @@ os.environ.setdefault("GIT_TERMINAL_PROMPT", "0")
 
 from git import InvalidGitRepositoryError, Repo
 from git.exc import GitCommandError, NoSuchPathError
+
+from lumbergh.git_identity import Identity, owns_ref
 
 logger = logging.getLogger(__name__)
 
@@ -484,19 +487,73 @@ def _build_graph_worktrees(cwd: Path, session_paths: dict[str, str] | None) -> l
     return entries
 
 
-def get_graph_log(cwd: Path, limit: int = 100, session_paths: dict[str, str] | None = None) -> dict:
+def _trunk_ref_names(cwd: Path, repo: Repo) -> set[str]:
+    """Refs that act as the repo's spine, so a filtered graph keeps its shape.
+
+    Without the trunk, the surviving branches float with no common ancestor and
+    every merge-base is invisible.
+    """
+    names: set[str] = set()
+    base = default_base_ref(cwd)
+    if base != "HEAD":
+        names.add(base)
+        if base.startswith("origin/"):
+            names.add(base[7:])
+
+    names |= {b.name for b in repo.branches} & {"main", "master", "dev"}
+    return {name for name in names if _ref_exists(cwd, name)}
+
+
+def _mine_ref_names(cwd: Path, repo: Repo, identity: Identity, head_branch: str | None) -> set[str]:
+    """The refs a "just my work" graph is drawn from.
+
+    Worktree branches are kept unconditionally — you are standing in them, so
+    they are yours regardless of who wrote the commits.
+    """
+    trunk = _trunk_ref_names(cwd, repo)
+    kept = set(trunk)
+    kept.add(head_branch or "HEAD")
+    kept.update(wt.branch for wt in list_worktrees(cwd) if wt.branch)
+
+    for ref in repo.refs:
+        name, kind = _classify_ref(ref.name)
+        if kind == "tag" or name == "origin/HEAD" or name.startswith("refs/stash"):
+            continue
+        try:
+            tip = ref.commit.hexsha
+        except Exception:  # noqa: S112 - skip refs that can't resolve
+            continue
+        if owns_ref(cwd, ref.name, tip, identity, frozenset(trunk)):
+            kept.add(ref.name)
+
+    return kept
+
+
+def get_graph_log(
+    cwd: Path,
+    limit: int = 100,
+    session_paths: dict[str, str] | None = None,
+    identity: Identity | None = None,
+    mine_only: bool = False,
+) -> dict:
     """Get commit graph data for metro-style visualization.
 
     ``session_paths`` maps a resolved worktree path to the owning session name; it
     is supplied by the caller so this module stays free of session-store coupling.
+
+    ``mine_only`` narrows the walk to the operator's own refs plus the trunk, so
+    the ``limit`` budget is spent on their work instead of the whole repo's. It
+    needs an ``identity`` to mean anything; without one the graph is unfiltered,
+    which is the safe way to be wrong.
     """
+    empty: dict = {"commits": [], "branches": [], "head": None, "worktrees": []}
     try:
         repo = get_repo(cwd)
     except InvalidGitRepositoryError:
-        return {"commits": [], "branches": [], "head": None, "worktrees": []}
+        return empty
 
     if not repo.head.is_valid():
-        return {"commits": [], "branches": [], "head": None, "worktrees": []}
+        return empty
 
     # Build ref maps
     raw_refs = _build_raw_refs(repo)
@@ -515,6 +572,12 @@ def get_graph_log(cwd: Path, limit: int = 100, session_paths: dict[str, str] | N
     unpushed_set = _get_unpushed_commits(repo, head_branch)
     stash_hashes, stash_entries = _collect_stash_entries(repo)
 
+    filtering = bool(mine_only and identity)
+    # rev-list takes any number of refs; GitPython's annotation only admits one.
+    rev: Any = "--all"
+    if identity and filtering:
+        rev = sorted(_mine_ref_names(cwd, repo, identity, head_branch))
+
     # Collect commits
     commits = [
         {
@@ -531,7 +594,7 @@ def get_graph_log(cwd: Path, limit: int = 100, session_paths: dict[str, str] | N
             "refs": ref_map.get(commit.hexsha, []),
             "pushed": commit.hexsha not in unpushed_set,
         }
-        for commit in repo.iter_commits(rev="--all", max_count=limit, topo_order=True)
+        for commit in repo.iter_commits(rev=rev, max_count=limit, topo_order=True)
         if commit.hexsha not in stash_hashes
     ]
 
@@ -580,6 +643,7 @@ def get_graph_log(cwd: Path, limit: int = 100, session_paths: dict[str, str] | N
         "head": {"hash": head_hash, "branch": head_branch},
         "workingChanges": working_changes,
         "worktrees": _build_graph_worktrees(cwd, session_paths),
+        "mine": {"available": bool(identity), "active": filtering},
     }
 
 

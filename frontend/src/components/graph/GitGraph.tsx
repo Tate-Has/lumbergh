@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { getApiBase } from '../../config'
 import type { GraphData, GraphWorktree } from '../diff/types'
+import GraphToolbar from './GraphToolbar'
 import { computeGraphLayout, laneColor } from './graphLayout'
 import { relativeDate } from '../../utils/relativeDate'
 import { useClickOutside } from '../../hooks/useClickOutside'
@@ -74,6 +75,7 @@ const DEFAULT_BRANCH_PANEL_WIDTH = 180
 const MIN_BRANCH_PANEL_WIDTH = 80
 const MAX_BRANCH_PANEL_WIDTH = 400
 const branchPanelStorageKey_PREFIX = 'lumbergh:branchPanelWidth'
+const mineOnlyStorageKey_PREFIX = 'lumbergh:gitGraphMineOnly'
 const DEFAULT_GRAPH_PANEL_WIDTH = 120
 const MIN_GRAPH_PANEL_WIDTH = 40
 const MAX_GRAPH_PANEL_WIDTH = 500
@@ -688,6 +690,10 @@ export default function GitGraph({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [commitLimit, setCommitLimit] = useState(100)
+  const mineOnlyStorageKey = storageKeyFor(mineOnlyStorageKey_PREFIX, sessionName)
+  const [mineOnly, setMineOnly] = useState(
+    () => localStorage.getItem(mineOnlyStorageKey) === 'true'
+  )
   const [menuCommit, setMenuCommit] = useState<{
     hash: string
     shortHash: string
@@ -785,7 +791,7 @@ export default function GitGraph({
       const headers: Record<string, string> = {}
       if (etagRef.current) headers['If-None-Match'] = etagRef.current
       const res = await fetch(
-        `${getApiBase()}/sessions/${sessionName}/git/graph?limit=${commitLimit}`,
+        `${getApiBase()}/sessions/${sessionName}/git/graph?limit=${commitLimit}&mine=${mineOnly}`,
         { headers }
       )
       if (res.status === 304) return // Not modified
@@ -802,7 +808,18 @@ export default function GitGraph({
       setError(err instanceof Error ? err.message : 'Failed to fetch graph')
       setLoading(false)
     }
-  }, [sessionName, commitLimit])
+  }, [sessionName, commitLimit, mineOnly])
+
+  const toggleMineOnly = useCallback(() => {
+    setMineOnly((on) => {
+      const next = !on
+      localStorage.setItem(mineOnlyStorageKey, String(next))
+      // The ETag tracks the unfiltered payload; keeping it would 304 the
+      // response and leave the graph showing the shape we just turned off.
+      etagRef.current = ''
+      return next
+    })
+  }, [mineOnlyStorageKey])
 
   // Fetch on mount + poll every 5s (matches diff polling cadence)
   // Also re-fetch when refreshTrigger bumps (after git actions)
@@ -1359,6 +1376,12 @@ export default function GitGraph({
     <div className="h-full flex flex-col relative">
       {/* Error */}
       {error && <div className="px-3 py-2 text-sm text-danger bg-danger/10">{error}</div>}
+
+      <GraphToolbar
+        mineOnly={mineOnly}
+        mineAvailable={graphData?.mine?.available ?? true}
+        onToggleMineOnly={toggleMineOnly}
+      />
 
       {/* Off-screen worktrees — HEADs older than the commit limit */}
       {offscreenWorktrees.length > 0 && (

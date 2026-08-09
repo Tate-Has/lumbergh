@@ -21,6 +21,8 @@ interface AISettingsData {
 interface Settings {
   repoSearchDir: string
   gitGraphCommits: number
+  myEmails?: string[]
+  mineLookbackCommits?: number
   ai: AISettingsData
   defaultAgent?: string
   agentProviders?: Record<string, { label: string }>
@@ -41,6 +43,8 @@ export default function SettingsModal({ onClose }: Props) {
   const [activeTab, setActiveTab] = useState<TabId>('general')
   const [repoSearchDir, setRepoSearchDir] = useState('')
   const [gitGraphCommits, setGitGraphCommits] = useState('100')
+  const [myEmails, setMyEmails] = useState('')
+  const [mineLookbackCommits, setMineLookbackCommits] = useState('5')
   const [aiProvider, setAiProvider] = useState('ollama')
   const [providerConfigs, setProviderConfigs] =
     useState<Record<string, AIProviderConfig>>(getDefaultProviderConfigs)
@@ -85,6 +89,12 @@ export default function SettingsModal({ onClose }: Props) {
     }
   }, [])
 
+  const applyGraphSettings = useCallback((data: Settings) => {
+    if (data.gitGraphCommits) setGitGraphCommits(String(data.gitGraphCommits))
+    setMyEmails((data.myEmails ?? []).join(', '))
+    if (data.mineLookbackCommits) setMineLookbackCommits(String(data.mineLookbackCommits))
+  }, [])
+
   const applyBillSettings = useCallback((bill: Settings['bill']) => {
     if (!bill) return
     if (bill.harness) setBillHarness(bill.harness)
@@ -98,7 +108,7 @@ export default function SettingsModal({ onClose }: Props) {
       if (!res.ok) throw new Error('Failed to fetch settings')
       const data: Settings = await res.json()
       setRepoSearchDir(data.repoSearchDir || '')
-      if (data.gitGraphCommits) setGitGraphCommits(String(data.gitGraphCommits))
+      applyGraphSettings(data)
       setPasswordSet(!!data.passwordSet)
       setPasswordSource(data.passwordSource ?? null)
       setTelemetryConsent(!!data.telemetryConsent)
@@ -117,7 +127,7 @@ export default function SettingsModal({ onClose }: Props) {
     } finally {
       setIsLoading(false)
     }
-  }, [applyAiSettings, applyBillSettings])
+  }, [applyAiSettings, applyBillSettings, applyGraphSettings])
 
   useEffect(() => {
     fetchSettings()
@@ -142,6 +152,12 @@ export default function SettingsModal({ onClose }: Props) {
       }
       const parsedCommits = parseInt(gitGraphCommits) || 100
       payload.gitGraphCommits = Math.min(1000, Math.max(10, parsedCommits))
+      payload.myEmails = myEmails
+        .split(',')
+        .map((email) => email.trim())
+        .filter(Boolean)
+      const parsedLookback = parseInt(mineLookbackCommits) || 5
+      payload.mineLookbackCommits = Math.min(50, Math.max(1, parsedLookback))
       payload.telemetryConsent = telemetryConsent
       payload.defaultAgent = defaultAgent
       payload.bill = {
@@ -233,6 +249,10 @@ export default function SettingsModal({ onClose }: Props) {
                 onRepoSearchDirChange={setRepoSearchDir}
                 gitGraphCommits={gitGraphCommits}
                 onGitGraphCommitsChange={setGitGraphCommits}
+                myEmails={myEmails}
+                onMyEmailsChange={setMyEmails}
+                mineLookbackCommits={mineLookbackCommits}
+                onMineLookbackCommitsChange={setMineLookbackCommits}
                 defaultAgent={defaultAgent}
                 onDefaultAgentChange={setDefaultAgent}
                 agentProviders={agentProviders}

@@ -79,6 +79,9 @@ export interface GraphData {
   head: { hash: string; branch: string | null } | null
   workingChanges: { files: number; staged: number; unstaged: number } | null
   worktrees?: GraphWorktree[]
+  /** `available` is false when no git identity could be resolved, which
+   *  disables the "just mine" filter rather than showing an empty graph. */
+  mine?: { available: boolean; active: boolean }
 }
 
 export interface GraphEdge {

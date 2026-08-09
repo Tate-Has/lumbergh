@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from lumbergh import bill as bill_bundle
 from lumbergh.db_utils import get_settings_db
+from lumbergh.git_identity import DEFAULT_LOOKBACK, MAX_LOOKBACK
 from lumbergh.providers import DEFAULT_PROVIDER, PROVIDERS
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
@@ -32,6 +33,8 @@ def _get_defaults() -> dict:
     return {
         "repoSearchDir": repo_search_dir,
         "gitGraphCommits": 100,
+        "myEmails": [],
+        "mineLookbackCommits": DEFAULT_LOOKBACK,
         "defaultAgent": DEFAULT_PROVIDER,
         "bill": {"harness": "pi", "personality": "professional", "customPersonality": ""},
         "tabVisibility": {
@@ -106,6 +109,8 @@ class BillSettings(BaseModel):
 class SettingsUpdate(BaseModel):
     repoSearchDir: str | None = None  # noqa: N815 - API field name
     gitGraphCommits: int | None = None  # noqa: N815 - API field name
+    myEmails: list[str] | None = None  # noqa: N815 - API field name
+    mineLookbackCommits: int | None = None  # noqa: N815 - API field name
     ai: AISettings | None = None
     defaultAgent: str | None = None  # noqa: N815 - API field name
     tabVisibility: TabVisibility | None = None  # noqa: N815 - API field name
@@ -216,6 +221,30 @@ def _validate_repo_search_dir(raw: str) -> str:
     return str(path)
 
 
+def _validate_mine_filter(updates: SettingsUpdate, update_data: dict[str, object]) -> None:
+    """Validate the settings behind the git graph's "just my work" filter."""
+    if updates.myEmails is not None:
+        update_data["myEmails"] = _normalize_emails(updates.myEmails)
+
+    if updates.mineLookbackCommits is not None:
+        if not 1 <= updates.mineLookbackCommits <= MAX_LOOKBACK:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Mine lookback must be between 1 and {MAX_LOOKBACK} commits",
+            )
+        update_data["mineLookbackCommits"] = updates.mineLookbackCommits
+
+
+def _normalize_emails(raw: list[str]) -> list[str]:
+    """Lowercase, strip and de-duplicate while keeping the order the user typed."""
+    seen: dict[str, None] = {}
+    for entry in raw:
+        email = entry.strip().lower()
+        if email:
+            seen.setdefault(email, None)
+    return list(seen)
+
+
 _OPTIONAL_FIELDS = (
     "password",
     "telemetryConsent",
@@ -252,6 +281,8 @@ def _validate_updates(updates: SettingsUpdate) -> dict[str, object]:
                 detail="Git graph commits must be between 10 and 1000",
             )
         update_data["gitGraphCommits"] = updates.gitGraphCommits
+
+    _validate_mine_filter(updates, update_data)
 
     if updates.defaultAgent is not None:
         if updates.defaultAgent not in PROVIDERS:

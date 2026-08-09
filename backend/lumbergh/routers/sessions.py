@@ -35,6 +35,7 @@ from lumbergh.db_utils import (
     save_single_document_value,
 )
 from lumbergh.file_utils import get_file_language, list_project_files, validate_path_within_root
+from lumbergh.git_identity import graph_identity
 from lumbergh.git_utils import (
     amend_commit,
     checkout_branch,
@@ -1378,12 +1379,12 @@ async def session_git_diff_stats(name: str):
 
 
 @router.get("/{name}/git/graph")
-async def session_git_graph(name: str, limit: int = 100):
+async def session_git_graph(name: str, limit: int = 100, mine: bool = False):
     """Get commit graph data for metro-style visualization (served from background cache)."""
     from lumbergh.diff_cache import diff_cache
 
     diff_cache.mark_active(name)
-    diff_cache.set_graph_limit(name, limit)
+    diff_cache.set_graph_params(name, limit, mine)
     cached = diff_cache.get_graph(name)
     if cached is not None:
         return cached
@@ -1391,7 +1392,8 @@ async def session_git_graph(name: str, limit: int = 100):
     # Cache miss (first request before background loop runs) — compute inline
     workdir = get_session_workdir(name)
     try:
-        return await _run_git(get_graph_log, workdir, limit, get_session_path_map())
+        identity = graph_identity(workdir)
+        return await _run_git(get_graph_log, workdir, limit, get_session_path_map(), identity, mine)
     except HTTPException:
         raise
     except Exception as e:

@@ -6,6 +6,10 @@ interface Props {
   onRepoSearchDirChange: (value: string) => void
   gitGraphCommits: string
   onGitGraphCommitsChange: (value: string) => void
+  myEmails: string
+  onMyEmailsChange: (value: string) => void
+  mineLookbackCommits: string
+  onMineLookbackCommitsChange: (value: string) => void
   defaultAgent: string
   onDefaultAgentChange: (value: string) => void
   agentProviders: Record<string, { label: string }>
@@ -102,6 +106,10 @@ export default function GeneralSettings({
   repoSearchDir,
   onRepoSearchDirChange,
   gitGraphCommits,
+  myEmails,
+  onMyEmailsChange,
+  mineLookbackCommits,
+  onMineLookbackCommitsChange,
   onGitGraphCommitsChange,
   defaultAgent,
   onDefaultAgentChange,
@@ -210,6 +218,35 @@ export default function GeneralSettings({
           />
           <p className="text-xs text-text-muted mt-1">
             Number of commits to show in the git graph (10-1000)
+          </p>
+        </div>
+        <div>
+          <label className="block text-sm text-text-tertiary mb-1">My Email Addresses</label>
+          <input
+            type="text"
+            value={myEmails}
+            onChange={(e) => onMyEmailsChange(e.target.value)}
+            placeholder="you@work.com, you@personal.com"
+            className="w-full px-3 py-2 bg-input-bg text-text-primary rounded-[var(--radius-lg)] border border-input-border focus:outline-none focus:border-action/50 font-mono text-sm"
+          />
+          <p className="text-xs text-text-muted mt-1">
+            Extra addresses that count as yours for the git graph&rsquo;s &ldquo;Just mine&rdquo;
+            filter, on top of the repo&rsquo;s own git user.email. Comma separated.
+          </p>
+        </div>
+        <div>
+          <label className="block text-sm text-text-tertiary mb-1">Mine Lookback Commits</label>
+          <input
+            type="number"
+            min={1}
+            max={50}
+            value={mineLookbackCommits}
+            onChange={(e) => onMineLookbackCommitsChange(e.target.value)}
+            className="w-32 px-3 py-2 bg-input-bg text-text-primary rounded-[var(--radius-lg)] border border-input-border focus:outline-none focus:border-action/50 font-mono text-sm"
+          />
+          <p className="text-xs text-text-muted mt-1">
+            How far back a branch is searched for your commits before it stops counting as yours
+            (1-50)
           </p>
         </div>
         {Object.keys(agentProviders).length > 1 && (
