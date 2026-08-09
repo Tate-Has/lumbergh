@@ -95,11 +95,15 @@ class _SerializedJSONStorage(JSONStorage):
 
 
 class _SerializedTable(Table):
-    """Holds the storage lock across a whole read-modify-write.
+    """Holds the storage lock across a whole mutating operation.
 
-    Every mutating TinyDB operation reads the entire file, edits it in memory
-    and writes it back.  Locking only the storage would keep the file parseable
-    but still let concurrent inserts drop each other.
+    Locking only the storage would keep the file parseable while still letting
+    concurrent writers corrupt the table logically.  ``Table.insert`` is the
+    sharp case: it allocates a document id from a cached counter *before*
+    calling ``_update_table``, using a plain read-then-write that two threads
+    can interleave.  They then both try to insert the same id and the loser
+    raises "Document with ID N already exists" — a 500, not a silent loss.  So
+    the lock has to span the whole public call, not just the file access.
     """
 
     def _read_table(self):
@@ -109,6 +113,34 @@ class _SerializedTable(Table):
     def _update_table(self, updater):
         with self._storage.lock:
             super()._update_table(updater)
+
+    def insert(self, *args, **kwargs):
+        with self._storage.lock:
+            return super().insert(*args, **kwargs)
+
+    def insert_multiple(self, *args, **kwargs):
+        with self._storage.lock:
+            return super().insert_multiple(*args, **kwargs)
+
+    def update(self, *args, **kwargs):
+        with self._storage.lock:
+            return super().update(*args, **kwargs)
+
+    def update_multiple(self, *args, **kwargs):
+        with self._storage.lock:
+            return super().update_multiple(*args, **kwargs)
+
+    def upsert(self, *args, **kwargs):
+        with self._storage.lock:
+            return super().upsert(*args, **kwargs)
+
+    def remove(self, *args, **kwargs):
+        with self._storage.lock:
+            return super().remove(*args, **kwargs)
+
+    def truncate(self, *args, **kwargs):
+        with self._storage.lock:
+            return super().truncate(*args, **kwargs)
 
 
 class _SerializedTinyDB(TinyDB):

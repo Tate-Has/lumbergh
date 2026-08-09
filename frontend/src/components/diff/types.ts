@@ -50,7 +50,9 @@ export interface BranchData {
 // Git graph types
 
 export interface GraphCommit {
+  /** Abbreviated to 12 chars on the wire; git resolves it wherever we hand it back. */
   hash: string
+  /** Not sent by the API — derived from `hash` when the payload is parsed. */
   shortHash: string
   message: string
   author: string
@@ -65,7 +67,7 @@ export interface GraphCommit {
 
 export interface GraphWorktree {
   branch: string
-  /** 7-char short hash — matches a GraphCommit's shortHash, not hash. */
+  /** 7-char short hash — matches the start of a GraphCommit's abbreviated hash. */
   headHash: string
   path: string
   isMain: boolean

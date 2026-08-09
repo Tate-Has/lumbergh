@@ -7,6 +7,7 @@ These tests pin down what that has to survive.
 """
 
 import json
+import sys
 import threading
 import time
 
@@ -63,6 +64,41 @@ def test_concurrent_writes_do_not_lose_documents(tmp_path):
     _insert_concurrently(db, 4)
 
     assert sorted(row["who"] for row in db.all()) == [0, 1, 2, 3]
+
+
+def test_sustained_concurrent_inserts_all_land(tmp_path, request):
+    """Doc ids are allocated before the write, so the lock has to span both.
+
+    ``Table.insert`` calls ``_get_next_id()`` and only then updates the table;
+    two threads that allocate the same id race, and the loser raises
+    "Document with ID N already exists" rather than losing quietly.
+    """
+    # TinyDB caches the next id and bumps it with a plain read-then-write. The
+    # window between those two bytecodes is what races, so force the
+    # interpreter to switch threads constantly instead of hoping to land in it.
+    previous_interval = sys.getswitchinterval()
+    sys.setswitchinterval(1e-6)
+    request.addfinalizer(lambda: sys.setswitchinterval(previous_interval))
+
+    path = tmp_path / "sessions.json"
+    db = db_utils._get_cached_db(path)
+    errors: list[Exception] = []
+
+    def insert(n):
+        for i in range(100):
+            try:
+                db.insert({"who": n, "i": i})
+            except Exception as exc:
+                errors.append(exc)
+
+    threads = [threading.Thread(target=insert, args=(n,)) for n in range(16)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert not errors, f"{len(errors)} insert(s) failed, first: {errors[0]}"
+    assert len(db.all()) == 1600
 
 
 def test_read_recovers_from_concatenated_documents(tmp_path):

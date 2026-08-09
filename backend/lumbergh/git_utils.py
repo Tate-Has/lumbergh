@@ -22,6 +22,13 @@ from lumbergh.git_identity import Identity, owns_ref
 
 logger = logging.getLogger(__name__)
 
+# Commit hashes in the graph payload are abbreviated. They are random hex, so
+# gzip cannot compress them: every byte shipped is a byte on the wire, and the
+# graph sends two or more per commit. 12 chars stays collision-free well past
+# any repo this renders, and git resolves an abbreviated hash anywhere it is
+# handed back to us.
+GRAPH_HASH_LEN = 12
+
 
 def _sanitize(text: str) -> str:
     """Replace surrogate characters that can't be encoded as UTF-8."""
@@ -444,14 +451,13 @@ def _stash_entry_to_node(entry: dict) -> dict:
     """Convert a stash entry dict into a commit-like node for the graph."""
     email = entry["authorEmail"]
     return {
-        "hash": entry["hash"],
-        "shortHash": entry["hash"][:7],
+        "hash": entry["hash"][:GRAPH_HASH_LEN],
         "message": entry["message"],
         "author": entry["author"],
         "authorEmail": email,
         "authorGravatar": gravatar_url(email) if email else None,
         "relativeDate": entry["date"],
-        "parents": [entry["parent"]] if entry["parent"] else [],
+        "parents": [entry["parent"][:GRAPH_HASH_LEN]] if entry["parent"] else [],
         "refs": [{"name": entry["ref"], "local": True, "remote": False, "stash": True}],
         "pushed": True,
         "stash": True,
@@ -461,7 +467,8 @@ def _stash_entry_to_node(entry: dict) -> dict:
 def _build_graph_worktrees(cwd: Path, session_paths: dict[str, str] | None) -> list[dict]:
     """Structural worktree annotations for the graph — no live agent state.
 
-    ``headHash`` is a 7-char short hash so it matches a commit node's ``shortHash``.
+    ``headHash`` is a 7-char short hash, so it matches the leading characters of
+    a commit node's abbreviated ``hash``.
     """
     try:
         cwd_resolved = str(Path(cwd).resolve())
@@ -561,7 +568,7 @@ def get_graph_log(
     ref_map = _build_ref_map(raw_refs, local_branch_hash, remote_branch_hash)
 
     # HEAD info
-    head_hash = repo.head.commit.hexsha
+    head_hash = repo.head.commit.hexsha[:GRAPH_HASH_LEN]
     head_branch = None
     if not repo.head.is_detached:
         try:
@@ -581,8 +588,7 @@ def get_graph_log(
     # Collect commits
     commits = [
         {
-            "hash": commit.hexsha,
-            "shortHash": commit.hexsha[:7],
+            "hash": commit.hexsha[:GRAPH_HASH_LEN],
             "message": commit.summary,
             "author": commit.author.name,
             "authorEmail": commit.author.email or "",
@@ -590,7 +596,7 @@ def get_graph_log(
             if commit.author.email
             else None,
             "relativeDate": commit.committed_datetime.isoformat(),
-            "parents": [p.hexsha for p in commit.parents],
+            "parents": [p.hexsha[:GRAPH_HASH_LEN] for p in commit.parents],
             "refs": ref_map.get(commit.hexsha, []),
             "pushed": commit.hexsha not in unpushed_set,
         }
@@ -602,7 +608,11 @@ def get_graph_log(
     for entry in stash_entries:
         stash_node = _stash_entry_to_node(entry)
         parent_idx = next(
-            (i for i, c in enumerate(commits) if c["hash"] == entry["parent"]),
+            (
+                i
+                for i, c in enumerate(commits)
+                if entry["parent"] and c["hash"] == entry["parent"][:GRAPH_HASH_LEN]
+            ),
             None,
         )
         if parent_idx is not None:
@@ -620,7 +630,7 @@ def get_graph_log(
     branches = [
         {
             "name": branch.name,
-            "hash": branch.commit.hexsha,
+            "hash": branch.commit.hexsha[:GRAPH_HASH_LEN],
             "current": not repo.head.is_detached and branch.name == head_branch,
         }
         for branch in repo.branches

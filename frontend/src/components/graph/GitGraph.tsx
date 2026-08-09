@@ -798,6 +798,10 @@ export default function GitGraph({
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       etagRef.current = res.headers.get('etag') || ''
       const data: GraphData = await res.json()
+      // Hashes arrive abbreviated and shortHash is not sent — it is pure
+      // duplication on a payload where every hash byte survives gzip. Derive it
+      // once here so the rest of the component keeps reading commit.shortHash.
+      for (const commit of data.commits) commit.shortHash = commit.hash.slice(0, 7)
       setGraphData(data)
       setLoading(false)
       if (!didAutoSelect.current) {

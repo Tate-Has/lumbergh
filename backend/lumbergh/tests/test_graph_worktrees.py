@@ -38,7 +38,7 @@ def test_graph_annotates_sibling_worktree(tmp_path):
 
     graph = get_graph_log(repo)
 
-    short_hashes = {c["shortHash"] for c in graph["commits"]}
+    short_hashes = {c["hash"][:7] for c in graph["commits"]}
     sibling = next(wt for wt in graph["worktrees"] if not wt["isMain"])
     assert sibling["branch"] == "feature/foo"
     assert sibling["headHash"] in short_hashes
