@@ -1275,9 +1275,16 @@ def _fetch_remote(repo: Repo, remote_name: str) -> tuple[bool, str | None]:
     dependency PRs they end up outnumbering the live branches.  Pruning drops
     only the local bookkeeping for branches the remote no longer has; local
     branches and commits are not its business.
+
+    Forces tags for the mirror-image reason: git will not overwrite a tag ref it
+    already has, so a tag that moves upstream freezes at whatever commit this clone
+    first saw.  Rolling release tags do exactly that — CI deletes and recreates
+    ``alpha`` at each new build — and the graph then badges an old commit as the
+    current release indefinitely.  Tags are deliberately *not* pruned: ``--prune-tags``
+    would delete every tag the user made locally, which is not ours to do.
     """
     try:
-        repo.remote(remote_name).fetch(prune=True)
+        repo.remote(remote_name).fetch(prune=True, tags=True, force=True)
         return (False, None)
     except GitCommandError as e:
         error_msg = str(e)

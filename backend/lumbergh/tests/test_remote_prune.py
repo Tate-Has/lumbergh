@@ -1,8 +1,14 @@
-"""Remote-tracking refs for branches that no longer exist upstream.
+"""The refs a plain fetch quietly fails to maintain.
 
-Fetching adds and updates ``origin/*`` refs but never removes them, so every
-squash-merged-and-deleted branch leaves one behind permanently. They accumulate
-until they outnumber the live branches, and the git graph draws every one.
+Two of them, both drawn by the git graph and so both visible as wrong:
+
+- **Branches deleted upstream.** Fetching adds and updates ``origin/*`` refs but never
+  removes them, so every squash-merged-and-deleted branch leaves one behind permanently.
+  They accumulate until they outnumber the live branches.
+- **Tags moved upstream.** Git refuses to overwrite a tag ref it already has, so a tag
+  that is deleted and recreated at a new commit — which is exactly what a rolling
+  release tag like ``alpha`` is — freezes at whatever commit the clone first saw and
+  stays there forever.
 """
 
 import subprocess
@@ -80,3 +86,48 @@ def test_local_branches_are_untouched(clone):
     get_remote_status(working)
 
     assert "landed" in _git(working, "branch", "--format=%(refname:short)").splitlines()
+
+
+def _second_commit(origin: Path) -> str:
+    (origin / "f").write_text("y")
+    _git(origin, "commit", "-qam", "second")
+    return _git(origin, "rev-parse", "HEAD")
+
+
+def test_a_tag_moved_upstream_moves_locally(clone):
+    """A rolling release tag is deleted and recreated at a new commit on every build.
+
+    Git will not overwrite a tag ref it already has, so without forcing it the clone
+    pins the tag to the first commit it ever saw — the badge in the graph then points
+    at an old commit indefinitely, which is worse than showing nothing.
+    """
+    working, origin = clone
+    _git(origin, "tag", "alpha")
+    get_remote_status(working)
+    moved_to = _second_commit(origin)
+    _git(origin, "tag", "-f", "alpha")
+
+    get_remote_status(working)
+
+    assert _git(working, "rev-parse", "alpha") == moved_to
+
+
+def test_a_new_upstream_tag_still_arrives(clone):
+    """Tag auto-following already worked; forcing must not cost us it."""
+    working, origin = clone
+    _git(origin, "tag", "v1.0.0")
+
+    get_remote_status(working)
+
+    assert "v1.0.0" in _git(working, "tag").splitlines()
+
+
+def test_a_purely_local_tag_is_not_deleted(clone):
+    """Tags the user made are theirs. Pruning tags would delete every one of them, which
+    is why this fetch forces updates without pruning tags."""
+    working, _origin = clone
+    _git(working, "tag", "my-own-marker")
+
+    get_remote_status(working)
+
+    assert "my-own-marker" in _git(working, "tag").splitlines()
