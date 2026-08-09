@@ -24,6 +24,7 @@ interface Settings {
   myEmails?: string[]
   mineLookbackCommits?: number
   mineMaxBranchAgeDays?: number
+  autoFetchMinutes?: number
   ai: AISettingsData
   defaultAgent?: string
   agentProviders?: Record<string, { label: string }>
@@ -47,6 +48,7 @@ export default function SettingsModal({ onClose }: Props) {
   const [myEmails, setMyEmails] = useState('')
   const [mineLookbackCommits, setMineLookbackCommits] = useState('5')
   const [mineMaxBranchAgeDays, setMineMaxBranchAgeDays] = useState('90')
+  const [autoFetchMinutes, setAutoFetchMinutes] = useState('5')
   const [aiProvider, setAiProvider] = useState('ollama')
   const [providerConfigs, setProviderConfigs] =
     useState<Record<string, AIProviderConfig>>(getDefaultProviderConfigs)
@@ -164,6 +166,8 @@ export default function SettingsModal({ onClose }: Props) {
       payload.mineLookbackCommits = Math.min(50, Math.max(1, parsedLookback))
       const parsedAge = parseInt(mineMaxBranchAgeDays)
       payload.mineMaxBranchAgeDays = Math.min(3650, Math.max(0, isNaN(parsedAge) ? 90 : parsedAge))
+      const parsedFetch = parseInt(autoFetchMinutes)
+      payload.autoFetchMinutes = Math.min(1440, Math.max(0, isNaN(parsedFetch) ? 5 : parsedFetch))
       payload.telemetryConsent = telemetryConsent
       payload.defaultAgent = defaultAgent
       payload.bill = {
@@ -261,6 +265,8 @@ export default function SettingsModal({ onClose }: Props) {
                 onMineLookbackCommitsChange={setMineLookbackCommits}
                 mineMaxBranchAgeDays={mineMaxBranchAgeDays}
                 onMineMaxBranchAgeDaysChange={setMineMaxBranchAgeDays}
+                autoFetchMinutes={autoFetchMinutes}
+                onAutoFetchMinutesChange={setAutoFetchMinutes}
                 defaultAgent={defaultAgent}
                 onDefaultAgentChange={setDefaultAgent}
                 agentProviders={agentProviders}

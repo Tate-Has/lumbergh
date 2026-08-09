@@ -36,6 +36,7 @@ def _get_defaults() -> dict:
         "myEmails": [],
         "mineLookbackCommits": DEFAULT_LOOKBACK,
         "mineMaxBranchAgeDays": DEFAULT_MAX_AGE_DAYS,
+        "autoFetchMinutes": 5,
         "defaultAgent": DEFAULT_PROVIDER,
         "bill": {"harness": "pi", "personality": "professional", "customPersonality": ""},
         "tabVisibility": {
@@ -113,6 +114,7 @@ class SettingsUpdate(BaseModel):
     myEmails: list[str] | None = None  # noqa: N815 - API field name
     mineLookbackCommits: int | None = None  # noqa: N815 - API field name
     mineMaxBranchAgeDays: int | None = None  # noqa: N815 - API field name
+    autoFetchMinutes: int | None = None  # noqa: N815 - API field name
     ai: AISettings | None = None
     defaultAgent: str | None = None  # noqa: N815 - API field name
     tabVisibility: TabVisibility | None = None  # noqa: N815 - API field name
@@ -243,6 +245,14 @@ def _validate_mine_filter(updates: SettingsUpdate, update_data: dict[str, object
                 detail="Branch age cutoff must be between 0 and 3650 days (0 disables it)",
             )
         update_data["mineMaxBranchAgeDays"] = updates.mineMaxBranchAgeDays
+
+    if updates.autoFetchMinutes is not None:
+        if not 0 <= updates.autoFetchMinutes <= 1440:
+            raise HTTPException(
+                status_code=400,
+                detail="Auto-fetch interval must be between 0 and 1440 minutes (0 disables it)",
+            )
+        update_data["autoFetchMinutes"] = updates.autoFetchMinutes
 
 
 def _normalize_emails(raw: list[str]) -> list[str]:

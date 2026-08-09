@@ -17,6 +17,8 @@ import subprocess
 import time
 from pathlib import Path
 
+from lumbergh import auto_fetch
+from lumbergh.auto_fetch import FetchSchedule
 from lumbergh.git_identity import graph_identity
 from lumbergh.git_utils import get_full_diff_with_untracked, get_graph_log
 from lumbergh.graph_delta import GraphHistory
@@ -84,6 +86,8 @@ class DiffCache:
         # Commit orderings behind recent versions, so a returning client can be
         # sent just what it lacks instead of the whole graph.
         self.graph_history = GraphHistory()
+        # Per-repository rate limit for background origin refreshes.
+        self.fetch_schedule = FetchSchedule()
         self._graph_limits: dict[str, tuple[int, bool]] = {}  # session_name -> (limit, mine_only)
         self._fingerprints: dict[str, tuple] = {}  # session_name -> last fingerprint
         self._last_interest: dict[str, float] = {}  # session_name -> timestamp
@@ -173,6 +177,39 @@ class DiffCache:
                 logger.error(f"Diff cache error: {e}")
             await asyncio.sleep(self.POLL_INTERVAL)
 
+    async def _maybe_fetch(self, workdir: Path) -> None:
+        """Refresh ``origin/*`` for a session the user is currently looking at.
+
+        Interest is driven by the session page's own polling, so this follows
+        the user around whether or not they are on the git tab — but it is rate
+        limited per repository and silently backs off, so a slow or offline
+        remote costs a timeout once and then nothing.
+        """
+        from lumbergh.routers.settings import get_settings
+
+        cooldown = float(get_settings().get("autoFetchMinutes", 5)) * 60
+        self.fetch_schedule.cooldown = cooldown
+        if cooldown <= 0:
+            return
+
+        key = await asyncio.to_thread(auto_fetch.repo_key, workdir)
+        if key is None:
+            return
+
+        now = self.fetch_schedule.now()
+        if not self.fetch_schedule.due(key, now):
+            return
+        if not await asyncio.to_thread(auto_fetch.has_remote, workdir):
+            # Claim the slot anyway; re-asking every cycle is pure waste.
+            self.fetch_schedule.succeeded(key, now)
+            return
+
+        ok = await asyncio.to_thread(auto_fetch.fetch, workdir)
+        if ok:
+            self.fetch_schedule.succeeded(key, self.fetch_schedule.now())
+        else:
+            self.fetch_schedule.failed(key, self.fetch_schedule.now())
+
     async def _compute_all(self) -> None:
         from lumbergh.routers.sessions import get_session_path_map, get_session_workdir
 
@@ -182,6 +219,8 @@ class DiffCache:
                 workdir = get_session_workdir(session_name)
             except Exception:  # noqa: S112 - skip sessions without workdir
                 continue
+
+            await self._maybe_fetch(workdir)
 
             # Cheap filesystem check - skip git commands if nothing changed
             fingerprint = await asyncio.to_thread(_git_fingerprint, workdir)
