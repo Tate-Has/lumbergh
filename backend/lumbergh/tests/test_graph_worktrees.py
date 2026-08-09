@@ -75,3 +75,26 @@ def test_session_path_map_resolves_workdir_to_name(tmp_path, monkeypatch):
     path_map = sessions.get_session_path_map()
 
     assert path_map == {str(wt_path.resolve()): "foo-worker"}
+
+
+def test_a_diverged_remote_branch_is_labelled_with_its_remote(tmp_path):
+    """Local `dev` and `origin/dev` at different commits both read as "dev",
+    which looks like the branch head failed to update."""
+    origin = _init_repo(tmp_path / "origin")
+    _git(origin, "branch", "dev")
+
+    clone = tmp_path / "clone"
+    _git(tmp_path, "clone", "-q", str(origin), str(clone))
+    _git(clone, "config", "user.email", "t@t.t")
+    _git(clone, "config", "user.name", "t")
+    _git(clone, "checkout", "-q", "dev")
+    (clone / "NEW").write_text("y")
+    _git(clone, "add", "-A")
+    _git(clone, "commit", "-qm", "local work")
+
+    graph = get_graph_log(clone)
+    names = [ref["name"] for commit in graph["commits"] for ref in commit["refs"]]
+
+    assert "dev" in names
+    assert "origin/dev" in names
+    assert names.count("dev") == 1

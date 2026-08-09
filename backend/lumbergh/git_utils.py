@@ -350,9 +350,16 @@ def _enrich_ref_entry(
         if branch_name == "HEAD" or branch_name in commit_seen:
             return None
         commit_seen.add(branch_name)
+        # When a local branch of the same name sits on a *different* commit,
+        # labelling both of them "dev" reads as the branch head failing to
+        # update. Keep the remote's prefix so the two are told apart. A branch
+        # that exists only on the remote keeps its bare name — there is nothing
+        # for it to be confused with.
+        local_hash = local_branch_hash.get(branch_name)
+        diverged = local_hash is not None and local_hash != hexsha
         return {
-            "name": branch_name,
-            "local": local_branch_hash.get(branch_name) == hexsha,
+            "name": f"origin/{branch_name}" if diverged else branch_name,
+            "local": local_hash == hexsha,
             "remote": True,
         }
 

@@ -67,6 +67,7 @@ describe('applyGraphResponse', () => {
       version: 'v2',
       added: [commit('aaaaaaaaaaaa')],
       order: ['aaaaaaaaaaaa', 'bbbbbbbbbbbb', 'cccccccccccc'],
+      refs: {},
       ...SMALL_FIELDS,
     } as GraphResponse)
 
@@ -87,6 +88,7 @@ describe('applyGraphResponse', () => {
       version: 'v2',
       added: [],
       order: ['aaaaaaaaaaaa', 'bbbbbbbbbbbb'],
+      refs: {},
       ...SMALL_FIELDS,
     } as GraphResponse)
 
@@ -101,6 +103,7 @@ describe('applyGraphResponse', () => {
       version: 'v2',
       added: [],
       order: ['missingmissi', 'bbbbbbbbbbbb'],
+      refs: {},
       ...SMALL_FIELDS,
     } as GraphResponse)
 
@@ -114,6 +117,7 @@ describe('applyGraphResponse', () => {
       version: 'v2',
       added: [],
       order: ['aaaaaaaaaaaa'],
+      refs: {},
       ...SMALL_FIELDS,
     } as GraphResponse)
 
@@ -128,6 +132,7 @@ describe('applyGraphResponse', () => {
       version: 'v2',
       added: [commit('aaaaaaaaaaaa')],
       keep: 2,
+      refs: {},
       ...SMALL_FIELDS,
     } as GraphResponse)
 
@@ -148,6 +153,7 @@ describe('applyGraphResponse', () => {
       version: 'v2',
       added: [],
       keep: 2,
+      refs: {},
       ...SMALL_FIELDS,
     } as GraphResponse)
 
@@ -162,10 +168,44 @@ describe('applyGraphResponse', () => {
       version: 'v2',
       added: [],
       keep: 99,
+      refs: {},
       ...SMALL_FIELDS,
     } as GraphResponse)
 
     expect(cursorValid).toBe(false)
+  })
+
+  it('moves a branch badge off the commit it used to point at', () => {
+    const previous = graph(['bbbbbbbbbbbb'])
+    previous.commits[0].refs = [{ name: 'dev', local: true, remote: false }]
+
+    const { graph: next } = applyGraphResponse(previous, {
+      delta: true,
+      version: 'v2',
+      added: [{ ...commit('aaaaaaaaaaaa'), refs: [{ name: 'dev', local: true, remote: false }] }],
+      keep: 1,
+      refs: { aaaaaaaaaaaa: [{ name: 'dev', local: true, remote: false }] },
+      ...SMALL_FIELDS,
+    } as GraphResponse)
+
+    expect(next!.commits.map((c) => c.refs.map((r) => r.name))).toEqual([['dev'], []])
+  })
+
+  it('refreshes the pushed flag on commits it already held', () => {
+    const previous = graph(['bbbbbbbbbbbb'])
+    previous.commits[0].pushed = false
+
+    const { graph: next } = applyGraphResponse(previous, {
+      delta: true,
+      version: 'v2',
+      added: [],
+      keep: 1,
+      refs: {},
+      unpushed: [],
+      ...SMALL_FIELDS,
+    } as GraphResponse)
+
+    expect(next!.commits[0].pushed).toBe(true)
   })
 
   it('carries the small fields through a delta', () => {
@@ -176,6 +216,7 @@ describe('applyGraphResponse', () => {
       version: 'v2',
       added: [],
       keep: 1,
+      refs: {},
       ...SMALL_FIELDS,
       workingChanges: { files: 3, staged: 1, unstaged: 2 },
     } as GraphResponse)

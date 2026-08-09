@@ -12,6 +12,12 @@ export type GraphResponse =
       order?: string[]
       /** Shorthand: the new list is `added` followed by this many of the ones we hold. */
       keep?: number
+      /** Current badges, by commit. Commits absent from this map have none. */
+      refs: Record<string, GraphCommit['refs']>
+      /** Commits not yet pushed; everything else is. Sent when it is the shorter list. */
+      unpushed?: string[]
+      /** Commits that are pushed; everything else is not. Sent when *it* is the shorter list. */
+      pushed?: string[]
     } & Omit<GraphData, 'commits' | 'version'>)
 
 /**
@@ -20,6 +26,30 @@ export type GraphResponse =
  */
 function withShortHash(commits: GraphCommit[]): GraphCommit[] {
   for (const commit of commits) commit.shortHash = commit.hash.slice(0, 7)
+  return commits
+}
+
+/**
+ * Re-stamp the two per-commit fields that can change without the commit doing so.
+ *
+ * A branch badge belongs to whichever commit the branch currently points at, and
+ * `pushed` flips underneath a commit that was already drawn. Carrying either one
+ * over from the previous graph leaves a badge stranded on every commit that was
+ * ever a tip, which is what made `dev` appear four times on one screen.
+ */
+function refreshVolatile(
+  commits: GraphCommit[],
+  refs: Record<string, GraphCommit['refs']>,
+  unpushed: string[] | undefined,
+  pushed: string[] | undefined
+): GraphCommit[] {
+  // Only the minority list is sent, so whichever arrived names the exceptions.
+  const listed = new Set(pushed ?? unpushed ?? [])
+  const listedArePushed = pushed !== undefined
+  for (const commit of commits) {
+    commit.refs = refs[commit.hash] ?? []
+    commit.pushed = listed.has(commit.hash) === listedArePushed
+  }
   return commits
 }
 
@@ -43,23 +73,32 @@ export function applyGraphResponse(
   if ('delta' in response && response.delta) {
     if (!previous) return { graph: previous, cursorValid: false }
 
-    const { delta: _delta, added, order, keep, ...rest } = response
+    const { delta: _delta, added, order, keep, refs, unpushed, pushed, ...rest } = response
+    // Without the badge map we cannot tell a moved branch from a stale one.
+    // Re-seeding is cheap; guessing would strand badges or erase them all.
+    if (!refs) return { graph: previous, cursorValid: false }
     withShortHash(added)
 
     if (order === undefined) {
       if (keep === undefined || keep > previous.commits.length) {
         return { graph: previous, cursorValid: false }
       }
-      const commits = [...added, ...previous.commits.slice(0, keep)]
+      const commits = refreshVolatile(
+        [...added, ...previous.commits.slice(0, keep)],
+        refs,
+        unpushed,
+        pushed
+      )
       return { graph: { ...previous, ...rest, commits }, cursorValid: true }
     }
 
     const byHash = new Map(previous.commits.map((commit) => [commit.hash, commit]))
     for (const commit of added) byHash.set(commit.hash, commit)
-    const commits = order.map((hash) => byHash.get(hash)).filter((c): c is GraphCommit => !!c)
-    if (commits.length !== order.length) {
+    const merged = order.map((hash) => byHash.get(hash)).filter((c): c is GraphCommit => !!c)
+    if (merged.length !== order.length) {
       return { graph: previous, cursorValid: false }
     }
+    const commits = refreshVolatile(merged, refs, unpushed, pushed)
     return { graph: { ...previous, ...rest, commits }, cursorValid: true }
   }
 

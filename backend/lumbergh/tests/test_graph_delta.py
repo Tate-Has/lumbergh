@@ -118,6 +118,45 @@ class TestBuildResponse:
         # shorthand cannot describe this and the explicit list is sent.
         assert response["order"] == ["new1", "new2", "base"]
 
+    def test_a_delta_restates_where_the_branches_are(self):
+        """A badge belongs to the current tip, not to whatever held it before."""
+        history = GraphHistory()
+        old = _payload(["b"], version="v1")
+        old["commits"][0]["refs"] = [{"name": "dev", "local": True, "remote": False}]
+        build_response(old, None, history, "s")
+
+        new = _payload(["a", "b"], version="v2")
+        new["commits"][0]["refs"] = [{"name": "dev", "local": True, "remote": False}]
+        response = build_response(new, "v1", history, "s")
+
+        assert response["refs"] == {"a": [{"name": "dev", "local": True, "remote": False}]}
+
+    def test_a_delta_restates_which_commits_are_unpushed(self):
+        history = GraphHistory()
+        build_response(_payload(["b"], version="v1"), None, history, "s")
+
+        new = _payload(["a", "b"], version="v2")
+        new["commits"][0]["pushed"] = False
+        new["commits"][1]["pushed"] = True
+        response = build_response(new, "v1", history, "s")
+
+        assert response["unpushed"] == ["a"]
+
+    def test_a_mostly_unpushed_branch_names_the_pushed_ones_instead(self):
+        """A branch with no upstream reports everything unpushed; listing that
+        costs more than the rest of the delta."""
+        history = GraphHistory()
+        build_response(_payload(["a"], version="v1"), None, history, "s")
+
+        new = _payload(["a", "b", "c", "d"], version="v2")
+        for commit in new["commits"]:
+            commit["pushed"] = False
+        new["commits"][3]["pushed"] = True
+        response = build_response(new, "v1", history, "s")
+
+        assert response["pushed"] == ["d"]
+        assert "unpushed" not in response
+
     def test_a_delta_still_carries_the_small_fields_whole(self):
         """Branches, head and working changes are cheap; syncing them is not."""
         history = GraphHistory()

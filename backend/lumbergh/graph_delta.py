@@ -81,6 +81,14 @@ def build_response(
         "version": version,
         "delta": True,
         "added": added,
+        # A commit's identity is immutable but two of its fields are not: a
+        # branch badge moves off a commit when the branch advances, and
+        # ``pushed`` flips when work is pushed. Sending them only on ``added``
+        # leaves the client rendering a stale badge on every commit that was
+        # ever a branch tip — they pile up for as long as the view is open.
+        # Both are sparse, so shipping them whole costs almost nothing.
+        "refs": {c["hash"]: c["refs"] for c in payload["commits"] if c.get("refs")},
+        **_push_state(payload["commits"]),
         **{field: payload[field] for field in WHOLE_FIELDS if field in payload},
     }
 
@@ -90,6 +98,19 @@ def build_response(
     else:
         response["keep"] = keep
     return response
+
+
+def _push_state(commits: list[dict]) -> dict:
+    """Name whichever of pushed/unpushed is the shorter list.
+
+    A branch with no upstream reports every commit as unpushed, so naming the
+    unpushed ones cost more than the rest of the delta put together. Whichever
+    side is in the minority is the one worth sending; the other is the default.
+    """
+    unpushed = [c["hash"] for c in commits if not c.get("pushed", True)]
+    if len(unpushed) * 2 > len(commits):
+        return {"pushed": [c["hash"] for c in commits if c.get("pushed", True)]}
+    return {"unpushed": unpushed}
 
 
 def _reconstructable_from(order: list[str], known: list[str], added: list[str]) -> int | None:
