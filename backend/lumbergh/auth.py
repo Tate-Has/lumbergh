@@ -83,9 +83,32 @@ def _get_cookie_from_scope(scope: dict) -> str | None:
 # --- ASGI Middleware ---
 
 
+# What the agent token opens: the surface `lb` actually calls, and nothing else. The token
+# gated `/api/agent` alone, which meant an occupant of the Bill role on another host was
+# locked out of most of its job — spawn, fleet, land, briefs, reports — the moment a
+# password was set.
+#
+# Prefixes are matched with a trailing `/` or an exact hit, so `/api/billing` can never
+# ride in on the `/api/bill` grant.
+_AGENT_TOKEN_PREFIXES = ("/api/agent", "/api/bill", "/api/worktrees")
+
+# `/api/sessions` is granted as an exact path rather than a prefix: `lb worktree create
+# --agent` needs to create a session, and that is the only thing under it any `lb` command
+# touches. A prefix grant would hand the same token `/api/sessions/{n}/git/push`,
+# `force-push`, `reset` and the file API — a much larger blast radius than the one verb
+# being paid for.
+_AGENT_TOKEN_PATHS = ("/api/sessions",)
+
+
+def _agent_token_covers(path: str) -> bool:
+    if path in _AGENT_TOKEN_PATHS:
+        return True
+    return any(path == p or path.startswith(p + "/") for p in _AGENT_TOKEN_PREFIXES)
+
+
 def _agent_token_authorized(scope, path: str) -> bool:
-    """True if this is an /api/agent request carrying a valid agent token."""
-    if not path.startswith("/api/agent"):
+    """True if this request is on the agent surface and carries a valid agent token."""
+    if not _agent_token_covers(path):
         return False
     for key, val in scope.get("headers", []):
         if key == b"x-lumbergh-agent-token" and agent_token.verify(val.decode()):
@@ -112,7 +135,7 @@ class AuthMiddleware:
         if path.startswith("/api/auth") or path == "/api/health" or not path.startswith("/api/"):
             return await self.app(scope, receive, send)
 
-        # Local agent CLI: a valid agent token gates /api/agent (see agent_token).
+        # Agent CLI: a valid agent token gates the `lb` surface (see agent_token).
         if _agent_token_authorized(scope, path):
             return await self.app(scope, receive, send)
 
