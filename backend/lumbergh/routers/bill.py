@@ -18,6 +18,7 @@ from lumbergh import bill as bill_bundle
 from lumbergh import runs as run_groups
 from lumbergh.activity.resolve import resolve_adapter
 from lumbergh.activity.resolve import session_meta as _session_meta
+from lumbergh.bill import artifacts
 from lumbergh.briefs import enumerate_briefs
 from lumbergh.db_utils import (
     get_project_db,
@@ -757,11 +758,13 @@ _DELIVERY_CLAUSE = {
 def _brief_delivery(brief: Path, kind: str, name: str, mode: str = "commit") -> str:
     intro = f"Read your brief at {brief} and follow it. "
     if kind == "scout":
-        report = f"Write your report to {bill_bundle.home() / 'reports' / f'{name}.md'}. "
-        deliver = (
-            "Finish with exactly one line: `DELIVERED: <where the report is>` "
-            "or `FAILED: <reason>`."
+        report = (
+            f"File your report with `lb report write --name {name} --actionable yes|no "
+            '--done-when "<what finishing looks like>" --confidence high|medium|low`, the '
+            'prose piped on stdin, and one `--open-question "<q>"` for each detail you '
+            "needed and could not determine. "
         )
+        deliver = f"Finish with exactly one line: `DELIVERED: report {name}` or `FAILED: <reason>`."
         return intro + report + deliver
     clause = _DELIVERY_CLAUSE.get(mode, _DELIVERY_CLAUSE["commit"])
     return intro + clause + ", or `FAILED: <reason>` if it did not work."
@@ -1042,6 +1045,78 @@ def write_brief(body: BriefBody):
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(body.body)
     return {"path": str(target), "name": target.stem, "bytes": len(body.body.encode())}
+
+
+def _slug_or_fail(name: str) -> str:
+    if not bill_bundle.SLUG.match(name or ""):
+        raise _fail("name", f"`{name}` is not a slug", bill_bundle.SLUG_HELP)
+    return name
+
+
+@router.get("/brief")
+def read_brief(name: str):
+    """One brief, by slug. The read half of ``POST /brief``.
+
+    Intent has to be re-readable rather than remembered: a babysat session is ``/clear``ed
+    every refresh cycle and a remote Bill runs a fresh session per wake, so neither can
+    recall what it asked for. A fleet row carries only slug, kind, state and outcome.
+    """
+    return artifacts.read_artifact("briefs", _slug_or_fail(name))
+
+
+@router.get("/briefs")
+def list_briefs():
+    return {"briefs": artifacts.listing("briefs")}
+
+
+class ReportBody(BaseModel):
+    name: str
+    body: str
+    actionable: bool | None = None
+    done_when: str | None = None
+    open_questions: list[str] = []
+    confidence: str | None = None
+
+
+@router.post("/report")
+def write_report(body: ReportBody):
+    """File a scout's report, with the contracted header rendered here.
+
+    The scout writes through this rather than with its own file tools so the header is
+    stamped by the server, exactly as ``add_preference`` formats its own bullet — a shape
+    that a caller is merely *asked* to produce is a shape that goes missing.
+    """
+    name = _slug_or_fail(body.name)
+    error = artifacts.validate(body.actionable, body.done_when, body.confidence)
+    if error:
+        raise _fail("frontmatter", error, "see `lb report write --help`")
+    if body.body.lstrip().startswith("---"):
+        raise _fail(
+            "body",
+            "the report body already starts with a `---` block",
+            "pass only the prose — the header is rendered from the flags",
+        )
+    path = artifacts.write_report(
+        name,
+        body.body,
+        actionable=bool(body.actionable),
+        done_when=body.done_when,
+        open_questions=body.open_questions,
+        confidence=body.confidence or "",
+    )
+    return {"path": str(path), "name": name, "bytes": path.stat().st_size}
+
+
+@router.get("/report")
+def read_report(name: str):
+    return artifacts.read_artifact("reports", _slug_or_fail(name))
+
+
+@router.get("/reports")
+def list_reports():
+    """Every report, each with its header — so a Bill can triage the whole directory in
+    one call and fetch only the bodies that turn out to matter."""
+    return {"reports": artifacts.listing("reports")}
 
 
 class PreferenceBody(BaseModel):

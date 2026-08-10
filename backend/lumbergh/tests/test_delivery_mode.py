@@ -44,7 +44,7 @@ def test_default_brief_delivery_is_commit(tmp_path):
 def test_scout_delivery_unaffected_by_mode(tmp_path):
     msg = _brief_delivery(tmp_path / "b.md", "scout", "w", "commit")
     assert "report" in msg.lower()
-    assert "DELIVERED: <where the report is>" in msg
+    assert "DELIVERED: report w" in msg
 
 
 def test_ship_skill_states_all_three_modes():

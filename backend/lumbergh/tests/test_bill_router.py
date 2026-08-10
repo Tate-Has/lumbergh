@@ -1713,15 +1713,18 @@ def test_spawn_help_for_a_missing_brief_names_the_path_it_looked_in(client, tmp_
     assert str(tmp_path / "bill") in detail["help"]
 
 
-def test_scout_report_path_lives_in_bills_home_not_beside_the_brief(tmp_path, monkeypatch):
-    """A brief in a subdirectory of ``briefs/`` used to send the scout's report two levels
-    up from wherever the brief happened to sit; the real invariant is Bill's home."""
+def test_the_scout_contract_names_no_path_at_all(tmp_path, monkeypatch):
+    """A path used to leak into this instruction, and where it pointed was a live bug — a
+    brief nested under ``briefs/`` once sent the report two levels up from Bill's home. It
+    is gone now: the scout files through `lb report write` and names only its slug, which
+    is the only form a supervisor on another host can act on."""
     monkeypatch.setattr(bill.bill_bundle, "home", lambda: tmp_path / "bill")
     nested = tmp_path / "bill" / "briefs" / "sub" / "w.md"
 
     text = bill._brief_delivery(nested, "scout", "w")
 
-    assert str(tmp_path / "bill" / "reports" / "w.md") in text
+    assert "lb report write --name w" in text
+    assert str(tmp_path / "bill" / "reports") not in text
 
 
 def test_spawn_keeps_the_registry_row_when_the_worktree_cannot_be_removed(

@@ -56,7 +56,16 @@ FLAGS = {
     "land": {"--run", "--onto", "--push", "--smoke", "--skip-smoke"},
     "teardown": {"--run", "--force", "--dry-run"},
     "babysit": {"--session", "--stop", "--list", "--refresh"},
-    "brief": {"--name", "--file"},
+    "brief": {"--name", "--file", "--json"},
+    "report": {
+        "--name",
+        "--file",
+        "--actionable",
+        "--done-when",
+        "--open-question",
+        "--confidence",
+        "--json",
+    },
     "prefs": {"--reason"},
     "todo": {"--repo", "--description"},
 }
@@ -81,7 +90,13 @@ _BOOL_FLAGS = {
 # set of runs: two lanes that become ready together assemble into one batch and land in
 # one push. Everywhere else `--run` names the single run a worker is filed under, where a
 # repeat is a mistake and last-wins is the right reading.
-_REPEATABLE_FLAGS = {"land": {"--run"}, "teardown": {"--run"}}
+_REPEATABLE_FLAGS = {
+    "land": {"--run"},
+    "teardown": {"--run"},
+    # A report may have found more than one thing it could not determine, and each is
+    # a separate question to put to the user. Last-wins would silently drop the rest.
+    "report": {"--open-question"},
+}
 
 # One usage line per command, so `lb <command> --help` is a real answer rather than a
 # request the command runs anyway. Bill's AGENTS.md points him here when he is unsure of
@@ -130,8 +145,16 @@ _COMMAND_HELP = {
         "--stop --session <name> | --list"
     ),
     "brief": (
-        "lb brief write --name <slug> [--file <path>|-]  (body from --file, or piped on "
-        "stdin; prints the server-side path `lb spawn --brief` wants)"
+        "lb brief write --name <slug> [--file <path>|-] | lb brief read <slug> [--json] "
+        "| lb brief list [--json]  (write takes the body from --file or piped on stdin, "
+        "and prints the server-side path `lb spawn --brief` wants)"
+    ),
+    "report": (
+        "lb report write --name <slug> --actionable yes|no --confidence high|medium|low "
+        '[--done-when "<what finishing looks like>"] [--open-question "<q>" ...] '
+        "[--file <path>|-] | lb report read <slug> [--json] | lb report list [--json]  "
+        "(--done-when is required when --actionable yes; the prose comes from --file or "
+        "piped on stdin)"
     ),
     "prefs": 'lb prefs read | lb prefs add "<text>" --reason "<why>"',
     "todo": (
@@ -155,6 +178,22 @@ def _err(msg: str, help_line: str | None, code: int) -> int:
     if help_line:
         _emit(f"help: {help_line}")
     return code
+
+
+def _body_from(file_flag: str | None, help_text: str) -> str | int:
+    """An artifact's text, or the exit code of the usage error printed instead.
+
+    ``--file -`` and a bare pipe are the same thing. A terminal on stdin is refused
+    rather than read: blocking on a tty is indistinguishable from a hung command.
+    """
+    if file_flag and file_flag != "-":
+        path = Path(file_flag).expanduser()
+        if not path.is_file():
+            return _err(f"no file at {path}", help_text, 2)
+        return path.read_text()
+    if sys.stdin.isatty():
+        return _err("no body given", help_text, 2)
+    return sys.stdin.read()
 
 
 def _request(method: str, path: str, **kwargs):
@@ -245,6 +284,7 @@ def main(argv=None) -> int:
         "init": lambda: _cmd_init(flags),
         "babysit": lambda: _cmd_babysit(flags),
         "brief": lambda: _cmd_brief(positional, flags),
+        "report": lambda: _cmd_report(positional, flags),
         "prefs": lambda: _cmd_prefs(positional, flags),
         "todo": lambda: _cmd_todo(positional, flags),
     }
@@ -518,6 +558,12 @@ def _cmd_brief(positional, flags) -> int:
     from lumbergh.agent_cli import brief as brief_cli
 
     return brief_cli.run(positional, flags)
+
+
+def _cmd_report(positional, flags) -> int:
+    from lumbergh.agent_cli import report as report_cli
+
+    return report_cli.run(positional, flags)
 
 
 def _cmd_prefs(positional, flags) -> int:

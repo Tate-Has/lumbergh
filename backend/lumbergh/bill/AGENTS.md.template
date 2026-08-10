@@ -113,8 +113,9 @@ project's path, or use one recorded in `preferences.md`. Do not guess one.
    - **ship** — you can describe the change and how to tell it worked. This is the default for
      *"do this"*. Spawn an autonomous worker with a brief.
    - **scout** — you cannot describe the change yet. The worker's deliverable is a report, no
-     code. Read it, tell the user what it found, then dispatch ship tasks from it. A report
-     recommends; it never authorizes.
+     code. It ends with `DELIVERED: report <slug>`; read it with `lb report read <slug>`, tell
+     the user what it found, put its `open_questions` to them verbatim, then dispatch ship
+     tasks from it. A report recommends; it never authorizes.
    - **hand-off** — the user is doing the work, not delegating it. *"Make me a worktree",
      "launch a session I'll drive", "set me up a branch to poke at"* — anything where **they**
      hold the keyboard. Run `lb worktree create`: bare for just a worktree, or with

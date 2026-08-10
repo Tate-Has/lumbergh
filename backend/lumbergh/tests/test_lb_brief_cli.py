@@ -1,6 +1,7 @@
 """`lb brief write` is the only way a Bill without filesystem access can file a brief."""
 
 import io
+import json
 
 import pytest
 
@@ -156,3 +157,69 @@ def test_lb_dispatches_brief(monkeypatch, piped, capsys):
     )
     assert lb.main(["brief", "write", "--name", "flaky-login"]) == 0
     assert "/p.md" in capsys.readouterr().out
+
+
+@pytest.fixture
+def stored_brief(monkeypatch):
+    payload = {
+        "name": "flaky-login",
+        "path": "/home/j/.config/lumbergh/bill/briefs/flaky-login.md",
+        "exists": True,
+        "body": "# Task\n\nfind the flake\n",
+    }
+    monkeypatch.setattr(brief_cli, "_request", lambda *a, **kw: _Resp(payload))  # noqa: ARG005
+    return payload
+
+
+@pytest.mark.usefixtures("stored_brief")
+def test_brief_read_prints_the_body(capsys):
+    """A babysat session is `/clear`ed every refresh cycle and a remote Bill runs a fresh
+    session per wake, so intent has to be re-readable rather than remembered."""
+    rc = brief_cli.run(["read", "flaky-login"], {})
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "find the flake" in out
+    assert "/briefs/flaky-login.md" in out
+
+
+def test_brief_read_json_returns_the_whole_record(stored_brief, capsys):
+    rc = brief_cli.run(["read", "flaky-login"], {"--json": True})
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) == stored_brief
+
+
+def test_reading_a_brief_that_is_not_there_exits_nonzero(monkeypatch, capsys):
+    monkeypatch.setattr(
+        brief_cli,
+        "_request",
+        lambda *a, **kw: _Resp({"name": "nope", "path": "/x", "exists": False, "body": ""}),  # noqa: ARG005
+    )
+
+    rc = brief_cli.run(["read", "nope"], {})
+
+    assert rc == 1
+    assert "no brief named `nope`" in capsys.readouterr().out
+
+
+def test_brief_read_without_a_name_is_a_usage_error(capsys):
+    assert brief_cli.run(["read"], {}) == 2
+    assert "no brief name given" in capsys.readouterr().out
+
+
+def test_brief_list_names_them(monkeypatch, capsys):
+    monkeypatch.setattr(
+        brief_cli,
+        "_request",
+        lambda *a, **kw: _Resp(  # noqa: ARG005
+            {"briefs": [{"name": "a", "bytes": 12, "modified": "2026-08-10T00:00:00+00:00"}]}
+        ),
+    )
+
+    rc = brief_cli.run(["list"], {})
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "briefs[1]{name,bytes,modified}:" in out
+    assert "lb brief read" in out
