@@ -40,8 +40,10 @@ _YES_OPTION = re.compile(r"^\s*❯?\s*\d+\.\s*yes\b", re.IGNORECASE | re.MULTILI
 _TUI_MARKERS = ("? for shortcuts", "auto mode", "esc to interrupt", "shift+tab to cycle")
 
 # The agent's own context readout, e.g. `41k (21%)`. Zero means it has not taken a
-# single turn, which is the whole signature of a brief that was never submitted.
-_CONTEXT_USED = re.compile(r"(\d+(?:\.\d+)?)k\s*\(\s*\d+\s*%\s*\)")
+# single turn, which is the whole signature of a brief that was never submitted. Both
+# halves are captured: the percent is what says whether a session is near a hand-off,
+# and it was already being matched here purely to anchor the `k`.
+_CONTEXT_USED = re.compile(r"(\d+(?:\.\d+)?)k\s*\(\s*(\d+)\s*%\s*\)")
 
 # The agent's input line, whichever way its TUI draws one: boxed, or ruled off above
 # and below with a bare prompt character.
@@ -63,8 +65,12 @@ def _is_agent_tui(content: str) -> bool:
     return any(marker in low for marker in _TUI_MARKERS)
 
 
-def context_used_k(content: str) -> float | None:
-    """Thousands of context tokens the agent has consumed, or None if it doesn't say.
+def context_used(content: str) -> tuple[float, float] | None:
+    """``(thousands of tokens, percent of the window)``, or None if the pane doesn't say.
+
+    The two always travel together because they come from one match, so they can never
+    disagree about whether there is a readout at all — which is the distinction every
+    caller here depends on.
 
     Above zero is the one unambiguous proof that an agent took a turn — it cannot be
     faked by text merely appearing on screen. Zero proves nothing on its own: a pane
@@ -72,7 +78,16 @@ def context_used_k(content: str) -> float | None:
     positive evidence.
     """
     matches = _CONTEXT_USED.findall(content or "")
-    return float(matches[-1]) if matches else None
+    if not matches:
+        return None
+    used_k, pct = matches[-1]
+    return float(used_k), float(pct)
+
+
+def context_used_k(content: str) -> float | None:
+    """Just the thousands of tokens — the delivery check's half of ``context_used``."""
+    used = context_used(content)
+    return None if used is None else used[0]
 
 
 def _input_box_text(content: str) -> str | None:

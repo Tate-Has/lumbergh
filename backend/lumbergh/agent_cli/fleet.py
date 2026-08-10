@@ -23,6 +23,10 @@ _COLS = [
     # work — the overseer used to have to poll git per worker to find it.
     "dirty",
     "commits",
+    # How full the agent's window is, e.g. `41k/21%`. An overseer nearing a hand-off is
+    # something a supervisor can act on *before* it stalls, and the number was already
+    # being read off the pane for the delivery check.
+    "context",
     "outcome",
     "repo_path",
     "path",
@@ -144,6 +148,10 @@ def _display(row: dict) -> dict:
     # `-`, never `0`: git declining to answer must not render as "nothing at stake".
     shown["dirty"] = "-" if row.get("dirty") is None else str(row["dirty"])
     shown["commits"] = "-" if row.get("commits") is None else str(row["commits"])
+    # `-`, never `0%`: a provider whose TUI shows no readout has said nothing, and
+    # rendering that as an empty window would read as "plenty of room left".
+    pct, used_k = row.get("context_pct"), row.get("context_k")
+    shown["context"] = "-" if pct is None else f"{used_k:g}k/{pct:g}%"
     # A missing path renders as a visible gap rather than an empty cell: Bill is told to
     # copy these into `lb spawn --repo` / `lb worktree reap`, and "" reads like a value.
     shown["repo_path"] = row.get("repo_path") or "-"

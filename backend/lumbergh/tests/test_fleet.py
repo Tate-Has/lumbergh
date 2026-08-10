@@ -594,9 +594,10 @@ def test_a_worker_that_never_took_its_brief_reads_as_undelivered(tmp_path, monke
     what the overseer trusts."""
     _one_worker(tmp_path, monkeypatch, base_sha="abc123")
 
-    row = _snapshot(0.0, monkeypatch)[0]
+    row = _snapshot((0.0, 0.0), monkeypatch)[0]
 
     assert row["state"] == "undelivered"
+    assert row["context_k"] == 0.0, "0 is a reading, and the row must publish it as one"
     assert fleet.needs_attention(row)
 
 
@@ -604,7 +605,7 @@ def test_a_worker_that_never_took_its_brief_reads_as_undelivered(tmp_path, monke
 def test_a_worker_that_has_taken_a_turn_is_left_alone(tmp_path, monkeypatch):
     _one_worker(tmp_path, monkeypatch, base_sha="abc123")
 
-    assert _snapshot(41.0, monkeypatch)[0]["state"] == "working"
+    assert _snapshot((41.0, 21.0), monkeypatch)[0]["state"] == "working"
 
 
 @pytest.mark.usefixtures("registry")
@@ -612,7 +613,7 @@ def test_a_worker_that_has_committed_is_left_alone(tmp_path, monkeypatch):
     # HEAD moved, so whatever the pane reports, this worker did something.
     _one_worker(tmp_path, monkeypatch, base_sha="abc123")
 
-    assert _snapshot(0.0, monkeypatch, untouched=False)[0]["state"] == "working"
+    assert _snapshot((0.0, 0.0), monkeypatch, untouched=False)[0]["state"] == "working"
 
 
 @pytest.mark.usefixtures("registry")
@@ -620,3 +621,49 @@ def test_a_pane_with_no_context_readout_is_never_called_undelivered(tmp_path, mo
     _one_worker(tmp_path, monkeypatch, base_sha="abc123")
 
     assert _snapshot(None, monkeypatch)[0]["state"] == "working"
+
+
+@pytest.mark.usefixtures("registry")
+def test_the_row_publishes_the_context_readout(tmp_path, monkeypatch):
+    """`context_of` was consumed only to decide `undelivered` and never emitted, so no
+    supervisor could say "this one is at 78% and about to hand off"."""
+    _one_worker(tmp_path, monkeypatch, base_sha="abc123")
+
+    row = _snapshot((41.0, 21.0), monkeypatch, untouched=False)[0]
+
+    assert row["context_k"] == 41.0
+    assert row["context_pct"] == 21.0
+
+
+@pytest.mark.usefixtures("registry")
+def test_a_pane_with_no_readout_publishes_none_not_zero(tmp_path, monkeypatch):
+    """None means "this provider's TUI never said"; 0 means "it said zero", which is the
+    signature of a brief that was never taken. `_never_started` turns on exactly that
+    distinction, so coercing None to 0 here would accuse every silent provider."""
+    _one_worker(tmp_path, monkeypatch, base_sha="abc123")
+
+    row = _snapshot(None, monkeypatch)[0]
+
+    assert row["context_k"] is None
+    assert row["context_pct"] is None
+    assert row["state"] == "working", "no readout is never proof a brief went untaken"
+
+
+@pytest.mark.usefixtures("registry")
+def test_an_overseer_publishes_its_context_too(tmp_path, monkeypatch):
+    """The motivating case is an *overseer* nearing a hand-off — "port is at 78%". Wiring
+    only the worker row would leave the column blank on exactly the rows it exists for."""
+    monkeypatch.setattr(worktrees, "reconcile", _fake_reconcile({}))
+
+    rows = fleet.snapshot(
+        {"port": {"workdir": str(tmp_path / "port"), "type": "direct"}},
+        state_of=lambda n: "idle",  # noqa: ARG005
+        since_of=lambda n: 5.0,  # noqa: ARG005
+        unseen_of=lambda n: False,  # noqa: ARG005
+        live_targets={"port"},
+        context_of=lambda n: (156.0, 78.0),  # noqa: ARG005
+    )
+
+    assert rows[0]["role"] == "overseer"
+    assert rows[0]["context_k"] == 156.0
+    assert rows[0]["context_pct"] == 78.0

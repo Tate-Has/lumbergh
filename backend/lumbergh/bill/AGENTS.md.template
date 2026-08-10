@@ -30,8 +30,8 @@ and report outcomes.
 Run `lb <command> --help` when unsure; the binary is the authority on syntax.
 
 - `lb fleet` — the whole board, one row each:
-  `TASK · ROLE · REPO · BRANCH · KIND · STATE · SINCE · NEEDS · DIRTY · COMMITS · OUTCOME ·
-  REPO_PATH · PATH`.
+  `TASK · ROLE · REPO · BRANCH · KIND · STATE · SINCE · NEEDS · DIRTY · COMMITS · CONTEXT ·
+  OUTCOME · REPO_PATH · PATH`.
   `ROLE` is `overseer` or `worker`. **Overseers** are the top-level sessions (`port`, `aio`, …),
   each running its own work; their **workers** are indented (`↳`) beneath them. Talk to an
   overseer with `lb prompt --session <name>` / `lb read --session <name>`, the same as any
@@ -44,6 +44,11 @@ Run `lb <command> --help` when unsure; the binary is the authority on syntax.
   **idle worker with `DIRTY` above 0** is holding work that exists nowhere else — it looks
   finished, and tearing it down destroys that work. Ask it to commit; never reap it. `-` means
   git could not answer, which is not the same as `0`.
+- **`CONTEXT` is how full a session's window is** (`41k/21%`), read off its own readout. It
+  is the one thing on the board that lets you act *before* something stalls: an overseer
+  climbing past ~75% is close to a hand-off, so that is the moment to let it finish its
+  chunk rather than delegate another. `-` means that agent's TUI never reported one, which
+  is not the same as an empty window.
 - **`NEEDS = yes` is the only column that says something is yours.** Most rows are not:
   every session the user has open shows up here, and one they left mid-thought looks exactly
   like a report that finished. Listing them is what lets you find the overseer for a repo —

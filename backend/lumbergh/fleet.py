@@ -58,7 +58,7 @@ def snapshot(
     dead_acked: set[str] | None = None,
     live_targets: set[str] | None = None,
     overseer_exclude: set[str] | None = None,
-    context_of: Callable[[str], float | None] | None = None,
+    context_of: Callable[[str], tuple[float, float] | None] | None = None,
     babysat_unresolved: set[str] | None = None,
     work_of: Callable[[str], dict] | None = None,
 ) -> list[dict]:
@@ -90,9 +90,11 @@ def snapshot(
             state = state_of(tracked)
             since = since_of(tracked)
             unseen = unseen_of(tracked)
-            if _never_started(state, tracked, row["path"], context_of):
+            context = context_of(tracked) if context_of else None
+            if _never_started(state, context, row["path"]):
                 state = UNDELIVERED
         else:
+            context = None
             state = "dead" if entry.get("target") else "orphan"
             since = None
             # A dead task has no live session to carry the seen/unseen overlay, so its
@@ -118,6 +120,13 @@ def snapshot(
                 "state": state,
                 "since": round(since) if since is not None else None,
                 "unseen": unseen,
+                # How full this agent's window is, straight off its own readout. `None`
+                # (not 0) when the pane never said — a provider whose TUI shows no
+                # readout has told us nothing, and `_never_started` reads 0 as proof a
+                # brief went untaken. Collapsing the two would accuse every silent
+                # provider of dropping its brief.
+                "context_k": context[0] if context else None,
+                "context_pct": context[1] if context else None,
                 "path": row["path"],
                 # What this worker holds that no other checkout does. On the row because
                 # the alternative — the overseer polling git per worker by hand — is what
@@ -134,6 +143,7 @@ def snapshot(
         state_of,
         since_of,
         unseen_of,
+        context_of,
     )
     overseer_by_path = {_resolved(o["path"]): o["task"] for o in overseers if o["path"]}
     for w in workers:
@@ -174,15 +184,17 @@ def _broken_babysit_row(session: str) -> dict:
         "path": None,
         "dirty": None,
         "commits": None,
+        # No agent behind this row at all, so there is no readout to report.
+        "context_k": None,
+        "context_pct": None,
         "problem": "babysat but has no live agent — nothing is driving it",
     }
 
 
 def _never_started(
     state: str,
-    tracked: str,
+    context: tuple[float, float] | None,
     path: str,
-    context_of: Callable[[str], float | None] | None,
 ) -> bool:
     """Whether this live worker was stood up and never actually took its brief.
 
@@ -192,10 +204,9 @@ def _never_started(
     provider whose TUI doesn't show one) is never accused — the absence of evidence
     cannot be the evidence.
     """
-    if context_of is None or state not in _DELIVERY_UNPROVEN_STATES:
+    if context is None or state not in _DELIVERY_UNPROVEN_STATES:
         return False
-    used = context_of(tracked)
-    return used == 0 and worktrees.head_untouched(Path(path))
+    return context[0] == 0 and worktrees.head_untouched(Path(path))
 
 
 def _overseer_rows(
@@ -206,6 +217,7 @@ def _overseer_rows(
     state_of: Callable[[str], str],
     since_of: Callable[[str], float | None],
     unseen_of: Callable[[str], bool],
+    context_of: Callable[[str], tuple[float, float] | None] | None = None,
 ) -> list[dict]:
     """One row per live overseer: a direct session that isn't a worker, a batch
     container (its name owns worker windows), or Bill. Gated on actually running an
@@ -221,6 +233,7 @@ def _overseer_rows(
             continue
         workdir = meta.get("workdir")
         since = since_of(name)
+        context = context_of(name) if context_of else None
         rows.append(
             {
                 "task": name,
@@ -236,6 +249,11 @@ def _overseer_rows(
                 "state": state_of(name),
                 "since": round(since) if since is not None else None,
                 "unseen": unseen_of(name),
+                # An overseer's own window, and the row this matters most on: it is
+                # long-lived, so it is the one that creeps toward a hand-off while a
+                # supervisor is deciding whether to give it more work.
+                "context_k": context[0] if context else None,
+                "context_pct": context[1] if context else None,
                 "path": workdir,
                 # Never read for an overseer: its path is the shared checkout, dirty for
                 # the whole of normal development. Present so every row has one shape.

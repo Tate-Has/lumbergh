@@ -242,3 +242,14 @@ def test_a_window_worker_is_addressed_at_its_own_window():
         clock=fake.clock,
     )
     assert set(fake.refs) == {"batch:issue-841"}
+
+
+def test_context_used_returns_both_halves_of_the_readout():
+    """The pane prints `41k (21%)` and the percent was being discarded by the regex that
+    read the same match. A supervisor deciding whether a session is about to hand off
+    wants the percent, not the raw thousands."""
+    from lumbergh.spawn_delivery import context_used
+
+    assert context_used(_live_pane("127k (13%)")) == (127.0, 13.0)
+    assert context_used(_live_pane("0k (0%)")) == (0.0, 0.0)
+    assert context_used("no readout here") is None

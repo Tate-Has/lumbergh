@@ -35,7 +35,7 @@ from lumbergh.db_utils import (
     session_data_lock,
 )
 from lumbergh.idle_detector import SessionState, classify_overrides
-from lumbergh.spawn_delivery import context_used_k
+from lumbergh.spawn_delivery import context_used
 from lumbergh.targets import format_target, parse_target
 from lumbergh.tmux_pty import (
     IS_WINDOWS,
@@ -177,7 +177,7 @@ class IdleMonitor:
         # Context the agent reports having consumed, per target — the one signal that
         # separates a worker still holding an unsubmitted brief from one merely thinking.
         # Read off the pane the monitor already captured, so it costs nothing extra.
-        self._context_used: dict[str, float | None] = {}
+        self._context: dict[str, tuple[float, float] | None] = {}
         self._live_targets: list[str] = []
         # Babysat names found with no live agent on the last pass, so the warning and the
         # attention overlay fire on the transition rather than every two seconds.
@@ -209,9 +209,11 @@ class IdleMonitor:
     def get_state(self, session_name: str) -> SessionState:
         return self._states.get(session_name, SessionState.UNKNOWN)
 
-    def context_used(self, session_name: str) -> float | None:
-        """Thousands of context tokens the agent last reported, or None if it doesn't say."""
-        return self._context_used.get(session_name)
+    def context_used(self, session_name: str) -> tuple[float, float] | None:
+        """``(thousands of tokens, percent)`` the agent last reported, or None if it does
+        not say. None is not zero: a provider whose TUI shows no readout has told us
+        nothing, and callers turn on exactly that distinction."""
+        return self._context.get(session_name)
 
     def live_targets(self) -> list[str]:
         return list(self._live_targets)
@@ -364,7 +366,7 @@ class IdleMonitor:
         self._question_checked.discard(target)
         self._question_inflight.discard(target)
         self._exit_pending.discard(target)
-        self._context_used.pop(target, None)
+        self._context.pop(target, None)
         self._babysit_nudged_since.pop(target, None)
 
     async def _reap_dead_targets(self, targets: set[str], live_sessions: set[str]) -> None:
@@ -571,7 +573,7 @@ class IdleMonitor:
         loop = asyncio.get_event_loop()
         osc_title = await loop.run_in_executor(None, capture_pane_title, tmux_ref(session_name))
 
-        self._context_used[session_name] = context_used_k(_ANSI_PATTERN.sub("", captures[-1]))
+        self._context[session_name] = context_used(_ANSI_PATTERN.sub("", captures[-1]))
 
         state = self._classify_burst(session_name, captures, time.time(), osc_title)
 
