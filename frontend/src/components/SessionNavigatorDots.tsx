@@ -4,7 +4,8 @@ import { UserRoundCog } from 'lucide-react'
 import { getApiBase } from '../config'
 import { useIsDesktop } from '../hooks/useMediaQuery'
 import type { SessionBase } from '../utils/sessionStatus'
-import { getSessionStatus, statusColorClasses } from '../utils/sessionStatus'
+import { getSessionStatus, statusColorClasses, parseSessionsPayload } from '../utils/sessionStatus'
+import { orderSessionsForNavigator } from '../utils/sessionOrder'
 
 const statusRingClasses: Record<string, string> = {
   gray: 'ring-gray-500/60',
@@ -69,10 +70,7 @@ export default function SessionNavigatorDots({ currentSessionName, compact = fal
       try {
         const res = await fetch(`${getApiBase()}/sessions`)
         if (!res.ok) return
-        const data = await res.json()
-        const active = (data.sessions || [])
-          .filter((s: SessionBase) => s.alive && !s.paused)
-          .sort((a: SessionBase, b: SessionBase) => a.name.localeCompare(b.name))
+        const active = orderSessionsForNavigator(parseSessionsPayload(await res.json()))
         setSessions(active)
 
         // Detect transitions away from 'working' to trigger 3-pulse alert

@@ -1,10 +1,12 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import Terminal from '../components/Terminal'
 import { getApiBase } from '../config'
+import { useSessionSwitchKeys } from '../hooks/useSessionSwitchKeys'
 
 export default function TerminalWindow() {
   const { name } = useParams<{ name: string }>()
   const navigate = useNavigate()
+  useSessionSwitchKeys(name)
 
   if (!name) return null
 

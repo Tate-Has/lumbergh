@@ -18,6 +18,7 @@ import GitTab from '../components/graph/GitTab'
 import ActivityFeed from '../components/activity/ActivityFeed'
 import SessionNavigatorDots from '../components/SessionNavigatorDots'
 import { useIsDesktop } from '../hooks/useMediaQuery'
+import { useSessionSwitchKeys } from '../hooks/useSessionSwitchKeys'
 
 type RightPanel = 'activity' | 'git' | 'files' | 'todos' | 'prompts' | 'shared'
 type MobileTab = 'terminal' | 'activity' | 'git' | 'files' | 'todos' | 'prompts' | 'shared'
@@ -67,6 +68,7 @@ export default function SessionDetail() {
   const { name } = useParams<{ name: string }>()
   const navigate = useNavigate()
   const isDesktop = useIsDesktop()
+  useSessionSwitchKeys(name)
 
   const [notFound, setNotFound] = useState(false)
   const [countdown, setCountdown] = useState(5)

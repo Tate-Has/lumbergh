@@ -54,6 +54,15 @@ interface TerminalProps {
   hideHeader?: boolean
 }
 
+/** Chords that switch sessions rather than reaching the shell: Ctrl+[ / Ctrl+] and
+ * Alt+Left / Alt+Right. xterm must decline them so they bubble to the window
+ * listeners in SessionDetail and useSessionSwitchKeys — and so Alt+Arrow never
+ * reaches tmux as an escape sequence. */
+function isSessionCycleChord(event: KeyboardEvent): boolean {
+  if (event.ctrlKey && (event.key === '[' || event.key === ']')) return true
+  return event.altKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')
+}
+
 // eslint-disable-next-line complexity
 export default memo(function Terminal({
   sessionName,
@@ -557,8 +566,7 @@ export default memo(function Terminal({
     // When the custom handler blocks only keydown, xterm.js doesn't call preventDefault(),
     // so the browser fires keypress which leaks through and sends \r to the terminal.
     term.attachCustomKeyEventHandler((event) => {
-      // Ctrl+[ / Ctrl+] cycles sessions — let the window handler deal with it
-      if (event.ctrlKey && (event.key === '[' || event.key === ']')) {
+      if (isSessionCycleChord(event)) {
         return false
       }
       if (event.key === 'Enter' && event.shiftKey) {
