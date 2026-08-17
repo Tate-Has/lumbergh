@@ -3,8 +3,14 @@ import { useConversationSocket } from '../../hooks/useConversationSocket'
 import ConversationRespondBox from './ConversationRespondBox'
 import { Item } from './ConversationItem'
 
-export default function ConversationView({ sessionName }: { sessionName: string }) {
-  const { items, noTranscript } = useConversationSocket({ sessionName })
+export default function ConversationView({
+  sessionName,
+  enabled = true,
+}: {
+  sessionName: string
+  enabled?: boolean
+}) {
+  const { items, noTranscript } = useConversationSocket({ sessionName, enabled })
   const scrollRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const [following, setFollowing] = useState(true)

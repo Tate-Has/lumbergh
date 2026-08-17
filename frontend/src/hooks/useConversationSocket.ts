@@ -44,13 +44,30 @@ export function mergeEvents(prev: RenderItem[], incoming: ActivityEvent): Render
   return [...prev, incoming as RenderItem]
 }
 
-export function useConversationSocket({ sessionName }: { sessionName: string }) {
+/**
+ * `enabled` gates the connection: while false, no WebSocket is opened (and any
+ * open one is torn down). Callers that mount this eagerly alongside UI the user
+ * hasn't looked at yet — e.g. a conversation pane sitting hidden next to a
+ * terminal — should keep `enabled` false until the user actually shows it, then
+ * leave it true forever. Toggling it back to false on every hide would force a
+ * full transcript replay (the server always replays from offset 0) each time
+ * the user flips back, which is worse than just staying connected.
+ */
+export function useConversationSocket({
+  sessionName,
+  enabled = true,
+}: {
+  sessionName: string
+  enabled?: boolean
+}) {
   const [items, setItems] = useState<RenderItem[]>([])
   const [isConnected, setIsConnected] = useState(false)
   const [noTranscript, setNoTranscript] = useState(false)
   const wsRef = useRef<WebSocket | null>(null)
 
   useEffect(() => {
+    if (!enabled) return
+
     let isActive = true
     let attempts = 0
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined
@@ -98,7 +115,7 @@ export function useConversationSocket({ sessionName }: { sessionName: string }) 
       wsRef.current?.close()
       wsRef.current = null
     }
-  }, [sessionName])
+  }, [sessionName, enabled])
 
   return { items, isConnected, noTranscript }
 }

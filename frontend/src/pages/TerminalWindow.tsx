@@ -2,11 +2,13 @@ import { useParams, useNavigate } from 'react-router-dom'
 import Terminal from '../components/Terminal'
 import { getApiBase } from '../config'
 import { useSessionSwitchKeys } from '../hooks/useSessionSwitchKeys'
+import { useSessionView } from '../hooks/useSessionView'
 
 export default function TerminalWindow() {
   const { name } = useParams<{ name: string }>()
   const navigate = useNavigate()
   useSessionSwitchKeys(name)
+  const { view, toggleView } = useSessionView()
 
   if (!name) return null
 
@@ -28,7 +30,12 @@ export default function TerminalWindow() {
 
   return (
     <div className="fixed inset-0 bg-bg-base">
-      <Terminal sessionName={name} onCycleSession={cycleSession} />
+      <Terminal
+        sessionName={name}
+        onCycleSession={cycleSession}
+        view={view}
+        onToggleView={toggleView}
+      />
     </div>
   )
 }

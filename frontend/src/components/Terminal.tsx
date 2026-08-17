@@ -88,6 +88,12 @@ export default memo(function Terminal({
   // Track last-sent cols/rows so we can dedupe redundant resize sends without
   // suppressing legit small layout shifts that DO cross a column/row boundary.
   const lastSentSizeRef = useRef<{ cols: number; rows: number } | null>(null)
+  // Latches true the first time the Conv pane is shown, and never resets — the
+  // conversation WebSocket connects lazily on first view (not eagerly on mount,
+  // which would open a socket + replay a transcript nobody asked for), then
+  // stays connected so flipping back to Term doesn't force a replay next time.
+  const hasShownConvRef = useRef(false)
+  if (view === 'conv') hasShownConvRef.current = true
 
   // Debug HUD state — enable by running `localStorage.setItem('terminal-debug','1')`
   // in devtools then reloading. Shows xterm cols/rows, last-sent size, byte/write
@@ -1110,7 +1116,7 @@ export default memo(function Terminal({
         <div ref={containerRef} data-testid="xterm-container" className="h-full w-full" />
       </div>
       <div className={`flex-1 overflow-hidden ${view === 'term' ? 'hidden' : ''}`}>
-        <ConversationView sessionName={sessionName} />
+        <ConversationView sessionName={sessionName} enabled={hasShownConvRef.current} />
       </div>
     </div>
   )
