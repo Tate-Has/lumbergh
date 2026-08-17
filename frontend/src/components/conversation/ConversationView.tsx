@@ -121,10 +121,12 @@ export default function ConversationView({
       return
     }
     // Backstop for every way of scrolling we cannot detect — keyboard aimed at
-    // the document, a Firefox scrollbar drag, find-in-page. Landing a whole
-    // viewport or more away from the bottom is nobody's idea of "still
-    // following", so detach rather than drag the reader back down.
-    if (followingRef.current && distanceFromBottom >= el.clientHeight) {
+    // the document, a Firefox scrollbar drag, find-in-page. Half a viewport, not
+    // a whole one: PageUp deliberately keeps a strip of overlap for context and
+    // moves only ~0.9 of the viewport, so a full-viewport threshold would miss
+    // the very case this exists for. Settle corrections all fire at a distance
+    // near zero, well clear of half a viewport.
+    if (followingRef.current && distanceFromBottom >= Math.max(150, el.clientHeight / 2)) {
       followingRef.current = false
       setFollowing(false)
       return
