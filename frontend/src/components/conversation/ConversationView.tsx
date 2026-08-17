@@ -42,12 +42,17 @@ export default function ConversationView({
     getScrollElement: () => scrollRef.current,
     estimateSize: () => 80,
     overscan: 8,
+    // Key sizes by item, not index: the trailing `thinking` item drops out of
+    // visibleItems, and an index-keyed cache would hand its height to whatever
+    // row slides into its place.
+    getItemKey: (index) => visibleItems[index].id,
   })
 
-  // The virtualizer's spacer is exactly as tall as the measured feed, so the
-  // scroller's own bottom is the last row's bottom — more reliable than
-  // scrollToIndex, which aims at an estimated size for a row it has not
-  // rendered yet and lands short.
+  // The spacer height and every row's `start` come out of the same measurements
+  // array, so the scroller's own bottom is exactly the last row's rendered
+  // bottom — internally consistent, whatever the unmeasured rows above are
+  // currently estimated at. scrollToIndex instead aims at the estimated size of
+  // a row it has not rendered yet, and lands short.
   const scrollToLatest = useCallback(() => {
     const el = scrollRef.current
     if (!el) return
@@ -84,21 +89,29 @@ export default function ConversationView({
     gestureAtRef.current = Date.now()
   }
 
+  // A touch pan that takes scrolling over from the drag fires pointercancel,
+  // never pointerup, so every end-of-drag event has to clear the latch — one
+  // missed release would leave every later scroll looking user-driven forever.
   const onPointerDown = () => {
     draggingRef.current = true
     markGesture()
     const release = () => {
       draggingRef.current = false
       markGesture()
-      window.removeEventListener('pointerup', release)
+      for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+        window.removeEventListener(event, release)
+      }
     }
-    window.addEventListener('pointerup', release)
+    for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+      window.addEventListener(event, release)
+    }
   }
 
   const onScroll = () => {
     const el = scrollRef.current
     if (!el) return
-    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    const atBottom = distanceFromBottom < 40
     const userDriven = draggingRef.current || Date.now() - gestureAtRef.current < 400
     const movedUp = el.scrollTop < lastScrollTopRef.current
     lastScrollTopRef.current = el.scrollTop
@@ -107,8 +120,17 @@ export default function ConversationView({
       setFollowing(atBottom)
       return
     }
-    // Not a gesture: this is layout settling under us. Re-stick unless the feed
-    // is drifting upward on its own (touch momentum after a flick), which would
+    // Backstop for every way of scrolling we cannot detect — keyboard aimed at
+    // the document, a Firefox scrollbar drag, find-in-page. Landing a whole
+    // viewport or more away from the bottom is nobody's idea of "still
+    // following", so detach rather than drag the reader back down.
+    if (followingRef.current && distanceFromBottom >= el.clientHeight) {
+      followingRef.current = false
+      setFollowing(false)
+      return
+    }
+    // Otherwise this is layout settling under us. Re-stick unless the feed is
+    // drifting upward on its own (touch momentum after a flick), which would
     // fight the user.
     if (followingRef.current && !atBottom && !movedUp) scrollToLatest()
   }

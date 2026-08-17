@@ -32,6 +32,9 @@ beforeAll(() => {
   }
 })
 
+// Windowing only. The ResizeObserver stub never fires, so no row ever measures
+// and every one keeps the 80px estimate — dynamic heights, and the follow
+// behaviour that rides on them, need a real browser.
 describe('ConversationView', () => {
   it('renders a window of rows, not all 500', () => {
     const { container } = render(<ConversationView sessionName="x" scale={1} />)
