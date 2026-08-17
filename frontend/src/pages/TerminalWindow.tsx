@@ -35,6 +35,13 @@ export default function TerminalWindow() {
       <Terminal
         sessionName={name}
         onCycleSession={cycleSession}
+        // A session opened straight into Conv attaches its PTY at the cached
+        // grid while the terminal is hidden. A container ResizeObserver refits
+        // once it is shown, but only Terminal's re-show path also drops the
+        // last-sent-size cache, so without this a size another client changed
+        // meanwhile is deduped away and never re-asserted to the shared tmux
+        // window. This is the same visibility signal SessionDetail passes.
+        isVisible={view === 'term'}
         view={view}
         onToggleView={toggleView}
         scale={scale}

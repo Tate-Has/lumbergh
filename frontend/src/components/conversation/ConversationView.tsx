@@ -18,10 +18,14 @@ export default function ConversationView({
   const [following, setFollowing] = useState(true)
   const followingRef = useRef(true)
   // A scroll event only means "the user scrolled away" when a real gesture
-  // caused it. Virtualized rows re-measure constantly, and both our own
-  // stick-to-bottom and the virtualizer's scroll adjustments fire scroll events
-  // whose position momentarily sits short of the bottom — reading those as user
-  // intent detaches follow permanently and strands the feed at the top.
+  // caused it AND it moved the feed upward. Virtualized rows re-measure
+  // constantly, and both our own stick-to-bottom and the virtualizer's scroll
+  // adjustments fire scroll events whose position momentarily sits short of the
+  // bottom — reading those as user intent detaches follow permanently and
+  // strands the feed at the top. A gesture near one of those (a click on a tool
+  // card's expand toggle, whose scroll-anchoring shift arrives inside the
+  // gesture window) is exactly the same misread, which is why direction, not
+  // the gesture alone, decides.
   const gestureAtRef = useRef(0)
   const draggingRef = useRef(false)
   const lastScrollTopRef = useRef(0)
@@ -116,8 +120,16 @@ export default function ConversationView({
     const movedUp = el.scrollTop < lastScrollTopRef.current
     lastScrollTopRef.current = el.scrollTop
     if (userDriven) {
-      followingRef.current = atBottom
-      setFollowing(atBottom)
+      // Never fight an upward scroll — and never mistake anything else for one.
+      // Only an upward move ends follow; landing at the bottom restores it.
+      // Expanding a card adds height above the viewport, and scroll anchoring
+      // pushes scrollTop *down* to compensate: a downward (or zero-delta) scroll
+      // inside the gesture window is layout, not intent, and leaves follow alone
+      // until the totalSize effect re-pins.
+      if (atBottom || movedUp) {
+        followingRef.current = atBottom
+        setFollowing(atBottom)
+      }
       return
     }
     // Backstop for every way of scrolling we cannot detect — keyboard aimed at
