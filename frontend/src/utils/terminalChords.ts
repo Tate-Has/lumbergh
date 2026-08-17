@@ -5,5 +5,5 @@
 export function isSessionCycleChord(event: KeyboardEvent): boolean {
   if (event.ctrlKey && (event.key === '[' || event.key === ']')) return true
   if (event.altKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) return true
-  return event.altKey && !event.ctrlKey && !event.metaKey && event.key.toLowerCase() === 'z'
+  return event.altKey && !event.ctrlKey && !event.metaKey && event.code === 'KeyZ'
 }

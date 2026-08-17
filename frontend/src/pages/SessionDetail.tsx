@@ -736,29 +736,30 @@ export default function SessionDetail() {
       {/* Conditionally render only desktop OR mobile layout (not both) */}
       {isDesktop ? (
         <main className="flex-1 min-h-0">
-          {isZen ? (
-            <ZenTerminal onExit={exitZen}>{renderTerminal()}</ZenTerminal>
-          ) : isTerminalOnly ? (
-            <div className="h-full relative">
-              {renderTerminal()}
-              <button
-                onClick={() => saveSessionTabVisibility({ ...globalTabVisibility })}
-                className="absolute top-2 right-2 px-2 py-1 rounded bg-bg-surface/80 border border-border-default text-text-tertiary hover:text-text-primary text-xs transition-colors backdrop-blur-sm"
-                title="Show side panels"
-              >
-                Tabs
-              </button>
-            </div>
-          ) : (
-            <ResizablePanes
-              left={renderTerminal()}
-              right={renderRightPanel()}
-              defaultLeftWidth={50}
-              minLeftWidth={25}
-              maxLeftWidth={75}
-              storageKey="lumbergh:mainSplitWidth"
-            />
-          )}
+          <ResizablePanes
+            collapsed={isZen || isTerminalOnly}
+            left={
+              <div className="h-full relative">
+                <ZenTerminal active={isZen} onExit={exitZen}>
+                  {renderTerminal()}
+                </ZenTerminal>
+                {isTerminalOnly && !isZen && (
+                  <button
+                    onClick={() => saveSessionTabVisibility({ ...globalTabVisibility })}
+                    className="absolute top-2 right-2 px-2 py-1 rounded bg-bg-surface/80 border border-border-default text-text-tertiary hover:text-text-primary text-xs transition-colors backdrop-blur-sm"
+                    title="Show side panels"
+                  >
+                    Tabs
+                  </button>
+                )}
+              </div>
+            }
+            right={renderRightPanel()}
+            defaultLeftWidth={50}
+            minLeftWidth={25}
+            maxLeftWidth={75}
+            storageKey="lumbergh:mainSplitWidth"
+          />
         </main>
       ) : (
         <div className="flex-1 min-h-0 flex flex-col">

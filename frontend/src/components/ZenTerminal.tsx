@@ -5,9 +5,14 @@ const HIDE_AFTER_MS = 2000
 interface ZenTerminalProps {
   children: React.ReactNode
   onExit: () => void
+  active: boolean
 }
 
-export default function ZenTerminal({ children, onExit }: ZenTerminalProps) {
+// Always mounted around the terminal (see SessionDetail) so toggling zen never
+// changes the terminal's position in the tree — that would remount it and tear
+// down the WebSocket. When inactive this is a transparent passthrough: no exit
+// button, no mouse-move timer work.
+export default function ZenTerminal({ children, onExit, active }: ZenTerminalProps) {
   const [showExit, setShowExit] = useState(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -23,6 +28,10 @@ export default function ZenTerminal({ children, onExit }: ZenTerminalProps) {
     },
     []
   )
+
+  if (!active) {
+    return <>{children}</>
+  }
 
   return (
     <div className="h-full relative" onMouseMove={revealExit}>

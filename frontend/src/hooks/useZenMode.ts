@@ -26,7 +26,7 @@ export function useZenMode() {
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (!e.altKey || e.ctrlKey || e.metaKey) return
-      if (e.key.toLowerCase() !== 'z') return
+      if (e.code !== 'KeyZ') return
       e.preventDefault()
       setAndStore(!isZen)
     }

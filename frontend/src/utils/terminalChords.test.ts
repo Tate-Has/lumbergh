@@ -2,11 +2,15 @@ import { describe, it, expect } from 'vitest'
 import { isSessionCycleChord } from './terminalChords'
 
 const chord = (over: Partial<KeyboardEvent>) =>
-  ({ altKey: false, ctrlKey: false, metaKey: false, key: '', ...over }) as KeyboardEvent
+  ({ altKey: false, ctrlKey: false, metaKey: false, key: '', code: '', ...over }) as KeyboardEvent
 
 describe('isSessionCycleChord', () => {
   it('claims Alt+Z so zen mode toggles instead of tmux seeing \\x1bz', () => {
-    expect(isSessionCycleChord(chord({ altKey: true, key: 'z' }))).toBe(true)
+    expect(isSessionCycleChord(chord({ altKey: true, key: 'z', code: 'KeyZ' }))).toBe(true)
+  })
+
+  it('claims Option+Z on macOS, where the key character is not "z"', () => {
+    expect(isSessionCycleChord(chord({ altKey: true, key: 'Ω', code: 'KeyZ' }))).toBe(true)
   })
 
   it('claims the existing session-switch chords', () => {

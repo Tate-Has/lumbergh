@@ -7,6 +7,7 @@ interface Props {
   minLeftWidth?: number // percentage
   maxLeftWidth?: number // percentage
   storageKey?: string // localStorage key for persistence
+  collapsed?: boolean // render left pane full-width, hide splitter + right pane
 }
 
 export default function ResizablePanes({
@@ -16,6 +17,7 @@ export default function ResizablePanes({
   minLeftWidth = 20,
   maxLeftWidth = 80,
   storageKey,
+  collapsed = false,
 }: Props) {
   const [leftWidth, setLeftWidth] = useState(() => {
     if (storageKey) {
@@ -105,23 +107,30 @@ export default function ResizablePanes({
   return (
     <div ref={containerRef} className="flex h-full">
       {/* Left pane */}
-      <div style={{ width: `${leftWidth}%` }} className="h-full overflow-hidden">
+      <div
+        style={{ width: collapsed ? '100%' : `${leftWidth}%` }}
+        className="h-full overflow-hidden"
+      >
         {left}
       </div>
 
-      {/* Splitter */}
-      <div
-        onMouseDown={handleMouseDown}
-        onTouchStart={handleTouchStart}
-        className={`w-[2px] bg-border-default hover:bg-action cursor-col-resize transition-colors flex-shrink-0 touch-none ${
-          isDragging ? 'bg-action' : ''
-        }`}
-      />
+      {!collapsed && (
+        <>
+          {/* Splitter */}
+          <div
+            onMouseDown={handleMouseDown}
+            onTouchStart={handleTouchStart}
+            className={`w-[2px] bg-border-default hover:bg-action cursor-col-resize transition-colors flex-shrink-0 touch-none ${
+              isDragging ? 'bg-action' : ''
+            }`}
+          />
 
-      {/* Right pane */}
-      <div style={{ width: `${100 - leftWidth}%` }} className="h-full overflow-hidden">
-        {right}
-      </div>
+          {/* Right pane */}
+          <div style={{ width: `${100 - leftWidth}%` }} className="h-full overflow-hidden">
+            {right}
+          </div>
+        </>
+      )}
     </div>
   )
 }
