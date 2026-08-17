@@ -24,4 +24,11 @@ describe('isSessionCycleChord', () => {
   it('lets Alt+Meta+Z through, so OS chords are not swallowed', () => {
     expect(isSessionCycleChord(chord({ altKey: true, metaKey: true, key: 'z' }))).toBe(false)
   })
+
+  it('claims Alt+Arrow even with Meta held, as it did before the move', () => {
+    expect(isSessionCycleChord(chord({ altKey: true, metaKey: true, key: 'ArrowLeft' }))).toBe(true)
+    expect(isSessionCycleChord(chord({ altKey: true, metaKey: true, key: 'ArrowRight' }))).toBe(
+      true
+    )
+  })
 })
