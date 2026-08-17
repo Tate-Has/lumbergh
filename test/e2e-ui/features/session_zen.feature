@@ -16,5 +16,6 @@ Feature: Zen Mode
     And I record the session's saved tab visibility
     When I press "Alt+z"
     And I press "Alt+z"
+    And the network is idle
     Then I should see the git tab button
     And the session's saved tab visibility is unchanged

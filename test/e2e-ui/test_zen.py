@@ -30,6 +30,14 @@ def see_terminal_container(page: Page):
     expect(container).to_be_visible(timeout=10000)
 
 
+@when("the network is idle")
+def wait_for_network_idle(page: Page):
+    page.wait_for_load_state("networkidle")
+
+
+KNOWN_TAB_VISIBILITY = {"git": True, "files": False, "todos": True}
+
+
 def _saved_tab_visibility(base_url: str):
     with httpx.Client(base_url=base_url, timeout=10.0) as client:
         r = client.get("/api/sessions")
@@ -42,6 +50,9 @@ def _saved_tab_visibility(base_url: str):
 
 @given("I record the session's saved tab visibility", target_fixture="saved_tab_visibility")
 def record_tab_visibility(base_url: str):
+    with httpx.Client(base_url=base_url, timeout=10.0) as client:
+        r = client.patch(f"/api/sessions/{SESSION}", json={"tabVisibility": KNOWN_TAB_VISIBILITY})
+        r.raise_for_status()
     return _saved_tab_visibility(base_url)
 
 
