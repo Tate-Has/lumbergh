@@ -37,4 +37,17 @@ describe('isSessionCycleChord', () => {
       true
     )
   })
+
+  it('claims Alt+V so the view toggle fires instead of tmux seeing \\x1bv', () => {
+    expect(isSessionCycleChord(chord({ altKey: true, key: 'v', code: 'KeyV' }))).toBe(true)
+  })
+
+  it('claims Option+V on macOS, where the key character is not "v"', () => {
+    expect(isSessionCycleChord(chord({ altKey: true, key: '√', code: 'KeyV' }))).toBe(true)
+  })
+
+  it('lets a bare v and Ctrl+V through to the shell', () => {
+    expect(isSessionCycleChord(chord({ key: 'v', code: 'KeyV' }))).toBe(false)
+    expect(isSessionCycleChord(chord({ ctrlKey: true, key: 'v', code: 'KeyV' }))).toBe(false)
+  })
 })
