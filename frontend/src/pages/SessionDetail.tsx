@@ -19,6 +19,8 @@ import ActivityFeed from '../components/activity/ActivityFeed'
 import SessionNavigatorDots from '../components/SessionNavigatorDots'
 import { useIsDesktop } from '../hooks/useMediaQuery'
 import { useSessionSwitchKeys } from '../hooks/useSessionSwitchKeys'
+import ZenTerminal from '../components/ZenTerminal'
+import { useZenMode } from '../hooks/useZenMode'
 
 type RightPanel = 'activity' | 'git' | 'files' | 'todos' | 'prompts' | 'shared'
 type MobileTab = 'terminal' | 'activity' | 'git' | 'files' | 'todos' | 'prompts' | 'shared'
@@ -69,6 +71,7 @@ export default function SessionDetail() {
   const navigate = useNavigate()
   const isDesktop = useIsDesktop()
   useSessionSwitchKeys(name)
+  const { isZen, exitZen } = useZenMode()
 
   const [notFound, setNotFound] = useState(false)
   const [countdown, setCountdown] = useState(5)
@@ -498,6 +501,7 @@ export default function SessionDetail() {
           isVisible={isDesktop || mobileTab === 'terminal'}
           showSummary={showSummary}
           onShowSummary={handleShowSummary}
+          collapseHeader={isZen}
         />
       ) : (
         <div className="flex items-center justify-center h-full text-text-muted">
@@ -720,17 +724,21 @@ export default function SessionDetail() {
 
   return (
     <div className="h-full flex flex-col bg-bg-sunken text-text-primary">
-      <ScratchPromoteBanner
-        sessionName={name!}
-        isScratch={isScratch}
-        onPromoted={() => setIsScratch(false)}
-      />
+      {!isZen && (
+        <ScratchPromoteBanner
+          sessionName={name!}
+          isScratch={isScratch}
+          onPromoted={() => setIsScratch(false)}
+        />
+      )}
       {showTelemetryOptIn && <TelemetryOptIn onClose={() => setShowTelemetryOptIn(false)} />}
 
       {/* Conditionally render only desktop OR mobile layout (not both) */}
       {isDesktop ? (
         <main className="flex-1 min-h-0">
-          {isTerminalOnly ? (
+          {isZen ? (
+            <ZenTerminal onExit={exitZen}>{renderTerminal()}</ZenTerminal>
+          ) : isTerminalOnly ? (
             <div className="h-full relative">
               {renderTerminal()}
               <button

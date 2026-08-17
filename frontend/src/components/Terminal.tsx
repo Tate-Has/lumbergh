@@ -53,6 +53,7 @@ interface TerminalProps {
   showSummary?: boolean
   onShowSummary?: () => void
   hideHeader?: boolean
+  collapseHeader?: boolean
 }
 
 // eslint-disable-next-line complexity
@@ -68,6 +69,7 @@ export default memo(function Terminal({
   showSummary = false,
   onShowSummary,
   hideHeader = false,
+  collapseHeader = false,
 }: TerminalProps) {
   const { theme } = useTheme()
   const containerRef = useRef<HTMLDivElement>(null)
@@ -136,6 +138,11 @@ export default memo(function Terminal({
 
   // Expanded header state
   const [headerExpanded, setHeaderExpanded] = useState(false)
+
+  // Zen mode collapses the send-keys row; the slim header strip stays.
+  useEffect(() => {
+    if (collapseHeader) setHeaderExpanded(false)
+  }, [collapseHeader])
 
   // Scroll mode state (tmux copy-mode)
   const [scrollMode, setScrollMode] = useState(false)
