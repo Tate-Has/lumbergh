@@ -15,7 +15,7 @@ import SessionSummaryOverlay from '../components/SessionSummaryBanner'
 import ScratchPromoteBanner from '../components/ScratchPromoteBanner'
 import { isSummaryDismissed, dismissSummary, enableSummary } from '../hooks/useSessionSummary'
 import GitTab from '../components/graph/GitTab'
-import ActivityFeed from '../components/activity/ActivityFeed'
+import ConversationView from '../components/conversation/ConversationView'
 import SessionNavigatorDots from '../components/SessionNavigatorDots'
 import { useIsDesktop } from '../hooks/useMediaQuery'
 import { useSessionSwitchKeys } from '../hooks/useSessionSwitchKeys'
@@ -520,7 +520,7 @@ export default function SessionDetail() {
 
   const renderMobileTabContent = () => (
     <>
-      {mobileTab === 'activity' && name && <ActivityFeed key={name} sessionName={name} />}
+      {mobileTab === 'activity' && name && <ConversationView key={name} sessionName={name} />}
       {mobileTab === 'git' && (
         <GitTab
           sessionName={name}
@@ -657,7 +657,7 @@ export default function SessionDetail() {
       </div>
       {/* Panel content */}
       <div className="flex-1 min-h-0 overflow-hidden">
-        {rightPanel === 'activity' && name && <ActivityFeed key={name} sessionName={name} />}
+        {rightPanel === 'activity' && name && <ConversationView key={name} sessionName={name} />}
         {rightPanel === 'git' && (
           <GitTab
             key={name}

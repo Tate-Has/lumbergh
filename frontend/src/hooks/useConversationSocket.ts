@@ -44,7 +44,7 @@ export function mergeEvents(prev: RenderItem[], incoming: ActivityEvent): Render
   return [...prev, incoming as RenderItem]
 }
 
-export function useActivitySocket({ sessionName }: { sessionName: string }) {
+export function useConversationSocket({ sessionName }: { sessionName: string }) {
   const [items, setItems] = useState<RenderItem[]>([])
   const [isConnected, setIsConnected] = useState(false)
   const [noTranscript, setNoTranscript] = useState(false)

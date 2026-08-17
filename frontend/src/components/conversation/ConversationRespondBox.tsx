@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { getApiBase } from '../../config'
 
-export default function ActivityRespondBox({ sessionName }: { sessionName: string }) {
+export default function ConversationRespondBox({ sessionName }: { sessionName: string }) {
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
 
