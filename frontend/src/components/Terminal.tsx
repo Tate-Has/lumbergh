@@ -7,6 +7,7 @@ import '@xterm/xterm/css/xterm.css'
 import { useTerminalSocket } from '../hooks/useTerminalSocket'
 import type { PaneState } from '../hooks/useTerminalSocket'
 import { createWheelPager } from '../utils/wheelScroll'
+import { isSessionCycleChord } from '../utils/terminalChords'
 import { getApiBase } from '../config'
 import { useTheme } from '../hooks/useTheme'
 import TerminalHeader from './TerminalHeader'
@@ -52,15 +53,6 @@ interface TerminalProps {
   showSummary?: boolean
   onShowSummary?: () => void
   hideHeader?: boolean
-}
-
-/** Chords that switch sessions rather than reaching the shell: Ctrl+[ / Ctrl+] and
- * Alt+Left / Alt+Right. xterm must decline them so they bubble to the window
- * listeners in SessionDetail and useSessionSwitchKeys — and so Alt+Arrow never
- * reaches tmux as an escape sequence. */
-function isSessionCycleChord(event: KeyboardEvent): boolean {
-  if (event.ctrlKey && (event.key === '[' || event.key === ']')) return true
-  return event.altKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')
 }
 
 // eslint-disable-next-line complexity
