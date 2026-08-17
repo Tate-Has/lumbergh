@@ -57,6 +57,8 @@ interface TerminalProps {
   collapseHeader?: boolean
   view?: 'term' | 'conv'
   onToggleView?: () => void
+  scale?: number
+  onScaleChange?: (scale: number) => void
 }
 
 // eslint-disable-next-line complexity
@@ -75,6 +77,8 @@ export default memo(function Terminal({
   collapseHeader = false,
   view = 'term',
   onToggleView = () => {},
+  scale = 1,
+  onScaleChange = () => {},
 }: TerminalProps) {
   const { theme } = useTheme()
   const containerRef = useRef<HTMLDivElement>(null)
@@ -1046,6 +1050,8 @@ export default memo(function Terminal({
           view={view}
           onToggleView={onToggleView}
           onShowSummary={onShowSummary}
+          scale={scale}
+          onScaleChange={onScaleChange}
         />
       )}
 
@@ -1116,7 +1122,11 @@ export default memo(function Terminal({
         <div ref={containerRef} data-testid="xterm-container" className="h-full w-full" />
       </div>
       <div className={`flex-1 overflow-hidden ${view === 'term' ? 'hidden' : ''}`}>
-        <ConversationView sessionName={sessionName} enabled={hasShownConvRef.current} />
+        <ConversationView
+          sessionName={sessionName}
+          enabled={hasShownConvRef.current}
+          scale={scale}
+        />
       </div>
     </div>
   )

@@ -3,12 +3,14 @@ import Terminal from '../components/Terminal'
 import { getApiBase } from '../config'
 import { useSessionSwitchKeys } from '../hooks/useSessionSwitchKeys'
 import { useSessionView } from '../hooks/useSessionView'
+import { useConversationScale } from '../hooks/useConversationScale'
 
 export default function TerminalWindow() {
   const { name } = useParams<{ name: string }>()
   const navigate = useNavigate()
   useSessionSwitchKeys(name)
   const { view, toggleView } = useSessionView()
+  const { scale, setScale } = useConversationScale()
 
   if (!name) return null
 
@@ -35,6 +37,8 @@ export default function TerminalWindow() {
         onCycleSession={cycleSession}
         view={view}
         onToggleView={toggleView}
+        scale={scale}
+        onScaleChange={setScale}
       />
     </div>
   )

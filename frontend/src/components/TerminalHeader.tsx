@@ -35,6 +35,8 @@ interface Props {
   onShowSummary?: () => void
   view: 'term' | 'conv'
   onToggleView: () => void
+  scale: number
+  onScaleChange: (scale: number) => void
 }
 
 export default function TerminalHeader({
@@ -57,6 +59,8 @@ export default function TerminalHeader({
   onShowSummary,
   view,
   onToggleView,
+  scale,
+  onScaleChange,
 }: Props) {
   return (
     <div className="glass border-b border-border-default">
@@ -115,8 +119,11 @@ export default function TerminalHeader({
       {/* Expanded row */}
       {headerExpanded && (
         <ExpandedRow
+          view={view}
           fontSize={fontSize}
           onFontSizeChange={onFontSizeChange}
+          scale={scale}
+          onScaleChange={onScaleChange}
           isConnected={isConnected}
           onSendRaw={onSendRaw}
           onSendViaApi={onSendViaApi}
@@ -238,8 +245,11 @@ function QuickActions({
 }
 
 function ExpandedRow({
+  view,
   fontSize,
   onFontSizeChange,
+  scale,
+  onScaleChange,
   isConnected,
   onSendRaw,
   onSendViaApi,
@@ -248,8 +258,11 @@ function ExpandedRow({
   onReset,
   onCollapse,
 }: {
+  view: 'term' | 'conv'
   fontSize: number
   onFontSizeChange: (size: number) => void
+  scale: number
+  onScaleChange: (scale: number) => void
   isConnected: boolean
   onSendRaw: (data: string) => void
   onSendViaApi: (text: string) => void
@@ -258,28 +271,52 @@ function ExpandedRow({
   onReset?: () => void
   onCollapse: () => void
 }) {
+  const isConv = view === 'conv'
   return (
     <div className="flex items-center gap-2 px-2 pb-2 overflow-x-auto scrollbar-hide">
-      {/* Font size controls and reset - left aligned */}
+      {/* Font/zoom controls and reset - left aligned */}
       <div className="flex items-center gap-3 shrink-0">
-        <div className="flex items-center gap-1">
-          <span className="text-xs text-text-tertiary">Font:</span>
-          <button
-            onClick={() => onFontSizeChange(Math.max(8, fontSize - 1))}
-            className="px-2 py-1 text-xs bg-control-bg hover:bg-control-bg-hover rounded"
-            title="Decrease font size"
-          >
-            <Minus size={14} />
-          </button>
-          <span className="text-xs text-text-secondary w-5 text-center">{fontSize}</span>
-          <button
-            onClick={() => onFontSizeChange(Math.min(24, fontSize + 1))}
-            className="px-2 py-1 text-xs bg-control-bg hover:bg-control-bg-hover rounded"
-            title="Increase font size"
-          >
-            <Plus size={14} />
-          </button>
-        </div>
+        {isConv ? (
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-text-tertiary">Zoom:</span>
+            <button
+              onClick={() => onScaleChange(Math.max(0.6, Math.round((scale - 0.1) * 10) / 10))}
+              className="px-2 py-1 text-xs bg-control-bg hover:bg-control-bg-hover rounded"
+              title="Decrease zoom"
+            >
+              <Minus size={14} />
+            </button>
+            <span className="text-xs text-text-secondary w-9 text-center">
+              {Math.round(scale * 100)}%
+            </span>
+            <button
+              onClick={() => onScaleChange(Math.min(2, Math.round((scale + 0.1) * 10) / 10))}
+              className="px-2 py-1 text-xs bg-control-bg hover:bg-control-bg-hover rounded"
+              title="Increase zoom"
+            >
+              <Plus size={14} />
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-text-tertiary">Font:</span>
+            <button
+              onClick={() => onFontSizeChange(Math.max(8, fontSize - 1))}
+              className="px-2 py-1 text-xs bg-control-bg hover:bg-control-bg-hover rounded"
+              title="Decrease font size"
+            >
+              <Minus size={14} />
+            </button>
+            <span className="text-xs text-text-secondary w-5 text-center">{fontSize}</span>
+            <button
+              onClick={() => onFontSizeChange(Math.min(24, fontSize + 1))}
+              className="px-2 py-1 text-xs bg-control-bg hover:bg-control-bg-hover rounded"
+              title="Increase font size"
+            >
+              <Plus size={14} />
+            </button>
+          </div>
+        )}
         {onReset && (
           <Button
             variant="warning"
@@ -323,16 +360,18 @@ function ExpandedRow({
         >
           + Window
         </Button>
-        <button
-          onClick={() => {
-            onFit()
-            onCollapse()
-          }}
-          className="px-2 py-1 text-xs bg-control-bg hover:bg-control-bg-hover rounded"
-          title="Fit terminal to container"
-        >
-          Fit
-        </button>
+        {!isConv && (
+          <button
+            onClick={() => {
+              onFit()
+              onCollapse()
+            }}
+            className="px-2 py-1 text-xs bg-control-bg hover:bg-control-bg-hover rounded"
+            title="Fit terminal to container"
+          >
+            Fit
+          </button>
+        )}
         <button
           onClick={() => onSendRaw('\x1b[A')}
           disabled={!isConnected}

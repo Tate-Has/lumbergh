@@ -19,6 +19,7 @@ import SessionNavigatorDots from '../components/SessionNavigatorDots'
 import { useIsDesktop } from '../hooks/useMediaQuery'
 import { useSessionSwitchKeys } from '../hooks/useSessionSwitchKeys'
 import { useSessionView } from '../hooks/useSessionView'
+import { useConversationScale } from '../hooks/useConversationScale'
 import ZenTerminal from '../components/ZenTerminal'
 import { useZenMode } from '../hooks/useZenMode'
 
@@ -71,6 +72,7 @@ export default function SessionDetail() {
   useSessionSwitchKeys(name)
   const { isZen, exitZen } = useZenMode()
   const { view, toggleView } = useSessionView()
+  const { scale, setScale } = useConversationScale()
 
   const [notFound, setNotFound] = useState(false)
   const [countdown, setCountdown] = useState(5)
@@ -497,6 +499,8 @@ export default function SessionDetail() {
           collapseHeader={isZen}
           view={view}
           onToggleView={toggleView}
+          scale={scale}
+          onScaleChange={setScale}
         />
       ) : (
         <div className="flex items-center justify-center h-full text-text-muted">

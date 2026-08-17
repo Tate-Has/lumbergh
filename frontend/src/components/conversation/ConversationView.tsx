@@ -6,9 +6,11 @@ import { Item } from './ConversationItem'
 export default function ConversationView({
   sessionName,
   enabled = true,
+  scale = 1,
 }: {
   sessionName: string
   enabled?: boolean
+  scale?: number
 }) {
   const { items, noTranscript } = useConversationSocket({ sessionName, enabled })
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -63,6 +65,7 @@ export default function ConversationView({
       <div
         data-testid="conversation-view"
         className="flex h-full items-center justify-center p-4 text-center text-sm text-text-tertiary"
+        style={{ zoom: scale }}
       >
         No transcript found for this session yet. Start interacting in the terminal.
       </div>
@@ -70,7 +73,11 @@ export default function ConversationView({
   }
 
   return (
-    <div data-testid="conversation-view" className="relative flex h-full flex-col">
+    <div
+      data-testid="conversation-view"
+      className="relative flex h-full flex-col"
+      style={{ zoom: scale }}
+    >
       <div
         ref={scrollRef}
         onScroll={onScroll}
