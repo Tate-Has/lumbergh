@@ -54,14 +54,17 @@ export default function ConversationView({ sessionName }: { sessionName: string 
 
   if (noTranscript) {
     return (
-      <div className="flex h-full items-center justify-center p-4 text-center text-sm text-text-tertiary">
+      <div
+        data-testid="conversation-view"
+        className="flex h-full items-center justify-center p-4 text-center text-sm text-text-tertiary"
+      >
         No transcript found for this session yet. Start interacting in the terminal.
       </div>
     )
   }
 
   return (
-    <div className="relative flex h-full flex-col">
+    <div data-testid="conversation-view" className="relative flex h-full flex-col">
       <div
         ref={scrollRef}
         onScroll={onScroll}

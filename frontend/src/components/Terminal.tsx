@@ -11,6 +11,7 @@ import { isSessionCycleChord } from '../utils/terminalChords'
 import { getApiBase } from '../config'
 import { useTheme } from '../hooks/useTheme'
 import TerminalHeader from './TerminalHeader'
+import ConversationView from './conversation/ConversationView'
 
 // Copy text to the clipboard, falling back to a hidden-textarea execCommand
 // when the async Clipboard API is unavailable. Lumbergh is frequently opened
@@ -54,6 +55,8 @@ interface TerminalProps {
   onShowSummary?: () => void
   hideHeader?: boolean
   collapseHeader?: boolean
+  view?: 'term' | 'conv'
+  onToggleView?: () => void
 }
 
 // eslint-disable-next-line complexity
@@ -70,6 +73,8 @@ export default memo(function Terminal({
   onShowSummary,
   hideHeader = false,
   collapseHeader = false,
+  view = 'term',
+  onToggleView = () => {},
 }: TerminalProps) {
   const { theme } = useTheme()
   const containerRef = useRef<HTMLDivElement>(null)
@@ -1032,6 +1037,8 @@ export default memo(function Terminal({
           onCycleSession={onCycleSession}
           showSessionDots={showSessionDots}
           showSummary={showSummary}
+          view={view}
+          onToggleView={onToggleView}
           onShowSummary={onShowSummary}
         />
       )}
@@ -1067,7 +1074,8 @@ export default memo(function Terminal({
 
       {/* Terminal container with focus click shield */}
       <div
-        className={`flex-1 overflow-hidden relative ${hasFocus ? 'border-2 border-action/40' : 'border-2 border-transparent'}`}
+        data-testid="terminal-container"
+        className={`flex-1 overflow-hidden relative ${hasFocus ? 'border-2 border-action/40' : 'border-2 border-transparent'} ${view === 'conv' ? 'hidden' : ''}`}
       >
         {/* Floating connection indicator */}
         <div
@@ -1100,6 +1108,9 @@ export default memo(function Terminal({
           </div>
         )}
         <div ref={containerRef} data-testid="xterm-container" className="h-full w-full" />
+      </div>
+      <div className={`flex-1 overflow-hidden ${view === 'term' ? 'hidden' : ''}`}>
+        <ConversationView sessionName={sessionName} />
       </div>
     </div>
   )

@@ -9,6 +9,8 @@ import {
   Brain,
   ExternalLink,
   RefreshCw,
+  MessageSquare,
+  SquareTerminal,
 } from 'lucide-react'
 import Button from './ui/Button'
 import SessionNavigatorDots from './SessionNavigatorDots'
@@ -31,6 +33,8 @@ interface Props {
   showSessionDots?: boolean
   showSummary?: boolean
   onShowSummary?: () => void
+  view: 'term' | 'conv'
+  onToggleView: () => void
 }
 
 export default function TerminalHeader({
@@ -51,6 +55,8 @@ export default function TerminalHeader({
   showSessionDots = true,
   showSummary = false,
   onShowSummary,
+  view,
+  onToggleView,
 }: Props) {
   return (
     <div className="glass border-b border-border-default">
@@ -102,6 +108,8 @@ export default function TerminalHeader({
           onSendViaApi={onSendViaApi}
           onHeaderExpandedChange={onHeaderExpandedChange}
           onShowSummary={onShowSummary}
+          view={view}
+          onToggleView={onToggleView}
         />
       </div>
       {/* Expanded row */}
@@ -132,6 +140,8 @@ function QuickActions({
   onSendViaApi,
   onHeaderExpandedChange,
   onShowSummary,
+  view,
+  onToggleView,
 }: {
   sessionName: string
   isConnected: boolean
@@ -142,6 +152,8 @@ function QuickActions({
   onSendViaApi: (text: string) => void
   onHeaderExpandedChange: (expanded: boolean) => void
   onShowSummary?: () => void
+  view: 'term' | 'conv'
+  onToggleView: () => void
 }) {
   const popOut = () => {
     window.open(
@@ -152,6 +164,14 @@ function QuickActions({
   }
   return (
     <div className="flex items-center gap-2 shrink-0">
+      <button
+        onClick={onToggleView}
+        data-testid="view-toggle"
+        className="w-8 h-8 rounded-[var(--radius-md)] bg-control-bg hover:bg-control-bg-hover flex items-center justify-center text-text-tertiary hover:text-text-primary transition-colors cursor-pointer"
+        title={view === 'term' ? 'Switch to Conv (Alt+V)' : 'Switch to Term (Alt+V)'}
+      >
+        {view === 'term' ? <MessageSquare size={14} /> : <SquareTerminal size={14} />}
+      </button>
       {!isTouchDevice && (
         <button
           onClick={popOut}
