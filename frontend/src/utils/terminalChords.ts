@@ -5,5 +5,8 @@
 export function isSessionCycleChord(event: KeyboardEvent): boolean {
   if (event.ctrlKey && (event.key === '[' || event.key === ']')) return true
   if (event.altKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) return true
+  // Physical key position, not event.key: on macOS Option+Z reports event.key === 'Ω',
+  // which would make this chord dead. Trade-off: on Dvorak/AZERTY the key labelled
+  // Z isn't the one that toggles.
   return event.altKey && !event.ctrlKey && !event.metaKey && event.code === 'KeyZ'
 }

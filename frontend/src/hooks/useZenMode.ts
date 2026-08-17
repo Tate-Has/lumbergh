@@ -26,6 +26,9 @@ export function useZenMode() {
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (!e.altKey || e.ctrlKey || e.metaKey) return
+      // Physical key position, not e.key: on macOS Option+Z reports e.key === 'Ω',
+      // which would make this chord dead. Trade-off: on Dvorak/AZERTY the key
+      // labelled Z isn't the one that toggles.
       if (e.code !== 'KeyZ') return
       e.preventDefault()
       setAndStore(!isZen)

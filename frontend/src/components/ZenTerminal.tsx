@@ -37,7 +37,7 @@ export default function ZenTerminal({ children, onExit, active }: ZenTerminalPro
         <button
           onClick={onExit}
           data-testid="zen-exit"
-          className={`absolute top-2 right-2 z-30 px-2 py-1 rounded bg-bg-surface/80 border border-border-default text-text-tertiary hover:text-text-primary text-xs transition-opacity backdrop-blur-sm ${
+          className={`absolute top-14 right-2 z-30 px-2 py-1 rounded bg-bg-surface/80 border border-border-default text-text-tertiary hover:text-text-primary text-xs transition-opacity backdrop-blur-sm ${
             showExit ? 'opacity-100' : 'opacity-0 pointer-events-none'
           }`}
           title="Exit zen mode (Alt+Z)"
