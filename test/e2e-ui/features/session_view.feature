@@ -19,8 +19,9 @@ Feature: Term and Conv views
 
   Scenario: Swapping back returns to a still-connected terminal
     Given a test session exists
+    And I record terminal websocket connections
     And I am on the session page for "e2e-ui-session"
     When I click the view toggle
     And I click the view toggle
     Then I should see the terminal container
-    And the terminal is connected
+    And the terminal websocket connected exactly once
