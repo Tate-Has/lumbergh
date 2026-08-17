@@ -22,11 +22,13 @@ describe('isSessionCycleChord', () => {
 
   it('lets a bare z and Ctrl+Z through to the shell', () => {
     expect(isSessionCycleChord(chord({ key: 'z' }))).toBe(false)
-    expect(isSessionCycleChord(chord({ ctrlKey: true, key: 'z' }))).toBe(false)
+    expect(isSessionCycleChord(chord({ ctrlKey: true, key: 'z', code: 'KeyZ' }))).toBe(false)
   })
 
   it('lets Alt+Meta+Z through, so OS chords are not swallowed', () => {
-    expect(isSessionCycleChord(chord({ altKey: true, metaKey: true, key: 'z' }))).toBe(false)
+    expect(
+      isSessionCycleChord(chord({ altKey: true, metaKey: true, key: 'z', code: 'KeyZ' }))
+    ).toBe(false)
   })
 
   it('claims Alt+Arrow even with Meta held, as it did before the move', () => {
