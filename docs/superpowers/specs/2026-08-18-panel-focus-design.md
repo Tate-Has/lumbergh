@@ -121,6 +121,21 @@ the right-panel tab bar.
 `ScratchPromoteBanner` continues to be hidden when the main pane is focused, and
 is also hidden when the panel is focused — a focused pane means a focused pane.
 
+### Terminal-only and panel focus cannot both win
+
+The existing "Terminal Only" setting already collapses the right panel, and it is
+expressed through the same prop. If it is on, there is no tab bar, so there is no
+maximize button and panel focus is unreachable through the UI — but a stored
+`focus: 'panel'` from before the setting was turned on would still be in
+localStorage, producing a contradiction.
+
+Terminal-only wins, because it is the more explicit and more durable choice: it
+is a saved per-session setting, while focus is a transient view preference. The
+collapse expression is therefore evaluated with `isTerminalOnly` taking
+precedence, and a stored `'panel'` focus simply has no effect until the setting
+is turned back off. Focus is not rewritten to `'none'` — turning Terminal Only
+off should restore what you had.
+
 ## The thing most likely to break
 
 `FileBrowser` renders its "send selection to terminal" button with `position:
