@@ -51,11 +51,11 @@ tmux send-keys -t lumbergh:claude "claude --continue 2>/dev/null || claude" Ente
 
 # Window 1: backend
 tmux new-window -t lumbergh: -n backend
-tmux send-keys -t lumbergh:backend "cd $(pwd)/backend && ./start.sh" Enter
+tmux send-keys -t lumbergh:backend "$(pwd)/scripts/supervise.sh $(pwd)/backend" Enter
 
 # Window 2: frontend
 tmux new-window -t lumbergh: -n frontend
-tmux send-keys -t lumbergh:frontend "cd $(pwd)/frontend && ./start.sh" Enter
+tmux send-keys -t lumbergh:frontend "$(pwd)/scripts/supervise.sh $(pwd)/frontend" Enter
 
 # Make `lb` (the agent control CLI) available to agent sessions when running from
 # source. A `uv tool install pylumbergh` already puts `lb` on PATH, so this is a
