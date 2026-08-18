@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useConversationSocket } from '../../hooks/useConversationSocket'
+import { decideFollow } from '../../utils/conversationFollow'
 import ConversationRespondBox from './ConversationRespondBox'
 import { Item } from './ConversationItem'
 
@@ -29,6 +30,11 @@ export default function ConversationView({
   const gestureAtRef = useRef(0)
   const draggingRef = useRef(false)
   const lastScrollTopRef = useRef(0)
+  // Both halves of the previous sample travel together: the follow policy reads
+  // motion, not position, so a scrollTop it can compare against is only half the
+  // story — a feed that grew under a stationary viewport moved the bottom, not
+  // the user.
+  const lastScrollHeightRef = useRef(0)
 
   useEffect(() => {
     followingRef.current = following
@@ -62,6 +68,7 @@ export default function ConversationView({
     if (!el) return
     el.scrollTop = el.scrollHeight
     lastScrollTopRef.current = el.scrollTop
+    lastScrollHeightRef.current = el.scrollHeight
   }, [])
 
   // Stay pinned to the bottom while following. A single scroll-to-bottom fires
@@ -114,39 +121,25 @@ export default function ConversationView({
   const onScroll = () => {
     const el = scrollRef.current
     if (!el) return
-    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
-    const atBottom = distanceFromBottom < 40
-    const userDriven = draggingRef.current || Date.now() - gestureAtRef.current < 400
-    const movedUp = el.scrollTop < lastScrollTopRef.current
+    const decision = decideFollow({
+      scrollTop: el.scrollTop,
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight,
+      lastScrollTop: lastScrollTopRef.current,
+      lastScrollHeight: lastScrollHeightRef.current,
+      userDriven: draggingRef.current || Date.now() - gestureAtRef.current < 400,
+      following: followingRef.current,
+    })
     lastScrollTopRef.current = el.scrollTop
-    if (userDriven) {
-      // Never fight an upward scroll — and never mistake anything else for one.
-      // Only an upward move ends follow; landing at the bottom restores it.
-      // Expanding a card adds height above the viewport, and scroll anchoring
-      // pushes scrollTop *down* to compensate: a downward (or zero-delta) scroll
-      // inside the gesture window is layout, not intent, and leaves follow alone
-      // until the totalSize effect re-pins.
-      if (atBottom || movedUp) {
-        followingRef.current = atBottom
-        setFollowing(atBottom)
-      }
+    lastScrollHeightRef.current = el.scrollHeight
+    if (decision.type === 'restick') {
+      scrollToLatest()
       return
     }
-    // Backstop for every way of scrolling we cannot detect — keyboard aimed at
-    // the document, a Firefox scrollbar drag, find-in-page. Half a viewport, not
-    // a whole one: PageUp deliberately keeps a strip of overlap for context and
-    // moves only ~0.9 of the viewport, so a full-viewport threshold would miss
-    // the very case this exists for. Settle corrections all fire at a distance
-    // near zero, well clear of half a viewport.
-    if (followingRef.current && distanceFromBottom >= Math.max(150, el.clientHeight / 2)) {
-      followingRef.current = false
-      setFollowing(false)
-      return
-    }
-    // Otherwise this is layout settling under us. Re-stick unless the feed is
-    // drifting upward on its own (touch momentum after a flick), which would
-    // fight the user.
-    if (followingRef.current && !atBottom && !movedUp) scrollToLatest()
+    if (decision.type === 'none') return
+    const following = decision.type === 'attach'
+    followingRef.current = following
+    setFollowing(following)
   }
 
   if (noTranscript) {
