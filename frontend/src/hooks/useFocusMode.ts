@@ -41,12 +41,12 @@ export function useFocusMode() {
       // labelled Z isn't the one that toggles.
       if (e.code !== 'KeyZ') return
       e.preventDefault()
-      setFocus(nextMainFocus(focus))
+      toggleMain()
     }
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [isDesktop, focus, setFocus])
+  }, [isDesktop, toggleMain])
 
   // The stored preference survives a narrow viewport; only the rendered value is
   // gated, so widening the window restores what the user had.

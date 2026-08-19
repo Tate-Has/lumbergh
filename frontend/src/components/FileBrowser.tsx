@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { getApiBase } from '../config'
 import { useTheme } from '../hooks/useTheme'
+import { useIsDesktop } from '../hooks/useMediaQuery'
 
 // Initialize mermaid
 mermaid.initialize({
@@ -304,6 +305,7 @@ interface Props {
 
 export default function FileBrowser({ sessionName, onFocusTerminal }: Props) {
   const { theme } = useTheme()
+  const isDesktop = useIsDesktop()
   const [files, setFiles] = useState<FileEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -318,12 +320,19 @@ export default function FileBrowser({ sessionName, onFocusTerminal }: Props) {
   const [buttonPos, setButtonPos] = useState({ top: 0, left: 0 })
   const selectedTextRef = useRef('')
   const contentRef = useRef<HTMLPreElement>(null)
+  const sendButtonRef = useRef<HTMLButtonElement>(null)
+  const hasSelectionRef = useRef(false)
+
+  const showSendButton = useCallback((visible: boolean) => {
+    hasSelectionRef.current = visible
+    setHasSelection(visible)
+  }, [])
 
   // Track text selection in the content area
   const handleSelectionChange = useCallback(() => {
     const selection = window.getSelection()
     if (!selection || selection.rangeCount === 0) {
-      setHasSelection(false)
+      showSendButton(false)
       return
     }
 
@@ -339,24 +348,37 @@ export default function FileBrowser({ sessionName, onFocusTerminal }: Props) {
     // the ResizeObserver below) still sees and positions the real selection
     // instead of treating it as gone, so nothing extra is needed to recover
     // once the drag ends.
-    if (inContainer && !range.collapsed) {
-      const text = selection.toString()
-      if (text) selectedTextRef.current = text
-      const rangeRect = range.getBoundingClientRect()
-      // Anchor to the selection itself, not the container: the container can
-      // span the full maximized panel while the selected text sits far to
-      // its left, which would otherwise strand the button at the pane edge.
-      const BUTTON_WIDTH = 40
-      const left = Math.min(rangeRect.right + 8, window.innerWidth - BUTTON_WIDTH)
-      setButtonPos({
-        top: Math.max(rangeRect.top - 32, 0),
-        left,
-      })
-      setHasSelection(true)
-    } else {
-      setHasSelection(false)
+    if (!inContainer || range.collapsed) {
+      showSendButton(false)
+      return
     }
-  }, [])
+
+    const text = selection.toString()
+    if (text) selectedTextRef.current = text
+
+    const rangeRect = range.getBoundingClientRect()
+    const preRect = contentRef.current!.getBoundingClientRect()
+
+    // The button is `position: fixed`, so it does not scroll or clip with the
+    // preview. Once the selection has scrolled out of the preview's box the
+    // button must go away rather than park itself at the clamp boundary --
+    // where it would sit on top of the panel's tab bar and eat its clicks.
+    if (rangeRect.bottom < preRect.top || rangeRect.top > preRect.bottom) {
+      showSendButton(false)
+      return
+    }
+
+    // Anchor to the selection itself, not the container: the container can
+    // span the full maximized panel while the selected text sits far to
+    // its left, which would otherwise strand the button at the pane edge.
+    const buttonWidth = sendButtonRef.current?.offsetWidth ?? 30
+    const left = Math.min(rangeRect.right + 8, window.innerWidth - buttonWidth - 8)
+    setButtonPos({
+      top: Math.max(rangeRect.top - 32, preRect.top),
+      left,
+    })
+    showSendButton(true)
+  }, [showSendButton])
 
   useEffect(() => {
     // 'scroll' is registered with capture: true because the scrolling element
@@ -368,8 +390,16 @@ export default function FileBrowser({ sessionName, onFocusTerminal }: Props) {
     // preview pane's box) regardless of what caused it, including a touch
     // drag (which fires no compatibility mouse events at all, since
     // ResizablePanes' touch handler calls preventDefault()).
+    // The capture-phase listener sees every scroll on the page, including the
+    // virtualized conversation feed in the other pane, so it bails before
+    // measuring anything unless there is a live selection to reposition.
+    const handleScroll = () => {
+      if (!hasSelectionRef.current) return
+      handleSelectionChange()
+    }
+
     document.addEventListener('selectionchange', handleSelectionChange)
-    document.addEventListener('scroll', handleSelectionChange, true)
+    document.addEventListener('scroll', handleScroll, true)
     window.addEventListener('resize', handleSelectionChange)
 
     // contentRef.current is only non-null once a file is selected and rendered
@@ -381,7 +411,7 @@ export default function FileBrowser({ sessionName, onFocusTerminal }: Props) {
 
     return () => {
       document.removeEventListener('selectionchange', handleSelectionChange)
-      document.removeEventListener('scroll', handleSelectionChange, true)
+      document.removeEventListener('scroll', handleScroll, true)
       window.removeEventListener('resize', handleSelectionChange)
       resizeObserver?.disconnect()
     }
@@ -510,7 +540,7 @@ export default function FileBrowser({ sessionName, onFocusTerminal }: Props) {
     setLoadingFile(true)
     setShowMarkdownPreview(path.endsWith('.md'))
     setShowCsvPreview(isCsvPath(path))
-    setHasSelection(false)
+    showSendButton(false)
 
     // Auto-collapse sidebar on mobile when selecting a file
     const isMobile = window.matchMedia('(max-width: 767px)').matches
@@ -787,19 +817,30 @@ export default function FileBrowser({ sessionName, onFocusTerminal }: Props) {
     </div>
   )
 
+  // A draggable splitter only makes sense where there is width to spare: on a
+  // phone the tree keeps its original fixed 256px, with no splitter to
+  // fat-finger and nothing for a drag to shrink it below.
   return (
     <div className="h-full">
-      <ResizablePanes
-        collapse={sidebarCollapsed ? 'left' : null}
-        storageKey="lumbergh:filesTreeWidth"
-        defaultLeftWidth={25}
-        minLeftWidth={10}
-        maxLeftWidth={50}
-        left={treeSidebar}
-        right={contentViewer}
-      />
+      {isDesktop ? (
+        <ResizablePanes
+          collapse={sidebarCollapsed ? 'left' : null}
+          storageKey="lumbergh:filesTreeWidth"
+          defaultLeftWidth={25}
+          minLeftWidth={10}
+          maxLeftWidth={50}
+          left={treeSidebar}
+          right={contentViewer}
+        />
+      ) : (
+        <div className="h-full flex">
+          {!sidebarCollapsed && <div className="w-64 flex-shrink-0">{treeSidebar}</div>}
+          {contentViewer}
+        </div>
+      )}
       {sessionName && (
         <button
+          ref={sendButtonRef}
           onMouseDown={(e) => {
             e.preventDefault()
             handleSendToTerminal()

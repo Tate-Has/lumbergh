@@ -268,14 +268,19 @@ export default function SessionDetail() {
     focusFnRef.current = fn
   }, [])
 
+  // Every "send this to the terminal" path funnels through here. While the
+  // panel is maximized the terminal is display:none, so focusing it alone would
+  // look like the send did nothing -- leave panel focus first so the user sees
+  // the terminal they just sent to.
   const handleFocusTerminal = useCallback(() => {
+    if (focus === 'panel') setFocus('none')
     focusFnRef.current?.()
-  }, [])
+  }, [focus, setFocus])
 
   const handleSwitchToTerminal = useCallback(() => {
     setMobileTab('terminal')
-    focusFnRef.current?.()
-  }, [])
+    handleFocusTerminal()
+  }, [handleFocusTerminal])
 
   const handleJumpToTodos = useCallback(() => {
     if (effectiveTabVisibility['todos'] === false) return
