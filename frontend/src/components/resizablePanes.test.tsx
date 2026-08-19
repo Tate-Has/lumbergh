@@ -26,7 +26,7 @@ describe('ResizablePanes collapse', () => {
     expect(queryByTestId('right-child')).not.toBeNull()
     const leftPane = queryByTestId('left-child')!.closest('[data-pane="left"]') as HTMLElement
     expect(leftPane.style.width).toBe('50%')
-    const rightPane = queryByTestId('right-child')!.parentElement as HTMLElement
+    const rightPane = queryByTestId('right-child')!.closest('[data-pane="right"]') as HTMLElement
     expect(rightPane.style.width).toBe('50%')
   })
 
@@ -46,7 +46,7 @@ describe('ResizablePanes collapse', () => {
     const leftChild = queryByTestId('left-child')
     expect(leftChild).not.toBeNull()
     expect(leftChild!.closest('[data-pane="left"]')).toHaveProperty('style.display', 'none')
-    const rightPane = queryByTestId('right-child')!.parentElement as HTMLElement
+    const rightPane = queryByTestId('right-child')!.closest('[data-pane="right"]') as HTMLElement
     expect(rightPane.style.width).toBe('100%')
   })
 })

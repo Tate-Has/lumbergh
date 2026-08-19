@@ -5,6 +5,7 @@ import hljsLightUrl from 'highlight.js/styles/github.css?url'
 import MarkdownPreview from '@uiw/react-markdown-preview'
 import mermaid from 'mermaid'
 import CsvViewer from './CsvViewer'
+import ResizablePanes from './ResizablePanes'
 import {
   ChevronDown,
   ChevronRight,
@@ -314,7 +315,7 @@ export default function FileBrowser({ sessionName, onFocusTerminal }: Props) {
   const [showMarkdownPreview, setShowMarkdownPreview] = useState(false)
   const [showCsvPreview, setShowCsvPreview] = useState(false)
   const [hasSelection, setHasSelection] = useState(false)
-  const [buttonPos, setButtonPos] = useState({ top: 0, right: 0 })
+  const [buttonPos, setButtonPos] = useState({ top: 0, left: 0 })
   const selectedTextRef = useRef('')
   const contentRef = useRef<HTMLPreElement>(null)
 
@@ -333,10 +334,14 @@ export default function FileBrowser({ sessionName, onFocusTerminal }: Props) {
       selectedTextRef.current = text
       const range = selection.getRangeAt(0)
       const rangeRect = range.getBoundingClientRect()
-      const containerRect = contentRef.current!.getBoundingClientRect()
+      // Anchor to the selection itself, not the container: the container can
+      // span the full maximized panel while the selected text sits far to
+      // its left, which would otherwise strand the button at the pane edge.
+      const BUTTON_WIDTH = 40
+      const left = Math.min(rangeRect.right + 8, window.innerWidth - BUTTON_WIDTH)
       setButtonPos({
-        top: rangeRect.top - 32,
-        right: window.innerWidth - containerRect.right + 16,
+        top: Math.max(rangeRect.top - 32, 0),
+        left,
       })
       setHasSelection(true)
     } else {
@@ -681,75 +686,85 @@ export default function FileBrowser({ sessionName, onFocusTerminal }: Props) {
 
   const tree = buildTree(files)
 
-  return (
-    <div className="h-full flex">
-      {/* File tree sidebar */}
-      {!sidebarCollapsed && (
-        <div className="w-64 flex-shrink-0 border-r border-border-default overflow-auto">
-          <div className="p-2 bg-bg-surface border-b border-border-default flex justify-between items-center">
-            <span className="text-sm text-text-tertiary">Files</span>
-            <div className="flex gap-1">
+  const treeSidebar = (
+    <div className="border-r border-border-default overflow-auto h-full">
+      <div className="p-2 bg-bg-surface border-b border-border-default flex justify-between items-center">
+        <span className="text-sm text-text-tertiary">Files</span>
+        <div className="flex gap-1">
+          <button
+            onClick={() => fetchFiles()}
+            className="text-xs px-2 py-1 bg-control-bg hover:bg-control-bg-hover rounded"
+            title="Refresh"
+          >
+            <RefreshCw size={14} />
+          </button>
+          <button
+            onClick={() => setSidebarCollapsed(true)}
+            className="text-xs px-2 py-1 bg-control-bg hover:bg-control-bg-hover rounded"
+            title="Collapse sidebar"
+          >
+            <PanelLeftClose size={14} />
+          </button>
+        </div>
+      </div>
+      <div className="py-1">{renderTree(tree, '', 0)}</div>
+    </div>
+  )
+
+  const contentViewer = (
+    <div className="flex-1 overflow-auto relative h-full" data-testid="file-preview">
+      {loadingFile ? (
+        <div className="flex items-center justify-center h-full text-text-muted">
+          Loading file...
+        </div>
+      ) : selectedFile ? (
+        <FileContentView
+          selectedFile={selectedFile}
+          sessionName={sessionName}
+          sidebarCollapsed={sidebarCollapsed}
+          showMarkdownPreview={showMarkdownPreview}
+          showCsvPreview={showCsvPreview}
+          theme={theme}
+          contentRef={contentRef}
+          getHighlightedCode={getHighlightedCode}
+          onSendPathToTerminal={handleSendPathToTerminal}
+          onToggleSidebar={() => setSidebarCollapsed(false)}
+          onTogglePreview={() => setShowMarkdownPreview(!showMarkdownPreview)}
+          onToggleCsvPreview={() => setShowCsvPreview(!showCsvPreview)}
+          renderBreadcrumb={renderBreadcrumb}
+        />
+      ) : (
+        <div className="h-full flex flex-col">
+          {sidebarCollapsed && (
+            <div className="p-2 bg-bg-surface border-b border-border-default">
               <button
-                onClick={() => fetchFiles()}
-                className="text-xs px-2 py-1 bg-control-bg hover:bg-control-bg-hover rounded"
-                title="Refresh"
+                onClick={() => setSidebarCollapsed(false)}
+                className="text-text-tertiary hover:text-text-secondary px-1"
+                title="Show file tree"
               >
-                <RefreshCw size={14} />
-              </button>
-              <button
-                onClick={() => setSidebarCollapsed(true)}
-                className="text-xs px-2 py-1 bg-control-bg hover:bg-control-bg-hover rounded"
-                title="Collapse sidebar"
-              >
-                <PanelLeftClose size={14} />
+                <ChevronRight size={16} />
               </button>
             </div>
+          )}
+          <div className="flex-1 flex items-center justify-center text-text-muted">
+            Select a file to view
           </div>
-          <div className="py-1">{renderTree(tree, '', 0)}</div>
         </div>
       )}
+    </div>
+  )
 
-      {/* File content viewer */}
-      <div className="flex-1 overflow-auto relative" data-testid="file-preview">
-        {loadingFile ? (
-          <div className="flex items-center justify-center h-full text-text-muted">
-            Loading file...
-          </div>
-        ) : selectedFile ? (
-          <FileContentView
-            selectedFile={selectedFile}
-            sessionName={sessionName}
-            sidebarCollapsed={sidebarCollapsed}
-            showMarkdownPreview={showMarkdownPreview}
-            showCsvPreview={showCsvPreview}
-            theme={theme}
-            contentRef={contentRef}
-            getHighlightedCode={getHighlightedCode}
-            onSendPathToTerminal={handleSendPathToTerminal}
-            onToggleSidebar={() => setSidebarCollapsed(false)}
-            onTogglePreview={() => setShowMarkdownPreview(!showMarkdownPreview)}
-            onToggleCsvPreview={() => setShowCsvPreview(!showCsvPreview)}
-            renderBreadcrumb={renderBreadcrumb}
-          />
-        ) : (
-          <div className="h-full flex flex-col">
-            {sidebarCollapsed && (
-              <div className="p-2 bg-bg-surface border-b border-border-default">
-                <button
-                  onClick={() => setSidebarCollapsed(false)}
-                  className="text-text-tertiary hover:text-text-secondary px-1"
-                  title="Show file tree"
-                >
-                  <ChevronRight size={16} />
-                </button>
-              </div>
-            )}
-            <div className="flex-1 flex items-center justify-center text-text-muted">
-              Select a file to view
-            </div>
-          </div>
-        )}
-      </div>
+  return (
+    <div className="h-full">
+      <ResizablePanes
+        collapse={sidebarCollapsed ? 'left' : null}
+        storageKey="lumbergh:filesTreeWidth"
+        defaultLeftWidth={25}
+        minLeftWidth={10}
+        maxLeftWidth={50}
+        left={treeSidebar}
+        right={contentViewer}
+      />
       {sessionName && (
         <button
           onMouseDown={(e) => {
@@ -760,7 +775,7 @@ export default function FileBrowser({ sessionName, onFocusTerminal }: Props) {
           style={{
             position: 'fixed',
             top: buttonPos.top,
-            right: buttonPos.right,
+            left: buttonPos.left,
             visibility: hasSelection ? 'visible' : 'hidden',
           }}
           title="Send selected text to terminal (no Enter)"

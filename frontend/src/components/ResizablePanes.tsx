@@ -138,6 +138,7 @@ export default function ResizablePanes({
 
       {collapse !== 'right' && (
         <div
+          data-pane="right"
           style={{ width: collapse === 'left' ? '100%' : `${100 - leftWidth}%` }}
           className="h-full overflow-hidden"
         >

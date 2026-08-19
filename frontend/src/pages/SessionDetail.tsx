@@ -493,7 +493,9 @@ export default function SessionDetail() {
           onReset={handleReset}
           onCycleSession={handleCycleSession}
           showSessionDots={showSessionDots}
-          isVisible={view === 'term' && (isDesktop || mobileTab === 'terminal')}
+          isVisible={
+            view === 'term' && (isDesktop || mobileTab === 'terminal') && focus !== 'panel'
+          }
           showSummary={showSummary}
           onShowSummary={handleShowSummary}
           collapseHeader={focus === 'main'}

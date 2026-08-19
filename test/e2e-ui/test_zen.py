@@ -48,12 +48,27 @@ def _saved_tab_visibility(base_url: str):
     raise AssertionError(f"session {SESSION} not found")
 
 
+# All tabs visible: same effective state as the session's default (unset)
+# tabVisibility, since the frontend treats an absent key as visible too. The
+# PATCH endpoint drops `None`/null fields rather than clearing them, so this
+# is the only way to restore "all visible" through the API.
+ALL_TABS_VISIBLE = {"git": True, "files": True, "todos": True, "prompts": True, "shared": True}
+
+
 @given("I record the session's saved tab visibility", target_fixture="saved_tab_visibility")
 def record_tab_visibility(base_url: str):
+    # The session fixture is session-scoped and shared across every test file in
+    # the run, so hiding "files" here to get a known baseline must be undone —
+    # otherwise it leaks into whichever test happens to run next and hides its
+    # Files tab too.
+    original = _saved_tab_visibility(base_url)
     with httpx.Client(base_url=base_url, timeout=10.0) as client:
         r = client.patch(f"/api/sessions/{SESSION}", json={"tabVisibility": KNOWN_TAB_VISIBILITY})
         r.raise_for_status()
-    return _saved_tab_visibility(base_url)
+    yield _saved_tab_visibility(base_url)
+    with httpx.Client(base_url=base_url, timeout=10.0) as client:
+        restore = original if original is not None else ALL_TABS_VISIBLE
+        client.patch(f"/api/sessions/{SESSION}", json={"tabVisibility": restore}).raise_for_status()
 
 
 @then("the session's saved tab visibility is unchanged")
