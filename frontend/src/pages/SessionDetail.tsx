@@ -494,7 +494,9 @@ export default function SessionDetail() {
           onCycleSession={handleCycleSession}
           showSessionDots={showSessionDots}
           isVisible={
-            view === 'term' && (isDesktop || mobileTab === 'terminal') && focus !== 'panel'
+            view === 'term' &&
+            (isDesktop || mobileTab === 'terminal') &&
+            (focus !== 'panel' || isTerminalOnly)
           }
           showSummary={showSummary}
           onShowSummary={handleShowSummary}

@@ -350,8 +350,54 @@ export default function FileBrowser({ sessionName, onFocusTerminal }: Props) {
   }, [])
 
   useEffect(() => {
+    // 'scroll' is registered with capture: true because the scrolling element
+    // is the inner <pre> (overflow-auto), whose scroll events don't bubble to
+    // document. Window 'resize' covers browser-window resizes. Neither one
+    // fires when the tree splitter is dragged though -- that only changes an
+    // inline width percentage, not the window size -- so a ResizeObserver on
+    // the <pre> itself catches that (and any other reflow that changes the
+    // preview pane's box) regardless of what caused it.
     document.addEventListener('selectionchange', handleSelectionChange)
-    return () => document.removeEventListener('selectionchange', handleSelectionChange)
+    document.addEventListener('scroll', handleSelectionChange, true)
+    window.addEventListener('resize', handleSelectionChange)
+
+    // contentRef.current is only non-null once a file is selected and rendered
+    // in its default (non-image/csv/markdown) code view, so this effect must
+    // re-run whenever that can change to (re)attach the observer.
+    const preEl = contentRef.current
+    const resizeObserver = preEl ? new ResizeObserver(handleSelectionChange) : null
+    if (preEl && resizeObserver) resizeObserver.observe(preEl)
+
+    return () => {
+      document.removeEventListener('selectionchange', handleSelectionChange)
+      document.removeEventListener('scroll', handleSelectionChange, true)
+      window.removeEventListener('resize', handleSelectionChange)
+      resizeObserver?.disconnect()
+    }
+  }, [handleSelectionChange, selectedFile, showMarkdownPreview, showCsvPreview])
+
+  useEffect(() => {
+    // Kept in its own effect with a stable dependency (unlike the one above,
+    // which re-runs -- and briefly drops its listeners -- on every
+    // selectedFile/preview-mode change) so it can't miss the mouseup that
+    // ends a drag: while ResizablePanes' splitter drag is in progress it
+    // sets `document.body.style.userSelect = 'none'`, under which
+    // `Selection.toString()` reads back empty even though the Range itself
+    // is untouched -- so mid-drag scroll/resize/ResizeObserver callbacks see
+    // hasSelection as false and hide the button, same as if there were no
+    // selection. Nothing else re-fires once the drag ends and userSelect is
+    // restored (no further scroll/resize/box-size change happens on its
+    // own), so without this the button would stay stuck hidden after a
+    // completed drag even though the selection is still live.
+    //
+    // The recompute is deferred a frame rather than run synchronously in the
+    // mouseup handler: ResizablePanes' own mouseup listener resets
+    // `userSelect` via a state update (`setIsDragging(false)`) processed in
+    // the same React batch as this one, so a synchronous read here would
+    // still see the stale 'none' and compute hasSelection as false again.
+    const handleDragEnd = () => requestAnimationFrame(handleSelectionChange)
+    document.addEventListener('mouseup', handleDragEnd)
+    return () => document.removeEventListener('mouseup', handleDragEnd)
   }, [handleSelectionChange])
 
   // Re-initialize mermaid when theme changes
