@@ -321,18 +321,19 @@ export default function FileBrowser({ sessionName, onFocusTerminal }: Props) {
   const selectedTextRef = useRef('')
   const contentRef = useRef<HTMLPreElement>(null)
   const sendButtonRef = useRef<HTMLButtonElement>(null)
-  const hasSelectionRef = useRef(false)
-
-  const showSendButton = useCallback((visible: boolean) => {
-    hasSelectionRef.current = visible
-    setHasSelection(visible)
-  }, [])
+  // Liveness and visibility are deliberately separate. A selection can be live
+  // while its button is hidden (scrolled out of the preview's box), and the
+  // scroll handler has to keep recomputing in exactly that state so scrolling
+  // back brings the button with it -- 'selectionchange' does not fire on
+  // scroll, so nothing else would ever restore it.
+  const selectionLiveRef = useRef(false)
 
   // Track text selection in the content area
   const handleSelectionChange = useCallback(() => {
     const selection = window.getSelection()
     if (!selection || selection.rangeCount === 0) {
-      showSendButton(false)
+      selectionLiveRef.current = false
+      setHasSelection(false)
       return
     }
 
@@ -348,8 +349,9 @@ export default function FileBrowser({ sessionName, onFocusTerminal }: Props) {
     // the ResizeObserver below) still sees and positions the real selection
     // instead of treating it as gone, so nothing extra is needed to recover
     // once the drag ends.
-    if (!inContainer || range.collapsed) {
-      showSendButton(false)
+    selectionLiveRef.current = Boolean(inContainer) && !range.collapsed
+    if (!selectionLiveRef.current) {
+      setHasSelection(false)
       return
     }
 
@@ -364,7 +366,7 @@ export default function FileBrowser({ sessionName, onFocusTerminal }: Props) {
     // button must go away rather than park itself at the clamp boundary --
     // where it would sit on top of the panel's tab bar and eat its clicks.
     if (rangeRect.bottom < preRect.top || rangeRect.top > preRect.bottom) {
-      showSendButton(false)
+      setHasSelection(false)
       return
     }
 
@@ -377,8 +379,8 @@ export default function FileBrowser({ sessionName, onFocusTerminal }: Props) {
       top: Math.max(rangeRect.top - 32, preRect.top),
       left,
     })
-    showSendButton(true)
-  }, [showSendButton])
+    setHasSelection(true)
+  }, [])
 
   useEffect(() => {
     // 'scroll' is registered with capture: true because the scrolling element
@@ -394,7 +396,7 @@ export default function FileBrowser({ sessionName, onFocusTerminal }: Props) {
     // virtualized conversation feed in the other pane, so it bails before
     // measuring anything unless there is a live selection to reposition.
     const handleScroll = () => {
-      if (!hasSelectionRef.current) return
+      if (!selectionLiveRef.current) return
       handleSelectionChange()
     }
 
@@ -540,7 +542,8 @@ export default function FileBrowser({ sessionName, onFocusTerminal }: Props) {
     setLoadingFile(true)
     setShowMarkdownPreview(path.endsWith('.md'))
     setShowCsvPreview(isCsvPath(path))
-    showSendButton(false)
+    selectionLiveRef.current = false
+    setHasSelection(false)
 
     // Auto-collapse sidebar on mobile when selecting a file
     const isMobile = window.matchMedia('(max-width: 767px)').matches
