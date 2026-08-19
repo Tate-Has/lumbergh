@@ -327,12 +327,21 @@ export default function FileBrowser({ sessionName, onFocusTerminal }: Props) {
       return
     }
 
-    const inContainer = contentRef.current?.contains(selection.anchorNode)
-    const text = selection.toString()
+    const range = selection.getRangeAt(0)
+    const inContainer = contentRef.current?.contains(range.commonAncestorContainer)
 
-    if (inContainer && text.length > 0) {
-      selectedTextRef.current = text
-      const range = selection.getRangeAt(0)
+    // Read collapsed state and geometry off the Range, not
+    // `selection.toString()`. While ResizablePanes' splitter drag is in
+    // progress it sets `document.body.style.userSelect = 'none'` on <body>,
+    // under which `Selection.toString()` reads back empty even though the
+    // Range itself -- and its `getBoundingClientRect()` -- is untouched.
+    // Reading the Range directly means a mid-drag recompute (scroll, resize,
+    // the ResizeObserver below) still sees and positions the real selection
+    // instead of treating it as gone, so nothing extra is needed to recover
+    // once the drag ends.
+    if (inContainer && !range.collapsed) {
+      const text = selection.toString()
+      if (text) selectedTextRef.current = text
       const rangeRect = range.getBoundingClientRect()
       // Anchor to the selection itself, not the container: the container can
       // span the full maximized panel while the selected text sits far to
@@ -356,7 +365,9 @@ export default function FileBrowser({ sessionName, onFocusTerminal }: Props) {
     // fires when the tree splitter is dragged though -- that only changes an
     // inline width percentage, not the window size -- so a ResizeObserver on
     // the <pre> itself catches that (and any other reflow that changes the
-    // preview pane's box) regardless of what caused it.
+    // preview pane's box) regardless of what caused it, including a touch
+    // drag (which fires no compatibility mouse events at all, since
+    // ResizablePanes' touch handler calls preventDefault()).
     document.addEventListener('selectionchange', handleSelectionChange)
     document.addEventListener('scroll', handleSelectionChange, true)
     window.addEventListener('resize', handleSelectionChange)
@@ -375,30 +386,6 @@ export default function FileBrowser({ sessionName, onFocusTerminal }: Props) {
       resizeObserver?.disconnect()
     }
   }, [handleSelectionChange, selectedFile, showMarkdownPreview, showCsvPreview])
-
-  useEffect(() => {
-    // Kept in its own effect with a stable dependency (unlike the one above,
-    // which re-runs -- and briefly drops its listeners -- on every
-    // selectedFile/preview-mode change) so it can't miss the mouseup that
-    // ends a drag: while ResizablePanes' splitter drag is in progress it
-    // sets `document.body.style.userSelect = 'none'`, under which
-    // `Selection.toString()` reads back empty even though the Range itself
-    // is untouched -- so mid-drag scroll/resize/ResizeObserver callbacks see
-    // hasSelection as false and hide the button, same as if there were no
-    // selection. Nothing else re-fires once the drag ends and userSelect is
-    // restored (no further scroll/resize/box-size change happens on its
-    // own), so without this the button would stay stuck hidden after a
-    // completed drag even though the selection is still live.
-    //
-    // The recompute is deferred a frame rather than run synchronously in the
-    // mouseup handler: ResizablePanes' own mouseup listener resets
-    // `userSelect` via a state update (`setIsDragging(false)`) processed in
-    // the same React batch as this one, so a synchronous read here would
-    // still see the stale 'none' and compute hasSelection as false again.
-    const handleDragEnd = () => requestAnimationFrame(handleSelectionChange)
-    document.addEventListener('mouseup', handleDragEnd)
-    return () => document.removeEventListener('mouseup', handleDragEnd)
-  }, [handleSelectionChange])
 
   // Re-initialize mermaid when theme changes
   useEffect(() => {
