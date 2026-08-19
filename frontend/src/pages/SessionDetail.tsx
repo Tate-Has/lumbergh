@@ -734,7 +734,7 @@ export default function SessionDetail() {
       {isDesktop ? (
         <main className="flex-1 min-h-0">
           <ResizablePanes
-            collapsed={isZen || isTerminalOnly}
+            collapse={isZen || isTerminalOnly ? 'right' : null}
             left={
               <div className="h-full relative">
                 <ZenTerminal active={isZen} onExit={exitZen}>

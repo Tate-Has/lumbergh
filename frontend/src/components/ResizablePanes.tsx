@@ -7,7 +7,11 @@ interface Props {
   minLeftWidth?: number // percentage
   maxLeftWidth?: number // percentage
   storageKey?: string // localStorage key for persistence
-  collapsed?: boolean // render left pane full-width, hide splitter + right pane
+  // Which pane, if either, gives up its width. Collapsing 'left' HIDES it rather
+  // than unrendering it: that side holds the terminal, and unmounting tears down
+  // xterm and its WebSocket. Collapsing 'right' unrenders, since panel state is
+  // cheap to rebuild.
+  collapse?: 'left' | 'right' | null
 }
 
 export default function ResizablePanes({
@@ -17,7 +21,7 @@ export default function ResizablePanes({
   minLeftWidth = 20,
   maxLeftWidth = 80,
   storageKey,
-  collapsed = false,
+  collapse = null,
 }: Props) {
   const [leftWidth, setLeftWidth] = useState(() => {
     if (storageKey) {
@@ -108,13 +112,18 @@ export default function ResizablePanes({
     <div ref={containerRef} className="flex h-full">
       {/* Left pane */}
       <div
-        style={{ width: collapsed ? '100%' : `${leftWidth}%` }}
+        data-pane="left"
+        style={
+          collapse === 'left'
+            ? { display: 'none' }
+            : { width: collapse === 'right' ? '100%' : `${leftWidth}%` }
+        }
         className="h-full overflow-hidden"
       >
         {left}
       </div>
 
-      {!collapsed && (
+      {!collapse && (
         <>
           {/* Splitter */}
           <div
@@ -124,12 +133,16 @@ export default function ResizablePanes({
               isDragging ? 'bg-action' : ''
             }`}
           />
-
-          {/* Right pane */}
-          <div style={{ width: `${100 - leftWidth}%` }} className="h-full overflow-hidden">
-            {right}
-          </div>
         </>
+      )}
+
+      {collapse !== 'right' && (
+        <div
+          style={{ width: collapse === 'left' ? '100%' : `${100 - leftWidth}%` }}
+          className="h-full overflow-hidden"
+        >
+          {right}
+        </div>
       )}
     </div>
   )
