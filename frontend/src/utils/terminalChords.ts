@@ -1,6 +1,6 @@
 /** Chords that drive the app rather than reaching the shell: Ctrl+[ / Ctrl+],
  * Alt+Left / Alt+Right, Alt+Z, and Alt+V. xterm must decline them so they bubble to
- * the window listeners in SessionDetail, useSessionSwitchKeys, useZenMode and
+ * the window listeners in SessionDetail, useSessionSwitchKeys, useFocusMode and
  * useSessionView — and so they never reach tmux as escape sequences. */
 export function isSessionCycleChord(event: KeyboardEvent): boolean {
   if (event.ctrlKey && (event.key === '[' || event.key === ']')) return true

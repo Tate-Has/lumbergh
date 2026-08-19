@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Settings } from 'lucide-react'
+import { ArrowLeft, Maximize2, Minimize2, Settings } from 'lucide-react'
 import { getApiBase } from '../config'
 import Terminal from '../components/Terminal'
 import FileBrowser from '../components/FileBrowser'
@@ -21,7 +21,7 @@ import { useSessionSwitchKeys } from '../hooks/useSessionSwitchKeys'
 import { useSessionView } from '../hooks/useSessionView'
 import { useConversationScale } from '../hooks/useConversationScale'
 import ZenTerminal from '../components/ZenTerminal'
-import { useZenMode } from '../hooks/useZenMode'
+import { useFocusMode } from '../hooks/useFocusMode'
 
 type RightPanel = 'git' | 'files' | 'todos' | 'prompts' | 'shared'
 type MobileTab = 'terminal' | 'git' | 'files' | 'todos' | 'prompts' | 'shared'
@@ -70,7 +70,7 @@ export default function SessionDetail() {
   const navigate = useNavigate()
   const isDesktop = useIsDesktop()
   useSessionSwitchKeys(name)
-  const { isZen, exitZen } = useZenMode()
+  const { focus, setFocus, togglePanel } = useFocusMode()
   const { view, toggleView } = useSessionView()
   const { scale, setScale } = useConversationScale()
 
@@ -496,7 +496,7 @@ export default function SessionDetail() {
           isVisible={view === 'term' && (isDesktop || mobileTab === 'terminal')}
           showSummary={showSummary}
           onShowSummary={handleShowSummary}
-          collapseHeader={isZen}
+          collapseHeader={focus === 'main'}
           view={view}
           onToggleView={toggleView}
           scale={scale}
@@ -589,8 +589,16 @@ export default function SessionDetail() {
             )}
           </button>
         ))}
+        <button
+          onClick={togglePanel}
+          data-testid="panel-maximize"
+          className="ml-auto px-2 py-1 rounded text-text-tertiary hover:text-text-secondary hover:bg-control-bg-hover transition-colors"
+          title={focus === 'panel' ? 'Restore split view' : 'Maximize panel'}
+        >
+          {focus === 'panel' ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+        </button>
         {/* Gear icon for tab visibility settings */}
-        <div className="relative ml-auto" ref={tabSettingsRef}>
+        <div className="relative" ref={tabSettingsRef}>
           <button
             onClick={() => setShowTabSettings((v) => !v)}
             className="px-2 py-1 rounded text-text-tertiary hover:text-text-secondary hover:bg-control-bg-hover transition-colors"
@@ -721,7 +729,7 @@ export default function SessionDetail() {
 
   return (
     <div className="h-full flex flex-col bg-bg-sunken text-text-primary">
-      {!isZen && (
+      {focus === 'none' && (
         <ScratchPromoteBanner
           sessionName={name!}
           isScratch={isScratch}
@@ -734,13 +742,15 @@ export default function SessionDetail() {
       {isDesktop ? (
         <main className="flex-1 min-h-0">
           <ResizablePanes
-            collapse={isZen || isTerminalOnly ? 'right' : null}
+            collapse={
+              focus === 'main' || isTerminalOnly ? 'right' : focus === 'panel' ? 'left' : null
+            }
             left={
               <div className="h-full relative">
-                <ZenTerminal active={isZen} onExit={exitZen}>
+                <ZenTerminal active={focus === 'main'} onExit={() => setFocus('none')}>
                   {renderTerminal()}
                 </ZenTerminal>
-                {isTerminalOnly && !isZen && (
+                {isTerminalOnly && focus !== 'main' && (
                   <button
                     onClick={() => saveSessionTabVisibility({ ...globalTabVisibility })}
                     className="absolute top-2 right-2 px-2 py-1 rounded bg-bg-surface/80 border border-border-default text-text-tertiary hover:text-text-primary text-xs transition-colors backdrop-blur-sm"

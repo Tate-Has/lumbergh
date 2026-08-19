@@ -24,12 +24,18 @@ describe('ResizablePanes collapse', () => {
     const { queryByTestId } = render(panes(null))
     expect(queryByTestId('left-child')).not.toBeNull()
     expect(queryByTestId('right-child')).not.toBeNull()
+    const leftPane = queryByTestId('left-child')!.closest('[data-pane="left"]') as HTMLElement
+    expect(leftPane.style.width).toBe('50%')
+    const rightPane = queryByTestId('right-child')!.parentElement as HTMLElement
+    expect(rightPane.style.width).toBe('50%')
   })
 
   it('drops the right pane from the DOM when collapsing right', () => {
     const { queryByTestId } = render(panes('right'))
     expect(queryByTestId('left-child')).not.toBeNull()
     expect(queryByTestId('right-child')).toBeNull()
+    const leftPane = queryByTestId('left-child')!.closest('[data-pane="left"]') as HTMLElement
+    expect(leftPane.style.width).toBe('100%')
   })
 
   it('keeps the left pane MOUNTED but hidden when collapsing left', () => {
@@ -40,5 +46,7 @@ describe('ResizablePanes collapse', () => {
     const leftChild = queryByTestId('left-child')
     expect(leftChild).not.toBeNull()
     expect(leftChild!.closest('[data-pane="left"]')).toHaveProperty('style.display', 'none')
+    const rightPane = queryByTestId('right-child')!.parentElement as HTMLElement
+    expect(rightPane.style.width).toBe('100%')
   })
 })

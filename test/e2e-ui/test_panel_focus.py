@@ -1,7 +1,7 @@
 """Panel focus step definitions."""
 
 from playwright.sync_api import Page, expect
-from pytest_bdd import given, parsers, scenarios, then, when
+from pytest_bdd import given, scenarios, then, when
 
 scenarios("features/panel_focus.feature")
 
@@ -23,11 +23,6 @@ def record_terminal_ws_connections(page: Page) -> list[str]:
 
     page.on("websocket", record)
     return seen
-
-
-@when(parsers.parse('I click the "{tab}" tab'))
-def click_tab(page: Page, tab: str):
-    page.locator(f'[data-testid="tab-{tab}"]').click()
 
 
 @when("I click the panel maximize button")
