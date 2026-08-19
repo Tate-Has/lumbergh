@@ -17,3 +17,12 @@ Feature: Panel focus
     When I click the panel maximize button
     And I click the panel maximize button
     Then the terminal websocket connected exactly once
+
+  Scenario: Double-clicking a tab toggles the panel fullscreen
+    Given a test session exists
+    And I am on the session page for "e2e-ui-session"
+    When I double-click the "files" tab
+    Then I should see the file preview
+    And the terminal container is present but hidden
+    When I double-click the "files" tab
+    Then I should see the terminal container

@@ -1,7 +1,7 @@
 """Panel focus step definitions."""
 
 from playwright.sync_api import Page, expect
-from pytest_bdd import given, scenarios, then, when
+from pytest_bdd import given, parsers, scenarios, then, when
 
 scenarios("features/panel_focus.feature")
 
@@ -25,6 +25,11 @@ def record_terminal_ws_connections(page: Page) -> list[str]:
     return seen
 
 
+@when(parsers.parse('I double-click the "{tab}" tab'))
+def double_click_tab(page: Page, tab: str):
+    page.locator(f'[data-testid="tab-{tab}"]').dblclick()
+
+
 @when("I click the panel maximize button")
 def click_panel_maximize(page: Page):
     page.locator('[data-testid="panel-maximize"]').click()
@@ -33,6 +38,11 @@ def click_panel_maximize(page: Page):
 @then("I should see the file preview")
 def see_file_preview(page: Page):
     expect(page.locator('[data-testid="file-preview"]')).to_be_visible(timeout=10000)
+
+
+@then("I should see the terminal container")
+def see_terminal_container(page: Page):
+    expect(page.locator('[data-testid="terminal-container"]')).to_be_visible(timeout=10000)
 
 
 @then("the terminal container is present but hidden")

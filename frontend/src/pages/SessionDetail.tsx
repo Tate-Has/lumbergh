@@ -583,7 +583,11 @@ export default function SessionDetail() {
               setRightPanel(tab.id)
               if (tab.id === 'git') setGitTabResetTrigger((n) => n + 1)
             }}
-            className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+            // Double-click is the same toggle as the maximize button: the two
+            // onClicks it also fires just select the tab first, so double-clicking
+            // an inactive tab lands you in it, full screen.
+            onDoubleClick={togglePanel}
+            className={`select-none px-3 py-1 rounded text-sm font-medium transition-colors ${
               rightPanel === tab.id
                 ? 'bg-control-bg-hover text-text-primary'
                 : 'bg-control-bg text-text-tertiary hover:bg-control-bg-hover hover:text-text-secondary'
