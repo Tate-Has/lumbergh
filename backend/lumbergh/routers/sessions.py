@@ -379,6 +379,45 @@ def get_stored_sessions() -> dict[str, dict]:
     return {s["name"]: s for s in all_sessions}
 
 
+# Worst-first: a container is only as calm as its most demanding worker, and it
+# stays "working" until every last window has stopped.
+_WINDOW_STATE_SEVERITY = ("error", "blocked", "working", "idle")
+
+
+def _window_worker_state(name: str) -> tuple[str | None, str | None]:
+    """The idle state of ``name``'s registered window workers, rolled up.
+
+    A batch container has no agent of its own, so the idle monitor only ever
+    writes rows keyed ``session:window`` and the bare-name DB stays empty.  Read
+    only that DB and the container reports no state at all, which the dashboard
+    cannot tell apart from a healthy session.
+    """
+    from lumbergh import db_utils
+
+    prefix = f"{name}:"
+    rows = []
+    try:
+        entries = sorted(db_utils.SESSIONS_DATA_DIR.iterdir())
+    except OSError:
+        return None, None
+    for path in entries:
+        if path.suffix != ".json" or not path.stem.startswith(prefix):
+            continue
+        try:
+            docs = get_session_data_db(path.stem).table("idle_state").all()
+        except Exception:  # noqa: S112 - a corrupt worker DB must not blank the container
+            continue
+        if docs:
+            rows.append(docs[0])
+
+    for state in _WINDOW_STATE_SEVERITY:
+        matching = [row for row in rows if row.get("state") == state]
+        if matching:
+            newest = max(matching, key=lambda row: row.get("updatedAt") or "")
+            return state, newest.get("updatedAt")
+    return None, None
+
+
 def get_session_status(name: str) -> dict:
     """Get status info for a session from its data DB."""
     from lumbergh.idle_monitor import idle_monitor
@@ -411,6 +450,8 @@ def get_session_status(name: str) -> dict:
             result["idleStateUpdatedAt"] = idle_docs[0].get("updatedAt")
     except Exception:  # noqa: S110 - idle state is optional metadata
         pass
+    if result["idleState"] is None:
+        result["idleState"], result["idleStateUpdatedAt"] = _window_worker_state(name)
     return result
 
 

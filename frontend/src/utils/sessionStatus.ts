@@ -71,7 +71,9 @@ export function getSessionStatus(session: SessionBase): {
     case 'error':
       return { color: 'red', pulse: true, label: 'Error' }
     default:
-      return { color: 'green', pulse: false, label: 'Active' }
+      // No state, not "fine": the monitor writes nothing until it has classified a
+      // session, and a missing row must never read as a healthy green one.
+      return { color: 'gray', pulse: false, label: 'Unknown' }
   }
 }
 

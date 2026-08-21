@@ -38,6 +38,18 @@ describe('getSessionStatus', () => {
     expect(status.label).toBe('Blocked — waiting on you')
   })
 
+  it('does not let an unknown state pass for a working one', () => {
+    const unknown = getSessionStatus({
+      name: 's',
+      alive: true,
+      idleState: null,
+      displayName: null,
+    })
+    expect(unknown.color).toBe('gray')
+    expect(unknown.label).toBe('Unknown')
+    expect(statusColorClasses.gray).toBeDefined()
+  })
+
   it('exposes a color class for the purple accent', () => {
     expect(statusColorClasses.purple).toBeDefined()
     expect(statusColorClasses.purple.text).toContain('purple')
