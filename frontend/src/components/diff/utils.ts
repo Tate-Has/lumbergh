@@ -1,4 +1,24 @@
-import type { FileStats } from './types'
+import type { Commit, CommitDiff, FileStats } from './types'
+
+/** The header for the commit the graph has selected, or null while there is none.
+ *
+ * The graph abbreviates hashes to 12 chars on the wire but the commit endpoint
+ * answers with the full 40, so the two are compared by prefix: an equality check
+ * silently hid the whole commit header, send-to-terminal button included.
+ */
+export function commitHeaderInfo(
+  commitData: CommitDiff | null,
+  selectedHash: string | null
+): Commit | null {
+  if (!selectedHash || !commitData?.hash.startsWith(selectedHash)) return null
+  return {
+    hash: commitData.hash,
+    shortHash: commitData.hash.slice(0, 7),
+    message: commitData.message,
+    author: commitData.author,
+    relativeDate: commitData.relativeDate,
+  }
+}
 
 // Extract the diff content starting from --- line
 // The library expects: --- a/file\n+++ b/file\n@@ ... @@\n...

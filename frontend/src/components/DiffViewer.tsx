@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, memo } from 'react'
 import '@git-diff-view/react/styles/diff-view.css'
 import { RefreshCw, ArrowLeft, ArrowRight, X, CloudDownload } from 'lucide-react'
 import { getApiBase } from '../config'
-import { FileList, FileDiff, BranchSelector } from './diff'
+import { FileList, FileDiff, BranchSelector, commitHeaderInfo } from './diff'
 import RemoteStatusView from './diff/RemoteStatusView'
 import type { DiffData, CommitDiff } from './diff'
 
@@ -332,20 +332,7 @@ const DiffViewer = memo(function DiffViewer({
     return workingData
   }
 
-  const getCurrentCommitInfo = () => {
-    const commitHash = view.commit
-    if (!commitHash) return null
-    if (commitData && commitData.hash === commitHash) {
-      return {
-        hash: commitData.hash,
-        shortHash: commitData.hash.slice(0, 7),
-        message: commitData.message,
-        author: commitData.author,
-        relativeDate: commitData.relativeDate,
-      }
-    }
-    return null
-  }
+  const getCurrentCommitInfo = () => commitHeaderInfo(commitData, view.commit)
 
   const handleSendToTerminal = useCallback(
     async (text: string, sendEnter: boolean) => {
