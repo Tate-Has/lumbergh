@@ -245,13 +245,10 @@ const DiffViewer = memo(function DiffViewer({
   }, [view, fetchRemoteStatus])
 
   // Handle navigation
+  // Works from the file list and from the picker inside an open file: jumping
+  // straight from one file's diff to another must not need a trip via Back.
   const handleSelectFile = (file: string) => {
-    setView((prev) => {
-      if (prev.level === 'changes') {
-        return { level: 'file', commit: prev.commit, file }
-      }
-      return prev
-    })
+    setView((prev) => ({ level: 'file', commit: prev.commit, file }))
   }
 
   const handleBackToChanges = () => {
@@ -467,6 +464,8 @@ const DiffViewer = memo(function DiffViewer({
         return (
           <FileDiff
             file={file}
+            files={data.files}
+            onSelectFile={handleSelectFile}
             onBack={handleBackToChanges}
             sessionName={sessionName}
             onFocusTerminal={onFocusTerminal}

@@ -6,6 +6,7 @@ import { ArrowLeft, Play, Maximize2 } from 'lucide-react'
 import { getApiBase } from '../../config'
 import type { DiffFile } from './types'
 import { extractDiffContent, getFileStats, getLangFromPath, reviewFilePrompt } from './utils'
+import FilePicker from './FilePicker'
 import MarkdownViewer from '../MarkdownViewer'
 import { useTheme } from '../../hooks/useTheme'
 
@@ -34,6 +35,8 @@ function isImagePath(path: string): boolean {
 
 interface Props {
   file: DiffFile
+  files?: DiffFile[]
+  onSelectFile?: (path: string) => void
   onBack: () => void
   sessionName?: string
   onFocusTerminal?: () => void
@@ -47,8 +50,27 @@ const MIN_FONT_SIZE = 8
 const MAX_FONT_SIZE = 20
 const FONT_SIZE_STEP = 2
 
+/** The path in the header: a picker when there are siblings to jump to, plain
+ * text when this diff holds a single file. */
+function Breadcrumb({
+  path,
+  files,
+  onSelectFile,
+}: {
+  path: string
+  files?: DiffFile[]
+  onSelectFile?: (path: string) => void
+}) {
+  if (files && files.length > 1 && onSelectFile) {
+    return <FilePicker files={files} current={path} onSelect={onSelectFile} />
+  }
+  return <span className="font-mono text-sm text-action truncate flex-1">{path}</span>
+}
+
 const FileDiff = memo(function FileDiff({
   file,
+  files,
+  onSelectFile,
   onBack,
   sessionName,
   onFocusTerminal,
@@ -172,7 +194,7 @@ const FileDiff = memo(function FileDiff({
           <ArrowLeft size={14} /> Back
         </button>
         <span className="text-text-muted">/</span>
-        <span className="font-mono text-sm text-action truncate flex-1">{file.path}</span>
+        <Breadcrumb path={file.path} files={files} onSelectFile={onSelectFile} />
         {isMarkdown && (
           <button
             onClick={() => setShowMarkdownPreview(true)}
