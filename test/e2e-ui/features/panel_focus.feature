@@ -26,3 +26,15 @@ Feature: Panel focus
     And the terminal container is present but hidden
     When I double-click the "files" tab
     Then I should see the terminal container
+
+  Scenario: The terminal is one of the tabs while the panel is maximized
+    Given a test session exists
+    And I am on the session page for "e2e-ui-session"
+    When I click the "files" tab
+    And I click the panel maximize button
+    Then I should see the file preview
+    When I click the "terminal" tab
+    Then I should see the terminal container
+    When I click the "files" tab
+    Then I should see the file preview
+    And the terminal container is present but hidden

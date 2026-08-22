@@ -21,3 +21,35 @@ export function nextMainFocus(current: FocusTarget): FocusTarget {
 export function nextPanelFocus(current: FocusTarget): FocusTarget {
   return current === 'panel' ? 'none' : 'panel'
 }
+
+/** Which pane the maximized view is showing. */
+export type FullPane = 'panel' | 'terminal'
+
+export interface PaneLayout {
+  /** One pane fills the viewport, with the tab strip above it. */
+  maximized: boolean
+  /** That one pane is the terminal. */
+  terminalMaximized: boolean
+  /** The terminal is on screen, whether it shares the width or owns it. */
+  terminalVisible: boolean
+  /** Which side ResizablePanes gives up its width to. */
+  collapse: 'left' | 'right' | null
+}
+
+/** `isTerminalOnly` means every panel is hidden, so there is nothing to
+ * maximize and the terminal already owns the viewport. */
+export function paneLayout(
+  focus: FocusTarget,
+  fullPane: FullPane,
+  isTerminalOnly: boolean
+): PaneLayout {
+  const maximized = focus === 'panel' && !isTerminalOnly
+  const terminalMaximized = maximized && fullPane === 'terminal'
+  const terminalOwnsViewport = focus === 'main' || isTerminalOnly || terminalMaximized
+  return {
+    maximized,
+    terminalMaximized,
+    terminalVisible: !maximized || terminalMaximized,
+    collapse: terminalOwnsViewport ? 'right' : maximized ? 'left' : null,
+  }
+}

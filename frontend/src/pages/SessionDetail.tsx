@@ -37,6 +37,7 @@ import { useSessionView } from '../hooks/useSessionView'
 import { useConversationScale } from '../hooks/useConversationScale'
 import ZenTerminal from '../components/ZenTerminal'
 import { useFocusMode } from '../hooks/useFocusMode'
+import { paneLayout } from '../utils/focusMode'
 
 type RightPanel = 'git' | 'files' | 'todos' | 'prompts' | 'shared'
 type MobileTab = 'terminal' | 'git' | 'files' | 'todos' | 'prompts' | 'shared'
@@ -122,6 +123,9 @@ export default function SessionDetail() {
   const [sharedRefreshTrigger, setSharedRefreshTrigger] = useState(0)
   const [gitTabResetTrigger, setGitTabResetTrigger] = useState(0)
   const [mobileTab, setMobileTab] = useState<MobileTab>('terminal')
+  // Which pane the maximized view is showing. Only meaningful while focus is
+  // 'panel'; it always resets to the panel on the way out of full screen.
+  const [fullPane, setFullPane] = useState<'panel' | 'terminal'>('panel')
   const [diffData, setDiffData] = useState<DiffData | null>(null)
   const [diffError, setDiffError] = useState<string | null>(null)
   const [showTelemetryOptIn, setShowTelemetryOptIn] = useState(false)
@@ -216,6 +220,17 @@ export default function SessionDetail() {
 
   const isTerminalOnly = visibleTabs.length === 0
 
+  const { maximized, terminalMaximized, terminalVisible, collapse } = paneLayout(
+    focus,
+    fullPane,
+    isTerminalOnly
+  )
+
+  const handleTogglePanel = useCallback(() => {
+    setFullPane('panel')
+    togglePanel()
+  }, [togglePanel])
+
   // Auto-select first visible tab if current is hidden
   useEffect(() => {
     if (visibleTabs.length > 0 && effectiveTabVisibility[rightPanel] === false) {
@@ -276,14 +291,16 @@ export default function SessionDetail() {
     focusFnRef.current = fn
   }, [])
 
-  // Every "send this to the terminal" path funnels through here. While the
-  // panel is maximized the terminal is display:none, so focusing it alone would
-  // look like the send did nothing -- leave panel focus first so the user sees
-  // the terminal they just sent to.
+  // Every "send this to the terminal" path funnels through here. While a panel
+  // fills the view the terminal is display:none, so focusing it alone would look
+  // like the send did nothing -- surface the terminal first so the user sees what
+  // they just sent to. Full screen stays full screen: it switches to the terminal
+  // tab rather than dropping back to the split.
   const handleFocusTerminal = useCallback(() => {
-    if (focus === 'panel') setFocus('none')
+    if (maximized) setFullPane('terminal')
+    else if (focus === 'panel') setFocus('none')
     focusFnRef.current?.()
-  }, [focus, setFocus])
+  }, [focus, maximized, setFocus])
 
   const handleSwitchToTerminal = useCallback(() => {
     setMobileTab('terminal')
@@ -416,7 +433,7 @@ export default function SessionDetail() {
   } | null>(null)
 
   // Is the git tab currently visible? (need to poll full diff data when visible)
-  const isDiffVisible = isDesktop ? rightPanel === 'git' : mobileTab === 'git'
+  const isDiffVisible = isDesktop ? rightPanel === 'git' && !terminalMaximized : mobileTab === 'git'
 
   // Poll lightweight diff-stats every 10s (for badge counts)
   const statsEtagRef = useRef<string>('')
@@ -514,11 +531,7 @@ export default function SessionDetail() {
           // The mobile layout already carries a compact dot strip in its tab
           // bar; a second row of the same dots is the busiest thing on a phone.
           showSessionDots={showSessionDots && isDesktop}
-          isVisible={
-            view === 'term' &&
-            (isDesktop || mobileTab === 'terminal') &&
-            (focus !== 'panel' || isTerminalOnly)
-          }
+          isVisible={view === 'term' && (isDesktop || mobileTab === 'terminal') && terminalVisible}
           collapseHeader={focus === 'main'}
           view={view}
           onToggleView={toggleView}
@@ -596,109 +609,133 @@ export default function SessionDetail() {
     </ErrorBoundary>
   )
 
+  // The switcher lives inside the panel while the view is split, and above both
+  // panes while one of them is maximized. Maximized shows a single pane, so the
+  // strip has to offer the terminal as a tab of its own -- mobile already works
+  // this way, and without it full screen is a room with no door back to the
+  // terminal.
+  const renderPanelTabs = () => (
+    <div className="flex gap-1 p-2 bg-bg-surface border-b border-border-default">
+      {maximized && (
+        <button
+          data-testid="tab-terminal"
+          onClick={() => setFullPane('terminal')}
+          onDoubleClick={handleTogglePanel}
+          className={`select-none flex items-center gap-1.5 px-3 py-1 rounded text-sm font-medium transition-colors ${
+            fullPane === 'terminal'
+              ? 'bg-control-bg-hover text-text-primary'
+              : 'bg-control-bg text-text-tertiary hover:bg-control-bg-hover hover:text-text-secondary'
+          }`}
+        >
+          <SquareTerminal size={14} />
+          Term
+        </button>
+      )}
+      {visibleTabs.map((tab) => (
+        <button
+          key={tab.id}
+          data-testid={`tab-${tab.id === 'todos' ? 'todo' : tab.id}`}
+          onClick={() => {
+            setRightPanel(tab.id)
+            setFullPane('panel')
+            if (tab.id === 'git') setGitTabResetTrigger((n) => n + 1)
+          }}
+          // Double-click is the same toggle as the maximize button: the two
+          // onClicks it also fires just select the tab first, so double-clicking
+          // an inactive tab lands you in it, full screen.
+          onDoubleClick={handleTogglePanel}
+          className={`select-none px-3 py-1 rounded text-sm font-medium transition-colors ${
+            rightPanel === tab.id && !terminalMaximized
+              ? 'bg-control-bg-hover text-text-primary'
+              : 'bg-control-bg text-text-tertiary hover:bg-control-bg-hover hover:text-text-secondary'
+          }`}
+        >
+          {tab.label}
+          {tab.id === 'git' && diffStats && diffStats.files > 0 && (
+            <span className="ml-2 text-xs">
+              ({diffStats.files})<span className="text-success ml-1">+{diffStats.additions}</span>
+              <span className="text-danger ml-1">-{diffStats.deletions}</span>
+            </span>
+          )}
+        </button>
+      ))}
+      <button
+        onClick={handleTogglePanel}
+        data-testid="panel-maximize"
+        className="ml-auto px-2 py-1 rounded text-text-tertiary hover:text-text-secondary hover:bg-control-bg-hover transition-colors"
+        title={focus === 'panel' ? 'Restore split view' : 'Maximize panel'}
+      >
+        {focus === 'panel' ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+      </button>
+      {/* Gear icon for tab visibility settings */}
+      <div className="relative" ref={tabSettingsRef}>
+        <button
+          onClick={() => setShowTabSettings((v) => !v)}
+          className="px-2 py-1 rounded text-text-tertiary hover:text-text-secondary hover:bg-control-bg-hover transition-colors"
+          title="Configure visible tabs"
+        >
+          <Settings size={14} />
+        </button>
+        {showTabSettings && (
+          <div className="absolute right-0 top-full mt-1 bg-bg-surface border border-border-default rounded-[var(--radius-xl)] shadow-lg p-3 z-50 min-w-[160px]">
+            <p className="text-xs text-text-tertiary mb-2 font-medium">Visible Tabs</p>
+            <label className="flex items-center gap-2 py-1 text-sm border-b border-border-default mb-1 pb-2">
+              <input
+                type="checkbox"
+                checked={isTerminalOnly}
+                onChange={() => {
+                  const currentVis = sessionTabVisibility || globalTabVisibility
+                  if (isTerminalOnly) {
+                    // Restore: use global defaults
+                    saveSessionTabVisibility({ ...globalTabVisibility })
+                  } else {
+                    // Set all to false
+                    const allOff = Object.fromEntries(
+                      Object.keys(currentVis).map((k) => [k, false])
+                    )
+                    saveSessionTabVisibility(allOff)
+                  }
+                }}
+                className="rounded border-input-border bg-input-bg"
+              />
+              <span className="text-text-secondary font-medium">Terminal Only</span>
+            </label>
+            {ALL_TABS.map((tab) => {
+              const currentVis = sessionTabVisibility || globalTabVisibility
+              const isEnabled = currentVis[tab.id] !== false
+              return (
+                <label key={tab.id} className="flex items-center gap-2 py-1 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={isEnabled}
+                    onChange={() => {
+                      const updated = { ...currentVis, [tab.id]: !isEnabled }
+                      saveSessionTabVisibility(updated)
+                    }}
+                    className="rounded border-input-border bg-input-bg"
+                  />
+                  <span className="text-text-secondary">{tab.label}</span>
+                </label>
+              )
+            })}
+            <label className="flex items-center gap-2 py-1 text-sm border-t border-border-default mt-1 pt-2">
+              <input
+                type="checkbox"
+                checked={showSessionDots}
+                onChange={() => saveShowSessionDots(!showSessionDots)}
+                className="rounded border-input-border bg-input-bg"
+              />
+              <span className="text-text-secondary">Session Dots</span>
+            </label>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+
   const renderRightPanel = () => (
     <div className="h-full flex flex-col">
-      {/* Panel switcher */}
-      <div className="flex gap-1 p-2 bg-bg-surface border-b border-border-default">
-        {visibleTabs.map((tab) => (
-          <button
-            key={tab.id}
-            data-testid={`tab-${tab.id === 'todos' ? 'todo' : tab.id}`}
-            onClick={() => {
-              setRightPanel(tab.id)
-              if (tab.id === 'git') setGitTabResetTrigger((n) => n + 1)
-            }}
-            // Double-click is the same toggle as the maximize button: the two
-            // onClicks it also fires just select the tab first, so double-clicking
-            // an inactive tab lands you in it, full screen.
-            onDoubleClick={togglePanel}
-            className={`select-none px-3 py-1 rounded text-sm font-medium transition-colors ${
-              rightPanel === tab.id
-                ? 'bg-control-bg-hover text-text-primary'
-                : 'bg-control-bg text-text-tertiary hover:bg-control-bg-hover hover:text-text-secondary'
-            }`}
-          >
-            {tab.label}
-            {tab.id === 'git' && diffStats && diffStats.files > 0 && (
-              <span className="ml-2 text-xs">
-                ({diffStats.files})<span className="text-success ml-1">+{diffStats.additions}</span>
-                <span className="text-danger ml-1">-{diffStats.deletions}</span>
-              </span>
-            )}
-          </button>
-        ))}
-        <button
-          onClick={togglePanel}
-          data-testid="panel-maximize"
-          className="ml-auto px-2 py-1 rounded text-text-tertiary hover:text-text-secondary hover:bg-control-bg-hover transition-colors"
-          title={focus === 'panel' ? 'Restore split view' : 'Maximize panel'}
-        >
-          {focus === 'panel' ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-        </button>
-        {/* Gear icon for tab visibility settings */}
-        <div className="relative" ref={tabSettingsRef}>
-          <button
-            onClick={() => setShowTabSettings((v) => !v)}
-            className="px-2 py-1 rounded text-text-tertiary hover:text-text-secondary hover:bg-control-bg-hover transition-colors"
-            title="Configure visible tabs"
-          >
-            <Settings size={14} />
-          </button>
-          {showTabSettings && (
-            <div className="absolute right-0 top-full mt-1 bg-bg-surface border border-border-default rounded-[var(--radius-xl)] shadow-lg p-3 z-50 min-w-[160px]">
-              <p className="text-xs text-text-tertiary mb-2 font-medium">Visible Tabs</p>
-              <label className="flex items-center gap-2 py-1 text-sm border-b border-border-default mb-1 pb-2">
-                <input
-                  type="checkbox"
-                  checked={isTerminalOnly}
-                  onChange={() => {
-                    const currentVis = sessionTabVisibility || globalTabVisibility
-                    if (isTerminalOnly) {
-                      // Restore: use global defaults
-                      saveSessionTabVisibility({ ...globalTabVisibility })
-                    } else {
-                      // Set all to false
-                      const allOff = Object.fromEntries(
-                        Object.keys(currentVis).map((k) => [k, false])
-                      )
-                      saveSessionTabVisibility(allOff)
-                    }
-                  }}
-                  className="rounded border-input-border bg-input-bg"
-                />
-                <span className="text-text-secondary font-medium">Terminal Only</span>
-              </label>
-              {ALL_TABS.map((tab) => {
-                const currentVis = sessionTabVisibility || globalTabVisibility
-                const isEnabled = currentVis[tab.id] !== false
-                return (
-                  <label key={tab.id} className="flex items-center gap-2 py-1 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={isEnabled}
-                      onChange={() => {
-                        const updated = { ...currentVis, [tab.id]: !isEnabled }
-                        saveSessionTabVisibility(updated)
-                      }}
-                      className="rounded border-input-border bg-input-bg"
-                    />
-                    <span className="text-text-secondary">{tab.label}</span>
-                  </label>
-                )
-              })}
-              <label className="flex items-center gap-2 py-1 text-sm border-t border-border-default mt-1 pt-2">
-                <input
-                  type="checkbox"
-                  checked={showSessionDots}
-                  onChange={() => saveShowSessionDots(!showSessionDots)}
-                  className="rounded border-input-border bg-input-bg"
-                />
-                <span className="text-text-secondary">Session Dots</span>
-              </label>
-            </div>
-          )}
-        </div>
-      </div>
+      {!maximized && renderPanelTabs()}
       {/* Panel content — boundaried so a panel that throws does not take the
           terminal (and the rest of the app) down with it. */}
       <div className="flex-1 min-h-0 overflow-hidden">
@@ -782,33 +819,34 @@ export default function SessionDetail() {
 
       {/* Conditionally render only desktop OR mobile layout (not both) */}
       {isDesktop ? (
-        <main className="flex-1 min-h-0">
-          <ResizablePanes
-            collapse={
-              focus === 'main' || isTerminalOnly ? 'right' : focus === 'panel' ? 'left' : null
-            }
-            left={
-              <div className="h-full relative">
-                <ZenTerminal active={focus === 'main'} onExit={() => setFocus('none')}>
-                  {renderTerminal()}
-                </ZenTerminal>
-                {isTerminalOnly && focus !== 'main' && (
-                  <button
-                    onClick={() => saveSessionTabVisibility({ ...globalTabVisibility })}
-                    className="absolute top-2 right-2 px-2 py-1 rounded bg-bg-surface/80 border border-border-default text-text-tertiary hover:text-text-primary text-xs transition-colors backdrop-blur-sm"
-                    title="Show side panels"
-                  >
-                    Tabs
-                  </button>
-                )}
-              </div>
-            }
-            right={renderRightPanel()}
-            defaultLeftWidth={50}
-            minLeftWidth={25}
-            maxLeftWidth={75}
-            storageKey="lumbergh:mainSplitWidth"
-          />
+        <main className="flex-1 min-h-0 flex flex-col">
+          {maximized && renderPanelTabs()}
+          <div className="flex-1 min-h-0">
+            <ResizablePanes
+              collapse={collapse}
+              left={
+                <div className="h-full relative">
+                  <ZenTerminal active={focus === 'main'} onExit={() => setFocus('none')}>
+                    {renderTerminal()}
+                  </ZenTerminal>
+                  {isTerminalOnly && focus !== 'main' && (
+                    <button
+                      onClick={() => saveSessionTabVisibility({ ...globalTabVisibility })}
+                      className="absolute top-2 right-2 px-2 py-1 rounded bg-bg-surface/80 border border-border-default text-text-tertiary hover:text-text-primary text-xs transition-colors backdrop-blur-sm"
+                      title="Show side panels"
+                    >
+                      Tabs
+                    </button>
+                  )}
+                </div>
+              }
+              right={renderRightPanel()}
+              defaultLeftWidth={50}
+              minLeftWidth={25}
+              maxLeftWidth={75}
+              storageKey="lumbergh:mainSplitWidth"
+            />
+          </div>
         </main>
       ) : (
         <div className="flex-1 min-h-0 flex flex-col">
