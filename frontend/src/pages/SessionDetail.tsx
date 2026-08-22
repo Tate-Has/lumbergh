@@ -1,6 +1,18 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Maximize2, Minimize2, Settings } from 'lucide-react'
+import {
+  ArrowLeft,
+  Folder,
+  GitBranch,
+  ListTodo,
+  Maximize2,
+  MessageSquareText,
+  Minimize2,
+  Settings,
+  Share2,
+  SquareTerminal,
+} from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { getApiBase } from '../config'
 import Terminal from '../components/Terminal'
 import FileBrowser from '../components/FileBrowser'
@@ -36,12 +48,12 @@ type DiffData = {
 
 type TabVisibility = Record<string, boolean>
 
-const ALL_TABS: { id: RightPanel; label: string }[] = [
-  { id: 'git', label: 'Git' },
-  { id: 'files', label: 'Files' },
-  { id: 'todos', label: 'Todo' },
-  { id: 'prompts', label: 'Prompts' },
-  { id: 'shared', label: 'Shared' },
+const ALL_TABS: { id: RightPanel; label: string; Icon: LucideIcon }[] = [
+  { id: 'git', label: 'Git', Icon: GitBranch },
+  { id: 'files', label: 'Files', Icon: Folder },
+  { id: 'todos', label: 'Todo', Icon: ListTodo },
+  { id: 'prompts', label: 'Prompts', Icon: MessageSquareText },
+  { id: 'shared', label: 'Shared', Icon: Share2 },
 ]
 
 const DEFAULT_TAB_VISIBILITY: TabVisibility = {
@@ -196,7 +208,7 @@ export default function SessionDetail() {
 
   const visibleMobileTabs = useMemo(
     () =>
-      [{ id: 'terminal' as MobileTab, label: 'Term' }].concat(
+      [{ id: 'terminal' as MobileTab, label: 'Term', Icon: SquareTerminal }].concat(
         ALL_TABS.filter((t) => effectiveTabVisibility[t.id] !== false)
       ),
     [effectiveTabVisibility]
@@ -499,7 +511,9 @@ export default function SessionDetail() {
           onForkSession={name ? () => setForkFrom(name) : undefined}
           onReset={handleReset}
           onCycleSession={handleCycleSession}
-          showSessionDots={showSessionDots}
+          // The mobile layout already carries a compact dot strip in its tab
+          // bar; a second row of the same dots is the busiest thing on a phone.
+          showSessionDots={showSessionDots && isDesktop}
           isVisible={
             view === 'term' &&
             (isDesktop || mobileTab === 'terminal') &&
@@ -799,7 +813,7 @@ export default function SessionDetail() {
       ) : (
         <div className="flex-1 min-h-0 flex flex-col">
           {/* Tab navigation with back button */}
-          <div className="flex gap-1 px-2 py-1 bg-bg-surface border-b border-border-default overflow-x-auto scrollbar-hide">
+          <div className="flex gap-1 px-2 py-1 bg-bg-surface border-b border-border-default overflow-hidden">
             {/* Back button */}
             <button
               onClick={() => navigate('/')}
@@ -812,7 +826,9 @@ export default function SessionDetail() {
             <div className="w-px shrink-0 bg-border-default my-1" />
             {showSessionDots && name && (
               <>
-                <SessionNavigatorDots compact currentSessionName={name} />
+                <div className="flex-1 min-w-0 overflow-x-auto scrollbar-hide">
+                  <SessionNavigatorDots compact currentSessionName={name} />
+                </div>
                 <div className="w-px shrink-0 bg-border-default my-1" />
               </>
             )}
@@ -824,19 +840,17 @@ export default function SessionDetail() {
                   setMobileTab(tab.id)
                   if (tab.id === 'git') setGitTabResetTrigger((n) => n + 1)
                 }}
-                className={`shrink-0 px-4 py-1.5 rounded text-sm font-medium transition-colors ${
+                title={tab.label}
+                aria-label={tab.label}
+                className={`shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded text-sm font-medium transition-colors ${
                   mobileTab === tab.id
                     ? 'bg-control-bg-hover text-text-primary'
                     : 'bg-control-bg text-text-tertiary hover:bg-control-bg-hover hover:text-text-secondary'
                 }`}
               >
-                {tab.label}
+                <tab.Icon size={16} />
                 {tab.id === 'git' && diffStats && diffStats.files > 0 && (
-                  <span className="ml-1 text-xs">
-                    ({diffStats.files})
-                    <span className="text-success ml-1">+{diffStats.additions}</span>
-                    <span className="text-danger ml-1">-{diffStats.deletions}</span>
-                  </span>
+                  <span className="text-xs tabular-nums">{diffStats.files}</span>
                 )}
               </button>
             ))}
