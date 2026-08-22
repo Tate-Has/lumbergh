@@ -1,18 +1,13 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import {
-  MoreVertical,
-  Monitor,
-  Cloud,
-  Archive,
-  Tag,
-  AlertTriangle,
-  Trash2,
-  GitBranch,
-} from 'lucide-react'
+import { MoreVertical, Monitor, Cloud, Archive, Tag, AlertTriangle, GitBranch } from 'lucide-react'
 import { getApiBase } from '../../config'
 import type { GraphData, GraphWorktree } from '../diff/types'
 import GraphToolbar from './GraphToolbar'
 import { applyGraphResponse } from './graphSync'
+import { buildBranchMenuItems } from './branchMenu'
+import type { MenuBranchInfo } from './branchMenu'
+import { confirmHardReset, resetMenuEntries } from './resetMenu'
+import type { ResetMode } from './resetMenu'
 import { computeGraphLayout, laneColor } from './graphLayout'
 import { relativeDate } from '../../utils/relativeDate'
 import { useClickOutside } from '../../hooks/useClickOutside'
@@ -488,18 +483,19 @@ function CommitContextMenu({
           </button>
         ))}
       <div className="mx-2 my-1 border-t border-border-default" />
-      <button
-        onClick={handleResetSoft}
-        className="w-full text-left px-3 py-1.5 text-sm text-text-secondary hover:bg-control-bg-hover hover:text-text-primary"
-      >
-        Reset soft to here
-      </button>
-      <button
-        onClick={handleResetHard}
-        className="w-full text-left px-3 py-1.5 text-sm text-danger hover:bg-danger/10 hover:text-danger/80"
-      >
-        Reset hard to here
-      </button>
+      {resetMenuEntries(handleResetHard, handleResetSoft).map((entry) => (
+        <button
+          key={entry.key}
+          onClick={entry.onClick}
+          className={
+            entry.danger
+              ? 'w-full text-left px-3 py-1.5 text-sm text-danger hover:bg-danger/10 hover:text-danger/80'
+              : 'w-full text-left px-3 py-1.5 text-sm text-text-secondary hover:bg-control-bg-hover hover:text-text-primary'
+          }
+        >
+          {entry.label}
+        </button>
+      ))}
     </div>
   )
 }
@@ -541,76 +537,6 @@ function StashContextMenu({
   )
 }
 
-type BranchMenuItem = {
-  key: string
-  label: React.ReactNode
-  onClick: () => void
-  danger?: boolean
-  separator?: boolean
-}
-
-type MenuBranchInfo = {
-  name: string
-  local: boolean
-  remote: boolean
-  commitHash: string
-  commitShortHash: string
-  x: number
-  y: number
-}
-
-function buildBranchMenuItems(
-  menuBranch: MenuBranchInfo,
-  isCurrent: boolean,
-  hasUnpushed: boolean | undefined,
-  handleBranchCheckout: () => void,
-  handleBranchPush: () => void,
-  handleResetTo: (hash: string) => void,
-  setDeleteBranchConfirm: (v: { name: string; local: boolean; remote: boolean } | null) => void,
-  setMenuBranch: (v: MenuBranchInfo | null) => void
-): BranchMenuItem[] {
-  const items: BranchMenuItem[] = []
-  if (!isCurrent) {
-    items.push({ key: 'checkout', label: 'Checkout', onClick: handleBranchCheckout })
-  }
-  if (hasUnpushed && menuBranch.local) {
-    items.push({ key: 'push', label: 'Push', onClick: handleBranchPush })
-  }
-  if (!menuBranch.local && menuBranch.remote) {
-    items.push({
-      key: 'reset',
-      label: 'Reset local to here',
-      onClick: () => {
-        if (!confirm(`Reset current branch to ${menuBranch.name} (${menuBranch.commitShortHash})?`))
-          return
-        handleResetTo(menuBranch.commitHash)
-      },
-    })
-  }
-  if (!isCurrent) {
-    items.push({
-      key: 'delete',
-      separator: true,
-      danger: true,
-      label: (
-        <>
-          <Trash2 size={14} />
-          Delete branch
-        </>
-      ),
-      onClick: () => {
-        setDeleteBranchConfirm({
-          name: menuBranch.name,
-          local: menuBranch.local,
-          remote: menuBranch.remote,
-        })
-        setMenuBranch(null)
-      },
-    })
-  }
-  return items
-}
-
 function BranchContextMenu({
   menuBranch,
   branchMenuRef,
@@ -626,7 +552,7 @@ function BranchContextMenu({
   graphData: GraphData | null
   handleBranchCheckout: () => void
   handleBranchPush: () => void
-  handleResetTo: (hash: string) => void
+  handleResetTo: (hash: string, mode: ResetMode) => void
   setDeleteBranchConfirm: (v: { name: string; local: boolean; remote: boolean } | null) => void
   setMenuBranch: (v: MenuBranchInfo | null) => void
 }) {
@@ -913,10 +839,7 @@ export default function GitGraph({
 
   const handleResetHard = useCallback(async () => {
     if (!menuCommit || !sessionName) return
-    const confirmed = confirm(
-      `Reset HARD to ${menuCommit.shortHash}?\n\nThis will DESTROY all uncommitted changes (staged, unstaged, and untracked files). This cannot be undone.`
-    )
-    if (!confirmed) return
+    if (!confirmHardReset(menuCommit.shortHash)) return
     const ok = await gitAction(`${getApiBase()}/sessions/${sessionName}/git/reset-to`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -926,12 +849,12 @@ export default function GitGraph({
   }, [sessionName, menuCommit, afterAction, gitAction])
 
   const handleResetTo = useCallback(
-    async (hash: string) => {
+    async (hash: string, mode: ResetMode) => {
       if (!sessionName) return
       const ok = await gitAction(`${getApiBase()}/sessions/${sessionName}/git/reset-to`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hash, mode: 'soft' }),
+        body: JSON.stringify({ hash, mode }),
       })
       if (ok) {
         setMenuBranch(null)
