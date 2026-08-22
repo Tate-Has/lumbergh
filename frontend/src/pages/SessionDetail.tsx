@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Maximize2, Minimize2, Settings } from 'lucide-react'
+import { ArrowLeft, GitBranchPlus, Maximize2, Minimize2, Settings } from 'lucide-react'
 import { getApiBase } from '../config'
 import Terminal from '../components/Terminal'
 import FileBrowser from '../components/FileBrowser'
@@ -12,6 +12,8 @@ import PromptTemplates from '../components/PromptTemplates'
 import SharedFiles from '../components/SharedFiles'
 import TelemetryOptIn from '../components/TelemetryOptIn'
 import SessionSummaryOverlay from '../components/SessionSummaryBanner'
+import CreateSessionModal from '../components/CreateSessionModal'
+import { spawnParentRepo } from '../utils/spawnFrom'
 import ScratchPromoteBanner from '../components/ScratchPromoteBanner'
 import { isSummaryDismissed, dismissSummary, enableSummary } from '../hooks/useSessionSummary'
 import GitTab from '../components/graph/GitTab'
@@ -104,6 +106,8 @@ export default function SessionDetail() {
   const [showTabSettings, setShowTabSettings] = useState(false)
   const [showSummary, setShowSummary] = useState(false)
   const [isScratch, setIsScratch] = useState(false)
+  const [sessionRepo, setSessionRepo] = useState('')
+  const [spawnFromRepo, setSpawnFromRepo] = useState<string | null>(null)
   const tabSettingsRef = useRef<HTMLDivElement>(null)
   const focusFnRef = useRef<(() => void) | null>(null)
 
@@ -140,6 +144,7 @@ export default function SessionDetail() {
         if (session) {
           setSessionTabVisibility(session.tabVisibility || null)
           setIsScratch(session.type === 'scratch')
+          setSessionRepo(spawnParentRepo(session))
           // Auto-show summary if: not dismissed, active session, untouched for 30+ min
           if (!isSummaryDismissed() && session.alive && !session.paused) {
             const STALE_MINUTES = 30
@@ -495,6 +500,7 @@ export default function SessionDetail() {
           sessionName={name}
           onFocusReady={handleFocusReady}
           onBack={isDesktop ? handleBack : undefined}
+          onSpawnSession={sessionRepo ? () => setSpawnFromRepo(sessionRepo) : undefined}
           onReset={handleReset}
           onCycleSession={handleCycleSession}
           showSessionDots={showSessionDots}
@@ -515,6 +521,14 @@ export default function SessionDetail() {
         <div className="flex items-center justify-center h-full text-text-muted">
           No session selected
         </div>
+      )}
+      {spawnFromRepo && (
+        <CreateSessionModal
+          initialMode="worktree"
+          initialParentRepo={spawnFromRepo}
+          onClose={() => setSpawnFromRepo(null)}
+          onCreated={() => setSpawnFromRepo(null)}
+        />
       )}
       {showSummary && name && (
         <SessionSummaryOverlay
@@ -793,6 +807,16 @@ export default function SessionDetail() {
             >
               <ArrowLeft size={16} />
             </button>
+            {sessionRepo && (
+              <button
+                onClick={() => setSpawnFromRepo(sessionRepo)}
+                className="shrink-0 px-2 py-1.5 text-text-tertiary hover:text-text-primary transition-colors"
+                title="New session from this repo"
+                data-testid="spawn-session-mobile"
+              >
+                <GitBranchPlus size={16} />
+              </button>
+            )}
             {/* Separator */}
             <div className="w-px shrink-0 bg-border-default my-1" />
             {showSessionDots && name && (

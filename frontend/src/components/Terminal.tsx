@@ -47,6 +47,7 @@ interface TerminalProps {
   onSendReady?: (send: ((data: string) => void) | null) => void
   onFocusReady?: (focus: () => void) => void
   onBack?: () => void
+  onSpawnSession?: () => void
   onReset?: () => void
   onCycleSession?: (direction: 'next' | 'prev') => void
   showSessionDots?: boolean
@@ -67,6 +68,7 @@ export default memo(function Terminal({
   onSendReady,
   onFocusReady,
   onBack,
+  onSpawnSession,
   onReset,
   onCycleSession,
   showSessionDots = true,
@@ -1043,6 +1045,7 @@ export default memo(function Terminal({
           onSendTmuxCommand={sendTmuxCommand}
           onFit={handleManualFit}
           onBack={onBack}
+          onSpawnSession={onSpawnSession}
           onReset={onReset}
           onCycleSession={onCycleSession}
           showSessionDots={showSessionDots}

@@ -12,6 +12,10 @@ import AgentProviderSelect from './create-session/AgentProviderSelect'
 interface Props {
   onClose: () => void
   onCreated: () => void
+  /** Open on a given tab — "worktree" when spawning from a session you are in. */
+  initialMode?: SessionMode
+  /** Prefill the repo a worktree branches from. */
+  initialParentRepo?: string
 }
 
 type SessionMode = 'existing' | 'new' | 'worktree'
@@ -78,9 +82,14 @@ function deriveSlug(
   return lastSegment(parentRepo)
 }
 
-export default function CreateSessionModal({ onClose, onCreated }: Props) {
+export default function CreateSessionModal({
+  onClose,
+  onCreated,
+  initialMode,
+  initialParentRepo,
+}: Props) {
   const navigate = useNavigate()
-  const [mode, setMode] = useState<SessionMode>('existing')
+  const [mode, setMode] = useState<SessionMode>(initialMode ?? 'existing')
   const [name, setName] = useState('')
   const [workdir, setWorkdir] = useState('')
   const [description, setDescription] = useState('')
@@ -96,7 +105,7 @@ export default function CreateSessionModal({ onClose, onCreated }: Props) {
   const [editingParentDir, setEditingParentDir] = useState(false)
 
   // Worktree mode state
-  const [parentRepo, setParentRepo] = useState('')
+  const [parentRepo, setParentRepo] = useState(initialParentRepo ?? '')
   const [branch, setBranch] = useState('')
   const [createNewBranch, setCreateNewBranch] = useState(false)
   const [newBranchName, setNewBranchName] = useState('')

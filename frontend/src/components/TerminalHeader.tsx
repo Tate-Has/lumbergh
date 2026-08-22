@@ -11,6 +11,7 @@ import {
   RefreshCw,
   MessageSquare,
   SquareTerminal,
+  GitBranchPlus,
 } from 'lucide-react'
 import Button from './ui/Button'
 import SessionNavigatorDots from './SessionNavigatorDots'
@@ -28,6 +29,7 @@ interface Props {
   onSendTmuxCommand: (command: string) => void
   onFit: () => void
   onBack?: () => void
+  onSpawnSession?: () => void
   onReset?: () => void
   onCycleSession?: (direction: 'next' | 'prev') => void
   showSessionDots?: boolean
@@ -61,6 +63,7 @@ export default function TerminalHeader({
   onToggleView,
   scale,
   onScaleChange,
+  onSpawnSession,
 }: Props) {
   return (
     <div className="glass border-b border-border-default">
@@ -75,6 +78,19 @@ export default function TerminalHeader({
                 title="Back to Dashboard"
               >
                 <ArrowLeft size={16} />
+              </button>
+              <div className="w-px h-4 bg-border-subtle mx-1" />
+            </>
+          )}
+          {onSpawnSession && (
+            <>
+              <button
+                onClick={onSpawnSession}
+                className="text-text-tertiary hover:text-text-primary transition-colors"
+                title="New session from this repo"
+                data-testid="spawn-session"
+              >
+                <GitBranchPlus size={16} />
               </button>
               <div className="w-px h-4 bg-border-subtle mx-1" />
             </>
