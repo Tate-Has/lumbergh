@@ -571,7 +571,11 @@ def _annotate_hierarchy(sessions: list[dict]) -> None:
     """
     overseer_by_path: dict[str, str] = {}
     for s in sessions:
-        if s.get("type") != "worktree":
+        # Dead sessions linger in the list with the workdir they used to run in. One of
+        # those must never claim the repo: it would outrank the session actually running
+        # there and hand every worker a parent that exited days ago. A row that never
+        # says (the hierarchy tests, and any caller building rows by hand) counts as live.
+        if s.get("type") != "worktree" and s.get("alive", True):
             resolved = _resolved_path(s.get("workdir"))
             if resolved:
                 overseer_by_path[resolved] = s["name"]

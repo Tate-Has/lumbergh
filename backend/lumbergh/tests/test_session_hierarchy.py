@@ -42,6 +42,60 @@ def test_bill_is_its_own_role_and_never_a_parent(tmp_path):
     assert by_name["bill"]["parent"] is None
 
 
+def test_dead_session_on_the_repo_never_outranks_the_live_one(tmp_path):
+    """A finished session lingers in the list with ``alive: False`` and the same workdir
+    as the session still running there. Whichever sorted later used to win the repo, so a
+    worker could name a session that died days ago and drift away from its real parent."""
+    repo = tmp_path / "lumbergh"
+    rows = [
+        {
+            "name": "lumbergh",
+            "type": "direct",
+            "workdir": str(repo),
+            "worktreeParentRepo": None,
+            "alive": True,
+        },
+        {
+            "name": "zen-verify-htop",
+            "type": "direct",
+            "workdir": str(repo),
+            "worktreeParentRepo": None,
+            "alive": False,
+        },
+        {
+            "name": "badge-fix",
+            "type": "worktree",
+            "workdir": str(repo) + "-worktrees/badge-fix",
+            "worktreeParentRepo": str(repo),
+            "alive": True,
+        },
+    ]
+    by_name = _annotated(rows)
+    assert by_name["badge-fix"]["parent"] == "lumbergh"
+
+
+def test_dead_session_is_not_an_overseer_even_when_alone_on_the_repo(tmp_path):
+    repo = tmp_path / "lumbergh"
+    rows = [
+        {
+            "name": "zen-verify-htop",
+            "type": "direct",
+            "workdir": str(repo),
+            "worktreeParentRepo": None,
+            "alive": False,
+        },
+        {
+            "name": "badge-fix",
+            "type": "worktree",
+            "workdir": str(repo) + "-worktrees/badge-fix",
+            "worktreeParentRepo": str(repo),
+            "alive": True,
+        },
+    ]
+    by_name = _annotated(rows)
+    assert by_name["badge-fix"]["parent"] is None
+
+
 def test_orphan_worker_has_no_parent_when_its_repo_has_no_live_session(tmp_path):
     repo = tmp_path / "herdr"
     rows = [
