@@ -14,3 +14,10 @@ Feature: Session Todos
     When I click the "todo" tab
     And I toggle the checkbox for "Buy more TPS reports"
     Then the todo "Buy more TPS reports" should be marked done
+
+  Scenario: Launch a todo into its own worktree
+    Given I am on the session page for "e2e-ui-session"
+    And a todo "Buy more TPS reports" exists
+    When I click the "todo" tab
+    Then the todo "Buy more TPS reports" should offer a one-click worktree launch
+    And the send-and-enter action for "Buy more TPS reports" should live behind its overflow menu

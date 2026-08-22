@@ -5,7 +5,9 @@ import {
   ChevronDown,
   ChevronRight,
   StickyNote,
-  ExternalLink,
+  GitBranch,
+  Loader2,
+  MoreVertical,
   Trash2,
 } from 'lucide-react'
 import type { PromptTemplate } from '../utils/promptResolver'
@@ -30,9 +32,11 @@ interface Props {
   isDragging: boolean
   isDragOver: boolean
   isHighlighted: boolean
-  movePickerIndex: number | null
+  overflowIndex: number | null
   availableSessions: { name: string; displayName?: string }[]
-  movePickerRef: React.RefObject<HTMLDivElement | null>
+  overflowRef: React.RefObject<HTMLDivElement | null>
+  isLaunching: boolean
+  launchError: string | null
   onToggle: (index: number) => void
   onStartEdit: (index: number) => void
   onSaveEdit: () => void
@@ -43,71 +47,141 @@ interface Props {
   onSaveDescription: (index: number) => void
   onDescriptionKeyDown: (e: React.KeyboardEvent) => void
   onSendToTerminal: (index: number, sendEnter: boolean) => void
+  onLaunchWorktree: (index: number) => void
   onDelete: (index: number) => void
-  onOpenMovePicker: (index: number) => void
+  onToggleOverflow: (index: number) => void
   onMoveTodo: (index: number, targetSession: string) => void
   onDragStart: (index: number) => void
   onDragOver: (e: React.DragEvent, index: number) => void
   onDragEnd: () => void
 }
 
-function TodoMovePicker({
+/** The row's second-string actions, kept out of the row itself so the two that get
+ * clicked every day — launch a worker, send the text — stay reachable on a phone. */
+function TodoOverflowMenu({
   index,
   availableSessions,
-  movePickerRef,
+  overflowRef,
+  onSendToTerminal,
+  onDelete,
   onMoveTodo,
 }: {
   index: number
   availableSessions: { name: string; displayName?: string }[]
-  movePickerRef: React.RefObject<HTMLDivElement | null>
+  overflowRef: React.RefObject<HTMLDivElement | null>
+  onSendToTerminal: (index: number, sendEnter: boolean) => void
+  onDelete: (index: number) => void
   onMoveTodo: (index: number, targetSession: string) => void
 }) {
   return (
-    <div ref={movePickerRef} className="px-3 py-2 border-t border-border-default">
-      <div className="text-xs text-text-muted mb-1">Move to:</div>
-      {availableSessions.length === 0 ? (
-        <div className="text-xs text-text-muted">No other sessions available</div>
-      ) : (
-        <div className="flex flex-wrap gap-1">
-          {availableSessions.map((s) => (
-            <button
-              key={s.name}
-              onClick={() => onMoveTodo(index, s.name)}
-              className="px-2 py-1 text-xs bg-control-bg hover:bg-action text-text-secondary hover:text-white rounded-[var(--radius-md)] transition-colors"
-            >
-              {s.displayName || s.name}
-            </button>
-          ))}
-        </div>
-      )}
+    <div ref={overflowRef} className="px-3 py-2 border-t border-border-default space-y-2">
+      <div className="flex flex-wrap gap-1">
+        <button
+          data-testid="todo-send-enter"
+          onClick={() => onSendToTerminal(index, true)}
+          className="flex items-center gap-1 px-2 py-1 text-xs bg-control-bg hover:bg-action text-text-secondary hover:text-white rounded-[var(--radius-md)] transition-colors"
+        >
+          <SendHorizonal size={13} /> Send + Enter
+        </button>
+        <button
+          onClick={() => onDelete(index)}
+          className="flex items-center gap-1 px-2 py-1 text-xs bg-control-bg hover:bg-danger text-text-secondary hover:text-white rounded-[var(--radius-md)] transition-colors"
+        >
+          <Trash2 size={13} /> Delete
+        </button>
+      </div>
+      <div>
+        <div className="text-xs text-text-muted mb-1">Move to:</div>
+        {availableSessions.length === 0 ? (
+          <div className="text-xs text-text-muted">No other sessions available</div>
+        ) : (
+          <div className="flex flex-wrap gap-1">
+            {availableSessions.map((s) => (
+              <button
+                key={s.name}
+                onClick={() => onMoveTodo(index, s.name)}
+                className="px-2 py-1 text-xs bg-control-bg hover:bg-action text-text-secondary hover:text-white rounded-[var(--radius-md)] transition-colors"
+              >
+                {s.displayName || s.name}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
 
-function TodoSendButtons({
+function TodoRowActions({
   index,
+  isLaunching,
+  onLaunchWorktree,
   onSendToTerminal,
 }: {
   index: number
+  isLaunching: boolean
+  onLaunchWorktree: (index: number) => void
   onSendToTerminal: (index: number, sendEnter: boolean) => void
 }) {
   return (
     <>
       <button
+        data-testid="todo-launch-worktree"
+        onClick={() => onLaunchWorktree(index)}
+        disabled={isLaunching}
+        className="text-text-muted hover:text-success disabled:hover:text-text-muted transition-colors px-1"
+        title="Launch a worker on this in its own worktree"
+      >
+        {isLaunching ? <Loader2 size={18} className="animate-spin" /> : <GitBranch size={18} />}
+      </button>
+      <button
+        data-testid="todo-send"
         onClick={() => onSendToTerminal(index, false)}
         className="text-text-muted hover:text-warning transition-colors px-1"
-        title="Send text (no Enter)"
+        title="Send text to this terminal (no Enter)"
       >
         <Play size={18} />
       </button>
-      <button
-        onClick={() => onSendToTerminal(index, true)}
-        className="text-text-muted hover:text-action transition-colors px-1"
-        title="Send + Enter (yolo)"
-      >
-        <SendHorizonal size={18} />
-      </button>
     </>
+  )
+}
+
+function TodoTrailingActions({
+  index,
+  done,
+  hasSession,
+  isOverflowOpen,
+  onToggleOverflow,
+  onDelete,
+}: {
+  index: number
+  done: boolean
+  hasSession: boolean
+  isOverflowOpen: boolean
+  onToggleOverflow: (index: number) => void
+  onDelete: (index: number) => void
+}) {
+  if (done) {
+    return (
+      <button
+        onClick={() => onDelete(index)}
+        className="text-sm text-danger/50 hover:text-danger transition-colors px-1"
+        title="Delete task"
+      >
+        <Trash2 size={16} />
+      </button>
+    )
+  }
+  if (!hasSession) return null
+  return (
+    <button
+      data-testid="todo-overflow"
+      onClick={() => onToggleOverflow(index)}
+      className={`text-sm text-text-muted hover:text-text-primary transition-colors px-1 ${isOverflowOpen ? 'text-text-primary' : ''}`}
+      title="More actions"
+    >
+      <MoreVertical size={16} />
+    </button>
   )
 }
 
@@ -153,9 +227,11 @@ export default function TodoItem({
   isDragging,
   isDragOver,
   isHighlighted,
-  movePickerIndex,
+  overflowIndex,
   availableSessions,
-  movePickerRef,
+  overflowRef,
+  isLaunching,
+  launchError,
   onToggle,
   onStartEdit,
   onSaveEdit,
@@ -166,8 +242,9 @@ export default function TodoItem({
   onSaveDescription,
   onDescriptionKeyDown,
   onSendToTerminal,
+  onLaunchWorktree,
   onDelete,
-  onOpenMovePicker,
+  onToggleOverflow,
   onMoveTodo,
   onDragStart,
   onDragOver,
@@ -188,7 +265,12 @@ export default function TodoItem({
       >
         <GripVertical size={16} className="text-text-muted select-none" />
         {sessionName && !todo.done && (
-          <TodoSendButtons index={index} onSendToTerminal={onSendToTerminal} />
+          <TodoRowActions
+            index={index}
+            isLaunching={isLaunching}
+            onLaunchWorktree={onLaunchWorktree}
+            onSendToTerminal={onSendToTerminal}
+          />
         )}
         <button
           onClick={() => onToggleExpand(index)}
@@ -217,24 +299,14 @@ export default function TodoItem({
             onStartEdit={onStartEdit}
           />
         )}
-        {sessionName && !todo.done && (
-          <button
-            onClick={() => onOpenMovePicker(index)}
-            className={`text-sm text-text-muted hover:text-success transition-colors px-1 ${movePickerIndex === index ? 'text-success' : ''}`}
-            title="Move to another session"
-          >
-            <ExternalLink size={16} />
-          </button>
-        )}
-        {todo.done && (
-          <button
-            onClick={() => onDelete(index)}
-            className="text-sm text-danger/50 hover:text-danger transition-colors px-1"
-            title="Delete task"
-          >
-            <Trash2 size={16} />
-          </button>
-        )}
+        <TodoTrailingActions
+          index={index}
+          done={todo.done}
+          hasSession={Boolean(sessionName)}
+          isOverflowOpen={overflowIndex === index}
+          onToggleOverflow={onToggleOverflow}
+          onDelete={onDelete}
+        />
         <input
           type="checkbox"
           checked={todo.done}
@@ -243,11 +315,18 @@ export default function TodoItem({
           className="w-5 h-5 rounded bg-bg-surface border-input-border text-action focus:ring-action accent-action"
         />
       </div>
-      {movePickerIndex === index && (
-        <TodoMovePicker
+      {launchError && (
+        <div className="px-3 pb-2 text-xs text-danger" data-testid="todo-launch-error">
+          {launchError}
+        </div>
+      )}
+      {overflowIndex === index && (
+        <TodoOverflowMenu
           index={index}
           availableSessions={availableSessions}
-          movePickerRef={movePickerRef}
+          overflowRef={overflowRef}
+          onSendToTerminal={onSendToTerminal}
+          onDelete={onDelete}
           onMoveTodo={onMoveTodo}
         />
       )}

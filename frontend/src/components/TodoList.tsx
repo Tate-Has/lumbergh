@@ -1,10 +1,21 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { getApiBase } from '../config'
 import { usePrompts } from '../hooks/usePrompts'
 import { useLocalStorageDraft } from '../hooks/useLocalStorageDraft'
 import { expandPromptReferences } from '../utils/promptResolver'
 import PromptMentionInput from './PromptMentionInput'
 import TodoItem from './TodoItem'
+
+/** A spawn refusal names the stage it failed at and what to do about it; anything else
+ * is a plain server error. */
+function spawnFailureMessage(detail: unknown): string {
+  if (detail && typeof detail === 'object' && 'error' in detail) {
+    const d = detail as { error: string; help?: string }
+    return d.help ? `${d.error} — ${d.help}` : d.error
+  }
+  return typeof detail === 'string' ? detail : 'Failed to launch a worker'
+}
 
 interface Todo {
   text: string
@@ -25,6 +36,7 @@ export default function TodoList({
   onTodoSent,
   onSwitchToTerminal,
 }: TodoListProps) {
+  const navigate = useNavigate()
   const [todos, setTodos] = useState<Todo[]>([])
   const [newTodo, setNewTodo, clearNewTodoDraft] = useLocalStorageDraft(`todo:${sessionName}:new`)
   const [loading, setLoading] = useState(true)
@@ -35,12 +47,16 @@ export default function TodoList({
   const [editingText, setEditingText] = useState('')
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null)
   const [editingDescription, setEditingDescription] = useState('')
-  const [movePickerIndex, setMovePickerIndex] = useState<number | null>(null)
+  const [overflowIndex, setOverflowIndex] = useState<number | null>(null)
+  const [launchingIndex, setLaunchingIndex] = useState<number | null>(null)
+  const [launchFailure, setLaunchFailure] = useState<{ index: number; message: string } | null>(
+    null
+  )
   const [availableSessions, setAvailableSessions] = useState<
     { name: string; displayName?: string }[]
   >([])
   const [highlightIndex, setHighlightIndex] = useState<number | null>(null)
-  const movePickerRef = useRef<HTMLDivElement>(null)
+  const overflowRef = useRef<HTMLDivElement>(null)
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout>>(null)
   const descriptionSaveTimerRef = useRef<ReturnType<typeof setTimeout>>(null)
 
@@ -207,22 +223,22 @@ export default function TodoList({
 
   // Close move picker on click outside
   useEffect(() => {
-    if (movePickerIndex === null) return
+    if (overflowIndex === null) return
     const handleClickOutside = (e: MouseEvent) => {
-      if (movePickerRef.current && !movePickerRef.current.contains(e.target as Node)) {
-        setMovePickerIndex(null)
+      if (overflowRef.current && !overflowRef.current.contains(e.target as Node)) {
+        setOverflowIndex(null)
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [movePickerIndex])
+  }, [overflowIndex])
 
-  const handleOpenMovePicker = async (index: number) => {
-    if (movePickerIndex === index) {
-      setMovePickerIndex(null)
+  const handleToggleOverflow = async (index: number) => {
+    if (overflowIndex === index) {
+      setOverflowIndex(null)
       return
     }
-    setMovePickerIndex(index)
+    setOverflowIndex(index)
     try {
       const res = await fetch(`${getApiBase()}/sessions`)
       const data = await res.json()
@@ -244,7 +260,7 @@ export default function TodoList({
       })
       const data = await res.json()
       setTodos(data.source_todos || [])
-      setMovePickerIndex(null)
+      setOverflowIndex(null)
     } catch (err) {
       console.error('Failed to move todo:', err)
     }
@@ -279,6 +295,40 @@ export default function TodoList({
       onTodoSent?.(textToSend)
     } catch (err) {
       console.error('Failed to send to terminal:', err)
+    }
+  }
+
+  /** Hand this todo to a fresh worker in its own worktree, then go watch it.
+   *
+   * The wait is real — the backend holds the request until the new agent's input
+   * prompt exists and the brief has actually landed in it — so the row spins rather
+   * than pretending the click was instant.
+   */
+  const handleLaunchWorktree = async (index: number) => {
+    if (!sessionName || launchingIndex !== null) return
+    setLaunchingIndex(index)
+    setLaunchFailure(null)
+    try {
+      const res = await fetch(`${getApiBase()}/sessions/${sessionName}/todos/${index}/spawn`, {
+        method: 'POST',
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(spawnFailureMessage(data.detail))
+      }
+      const updated = todos.map((t, i) => (i === index ? { ...t, done: true } : t))
+      const reordered = [...updated.filter((t) => !t.done), ...updated.filter((t) => t.done)]
+      if (expandedIndex === index) setExpandedIndex(null)
+      setTodos(reordered)
+      saveTodos(reordered)
+      navigate(`/session/${data.session}`)
+    } catch (err) {
+      setLaunchFailure({
+        index,
+        message: err instanceof Error ? err.message : 'Failed to launch a worker',
+      })
+    } finally {
+      setLaunchingIndex(null)
     }
   }
 
@@ -361,9 +411,9 @@ export default function TodoList({
                     isDragging={dragIndex === index}
                     isDragOver={dragOverIndex === index && dragIndex !== index}
                     isHighlighted={highlightIndex === index}
-                    movePickerIndex={movePickerIndex}
+                    overflowIndex={overflowIndex}
                     availableSessions={availableSessions}
-                    movePickerRef={movePickerRef}
+                    overflowRef={overflowRef}
                     onToggle={handleToggle}
                     onStartEdit={handleStartEdit}
                     onSaveEdit={handleSaveEdit}
@@ -375,7 +425,10 @@ export default function TodoList({
                     onDescriptionKeyDown={handleDescriptionKeyDown}
                     onSendToTerminal={handleSendToTerminal}
                     onDelete={handleDelete}
-                    onOpenMovePicker={handleOpenMovePicker}
+                    onToggleOverflow={handleToggleOverflow}
+                    onLaunchWorktree={handleLaunchWorktree}
+                    isLaunching={launchingIndex === index}
+                    launchError={launchFailure?.index === index ? launchFailure.message : null}
                     onMoveTodo={handleMoveTodo}
                     onDragStart={handleDragStart}
                     onDragOver={handleDragOver}

@@ -57,3 +57,25 @@ def todo_is_done(page: Page, base_url: str, text: str):
         matching = [t for t in todos if text in t.get("text", "")]
         assert matching, f"Todo '{text}' not found"
         assert matching[0]["done"], f"Todo '{text}' is not done: {matching[0]}"
+
+
+def _todo_row(page: Page, text: str):
+    return page.locator('[data-testid="todo-item"]').filter(has_text=text).first
+
+
+@then(parsers.parse('the todo "{text}" should offer a one-click worktree launch'))
+def sees_worktree_launch(page: Page, text: str):
+    row = _todo_row(page, text)
+    expect(row.locator('[data-testid="todo-launch-worktree"]')).to_be_visible(timeout=5000)
+
+
+@then(
+    parsers.parse(
+        'the send-and-enter action for "{text}" should live behind its overflow menu'
+    )
+)
+def send_enter_is_behind_overflow(page: Page, text: str):
+    row = _todo_row(page, text)
+    expect(row.locator('[data-testid="todo-send-enter"]')).to_have_count(0)
+    row.locator('[data-testid="todo-overflow"]').click()
+    expect(row.locator('[data-testid="todo-send-enter"]')).to_be_visible(timeout=5000)

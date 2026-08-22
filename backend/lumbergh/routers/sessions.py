@@ -22,7 +22,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from tinydb import Query
 
-from lumbergh import session_attention, worktrees
+from lumbergh import session_attention, todo_spawn, worktrees
 from lumbergh.bill_nudge import BILL_SESSION
 from lumbergh.constants import IGNORE_DIRS, REPO_SEARCH_SKIP_DIRS, SCRATCH_DIR, TMUX_CMD
 from lumbergh.db_utils import (
@@ -2034,6 +2034,28 @@ async def save_session_todos(name: str, todo_list: TodoList):
         return {"todos": todos}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{name}/todos/{index}/spawn")
+def launch_session_todo(name: str, index: int):
+    """Hand one todo to a fresh worker in its own worktree.
+
+    Sync on purpose: the spawn waits for the new agent's input prompt before typing the
+    brief into it (see ``spawn_delivery``), which is seconds of blocking that must not
+    happen on the event loop. FastAPI gives a sync endpoint its own thread.
+    """
+    from lumbergh.routers.bill import spawn as bill_spawn
+
+    workdir = get_session_workdir(name)
+    todos = get_single_document_items(get_project_db(workdir).table("todos"))
+    if index < 0 or index >= len(todos):
+        raise HTTPException(status_code=400, detail="Invalid todo index")
+
+    meta = get_stored_sessions().get(name) or {"workdir": str(workdir)}
+    taken = set(get_live_sessions()) | {
+        str(e["branch"]) for e in worktrees.all_entries() if e.get("branch")
+    }
+    return todo_spawn.launch(meta, todos[index], taken=taken, spawn=bill_spawn)
 
 
 @router.post("/{name}/todos/move")
