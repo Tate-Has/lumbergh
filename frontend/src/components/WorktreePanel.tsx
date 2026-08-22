@@ -5,9 +5,11 @@ import { useApiClient } from '../hooks/useApiClient'
 interface WorktreeRow {
   path: string
   repo: string
+  parent_repo: string | null
   branch: string
   session: string | null
   agent: string | null
+  task_intent: string | null
   state: 'active' | 'orphan'
 }
 
@@ -98,24 +100,42 @@ export default function WorktreePanel() {
           {worktrees.map((w) => (
             <div
               key={w.path}
-              className="flex items-center justify-between gap-2 p-2 bg-bg-surface rounded text-sm"
+              className="flex items-start justify-between gap-2 p-2 bg-bg-surface rounded text-sm"
               data-testid={`worktree-row-${w.path}`}
             >
-              <div className="flex items-center gap-2 min-w-0">
-                <GitBranch size={14} className="text-text-tertiary flex-shrink-0" />
-                <span className="truncate text-text-secondary" title={w.path}>
-                  {w.branch}
-                </span>
-                {w.state === 'orphan' && (
-                  <span
-                    data-testid="orphan-badge"
-                    className="flex-shrink-0 rounded bg-warning/20 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-warning"
-                  >
-                    Orphan
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <GitBranch size={14} className="text-text-tertiary flex-shrink-0" />
+                  <span className="truncate text-text-secondary" title={w.path}>
+                    {w.branch}
                   </span>
-                )}
-                {w.session && (
-                  <span className="truncate text-xs text-text-muted">→ {w.session}</span>
+                  <span
+                    data-testid="worktree-repo"
+                    className="flex-shrink-0 text-xs text-text-muted"
+                    title={w.parent_repo || undefined}
+                  >
+                    from {w.repo}
+                  </span>
+                  {w.state === 'orphan' && (
+                    <span
+                      data-testid="orphan-badge"
+                      className="flex-shrink-0 rounded bg-warning/20 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-warning"
+                    >
+                      Orphan
+                    </span>
+                  )}
+                  {w.session && (
+                    <span className="truncate text-xs text-text-muted">→ {w.session}</span>
+                  )}
+                </div>
+                {w.task_intent && (
+                  <div
+                    data-testid="worktree-intent"
+                    className="mt-0.5 truncate pl-[22px] text-xs text-text-muted"
+                    title={w.task_intent}
+                  >
+                    {w.task_intent}
+                  </div>
                 )}
               </div>
               <button

@@ -510,6 +510,34 @@ def test_reconcile_active_orphan_and_stale_prune(tmp_path, monkeypatch):
     assert by_branch_no_provider["active"]["agent"] == DEFAULT_PROVIDER
 
 
+def test_reconcile_carries_the_repo_and_intent_a_worktree_came_from(tmp_path, monkeypatch):
+    monkeypatch.setenv("LUMBERGH_DATA_DIR", str(tmp_path / "cfg"))
+    import importlib
+
+    from lumbergh import constants, db_utils
+
+    importlib.reload(constants)
+    importlib.reload(db_utils)
+    importlib.reload(worktrees)
+
+    repo = _init_repo(tmp_path / "app")
+    orphan = tmp_path / "app-worktrees" / "orphan"
+    _git(repo, "worktree", "add", "-q", "-b", "orphan", str(orphan))
+    worktrees.record_worktree(
+        orphan,
+        repo,
+        "orphan",
+        "2026-07-28T00:00:00Z",
+        task_intent="teach the reaper to name its victims",
+    )
+
+    (row,) = worktrees.reconcile(repo, {})
+
+    assert row["repo"] == "app"
+    assert row["parent_repo"] == str(repo.resolve())
+    assert row["task_intent"] == "teach the reaper to name its victims"
+
+
 def test_count_unpushed_commits_scoped_to_worktree_head(tmp_path):
     from lumbergh.git_utils import count_unpushed_commits
 

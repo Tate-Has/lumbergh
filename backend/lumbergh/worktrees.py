@@ -450,9 +450,14 @@ def reconcile(repo: Path, live_sessions: dict[str, dict]) -> list[dict]:
             {
                 "path": key,
                 "repo": repo.name,
+                # The full path too: a leaf name is ambiguous across checkouts of the
+                # same project, and an orphan's whole problem is that nothing else on
+                # its row says where it came from.
+                "parent_repo": _key(repo),
                 "branch": wt.branch or entry.get("branch"),
                 "session": session,
                 "agent": agent,
+                "task_intent": entry.get("task_intent"),
                 "state": "active" if session else "orphan",
             }
         )
