@@ -19,7 +19,7 @@ from lumbergh.constants import CONFIG_DIR, PROJECTS_DIR, SESSIONS_DATA_DIR
 
 logger = logging.getLogger(__name__)
 
-# Per-session-file locks.  Multiple writers (idle_monitor, session_summary,
+# Per-session-file locks.  Multiple writers (idle_monitor,
 # todos/scratchpad routes) share one TinyDB JSON file per session and can
 # corrupt it via interleaved writes.  Any caller that mutates a session
 # data DB should hold ``session_data_lock(name)`` for its read-modify-write.

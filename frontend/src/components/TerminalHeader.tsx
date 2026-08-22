@@ -6,7 +6,6 @@ import {
   Plus,
   MoreHorizontal,
   Eraser,
-  Brain,
   ExternalLink,
   RefreshCw,
   MessageSquare,
@@ -35,8 +34,6 @@ interface Props {
   onReset?: () => void
   onCycleSession?: (direction: 'next' | 'prev') => void
   showSessionDots?: boolean
-  showSummary?: boolean
-  onShowSummary?: () => void
   view: 'term' | 'conv'
   onToggleView: () => void
   scale: number
@@ -59,8 +56,6 @@ export default function TerminalHeader({
   onReset,
   onCycleSession,
   showSessionDots = true,
-  showSummary = false,
-  onShowSummary,
   view,
   onToggleView,
   scale,
@@ -134,11 +129,9 @@ export default function TerminalHeader({
           isConnected={isConnected}
           isTouchDevice={isTouchDevice}
           headerExpanded={headerExpanded}
-          showSummary={showSummary}
           onSendRaw={onSendRaw}
           onSendViaApi={onSendViaApi}
           onHeaderExpandedChange={onHeaderExpandedChange}
-          onShowSummary={onShowSummary}
           view={view}
           onToggleView={onToggleView}
         />
@@ -169,11 +162,9 @@ function QuickActions({
   isConnected,
   isTouchDevice,
   headerExpanded,
-  showSummary,
   onSendRaw,
   onSendViaApi,
   onHeaderExpandedChange,
-  onShowSummary,
   view,
   onToggleView,
 }: {
@@ -181,11 +172,9 @@ function QuickActions({
   isConnected: boolean
   isTouchDevice: boolean
   headerExpanded: boolean
-  showSummary?: boolean
   onSendRaw: (data: string) => void
   onSendViaApi: (text: string) => void
   onHeaderExpandedChange: (expanded: boolean) => void
-  onShowSummary?: () => void
   view: 'term' | 'conv'
   onToggleView: () => void
 }) {
@@ -213,15 +202,6 @@ function QuickActions({
           title="Pop out terminal to new window"
         >
           <ExternalLink size={14} />
-        </button>
-      )}
-      {onShowSummary && !showSummary && (
-        <button
-          onClick={onShowSummary}
-          className="w-8 h-8 rounded-[var(--radius-md)] bg-control-bg hover:bg-control-bg-hover flex items-center justify-center text-text-tertiary hover:text-text-primary transition-colors cursor-pointer"
-          title="What happened? (AI summary)"
-        >
-          <Brain size={14} className="text-purple" />
         </button>
       )}
       <Button

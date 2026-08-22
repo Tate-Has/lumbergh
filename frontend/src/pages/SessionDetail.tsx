@@ -11,14 +11,12 @@ import Scratchpad from '../components/Scratchpad'
 import PromptTemplates from '../components/PromptTemplates'
 import SharedFiles from '../components/SharedFiles'
 import TelemetryOptIn from '../components/TelemetryOptIn'
-import SessionSummaryOverlay from '../components/SessionSummaryBanner'
 import CreateSessionModal from '../components/CreateSessionModal'
 import { spawnParentRepo } from '../utils/spawnFrom'
 import { parseDiffPayload } from '../utils/diffPayload'
 import { errorDetail } from '../utils/apiError'
 import ErrorBoundary from '../components/ErrorBoundary'
 import ScratchPromoteBanner from '../components/ScratchPromoteBanner'
-import { isSummaryDismissed, dismissSummary, enableSummary } from '../hooks/useSessionSummary'
 import GitTab from '../components/graph/GitTab'
 import SessionNavigatorDots from '../components/SessionNavigatorDots'
 import { useIsDesktop } from '../hooks/useMediaQuery'
@@ -120,7 +118,6 @@ export default function SessionDetail() {
     useState<TabVisibility>(DEFAULT_TAB_VISIBILITY)
   const [sessionTabVisibility, setSessionTabVisibility] = useState<TabVisibility | null>(null)
   const [showTabSettings, setShowTabSettings] = useState(false)
-  const [showSummary, setShowSummary] = useState(false)
   const [isScratch, setIsScratch] = useState(false)
   const [sessionRepo, setSessionRepo] = useState('')
   const [spawnFromRepo, setSpawnFromRepo] = useState<string | null>(null)
@@ -151,7 +148,7 @@ export default function SessionDetail() {
       .catch(() => {})
   }, [])
 
-  // Fetch session metadata for per-session tab visibility + summary auto-show
+  // Fetch session metadata for per-session tab visibility
   useEffect(() => {
     if (!name) return
     fetch(`${getApiBase()}/sessions`)
@@ -162,15 +159,6 @@ export default function SessionDetail() {
           setSessionTabVisibility(session.tabVisibility || null)
           setIsScratch(session.type === 'scratch')
           setSessionRepo(spawnParentRepo(session))
-          // Auto-show summary if: not dismissed, active session, untouched for 30+ min
-          if (!isSummaryDismissed() && session.alive && !session.paused) {
-            const STALE_MINUTES = 30
-            const lastUsed = session.lastUsedAt ? new Date(session.lastUsedAt).getTime() : 0
-            const minutesSinceTouch = (Date.now() - lastUsed) / 60_000
-            if (minutesSinceTouch >= STALE_MINUTES) {
-              setShowSummary(true)
-            }
-          }
         }
       })
       .catch(() => {})
@@ -270,20 +258,6 @@ export default function SessionDetail() {
     } catch (err) {
       console.error('Failed to save session dots setting:', err)
     }
-  }, [])
-
-  const handleDismissSummary = useCallback(() => {
-    dismissSummary()
-    setShowSummary(false)
-  }, [])
-
-  const handleTempHideSummary = useCallback(() => {
-    setShowSummary(false)
-  }, [])
-
-  const handleShowSummary = useCallback(() => {
-    enableSummary()
-    setShowSummary(true)
   }, [])
 
   const handleFocusReady = useCallback((fn: () => void) => {
@@ -531,8 +505,6 @@ export default function SessionDetail() {
             (isDesktop || mobileTab === 'terminal') &&
             (focus !== 'panel' || isTerminalOnly)
           }
-          showSummary={showSummary}
-          onShowSummary={handleShowSummary}
           collapseHeader={focus === 'main'}
           view={view}
           onToggleView={toggleView}
@@ -559,13 +531,6 @@ export default function SessionDetail() {
           initialParentRepo={sessionRepo}
           onClose={() => setForkFrom(null)}
           onCreated={() => setForkFrom(null)}
-        />
-      )}
-      {showSummary && name && (
-        <SessionSummaryOverlay
-          sessionName={name}
-          onDismiss={handleDismissSummary}
-          onTempHide={handleTempHideSummary}
         />
       )}
     </div>

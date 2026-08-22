@@ -53,8 +53,6 @@ interface TerminalProps {
   onCycleSession?: (direction: 'next' | 'prev') => void
   showSessionDots?: boolean
   isVisible?: boolean
-  showSummary?: boolean
-  onShowSummary?: () => void
   hideHeader?: boolean
   collapseHeader?: boolean
   view?: 'term' | 'conv'
@@ -75,8 +73,6 @@ export default memo(function Terminal({
   onCycleSession,
   showSessionDots = true,
   isVisible = true,
-  showSummary = false,
-  onShowSummary,
   hideHeader = false,
   collapseHeader = false,
   view = 'term',
@@ -1052,10 +1048,8 @@ export default memo(function Terminal({
           onReset={onReset}
           onCycleSession={onCycleSession}
           showSessionDots={showSessionDots}
-          showSummary={showSummary}
           view={view}
           onToggleView={onToggleView}
-          onShowSummary={onShowSummary}
           scale={scale}
           onScaleChange={onScaleChange}
         />
