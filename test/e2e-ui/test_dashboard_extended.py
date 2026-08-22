@@ -14,19 +14,35 @@ scenarios("features/dashboard_extended.feature")
 # that needed them failed at collection.
 
 
+def _is_test_owned(name: str) -> bool:
+    """Whether this suite created the session, and may therefore delete it.
+
+    Everything the UI suite makes is either `e2e-`-prefixed or the literal `bill`
+    fixture. Anything else belongs to whoever owns the machine.
+    """
+    return name.startswith("e2e-") or name == "bill"
+
+
 @given("all test sessions are cleaned up")
 def cleanup_all_sessions(base_url: str, _ensure_test_session):
-    """Delete all sessions so the dashboard shows the empty state.
+    """Delete this suite's own sessions so the dashboard shows the empty state.
 
     The _ensure_test_session fixture is included so it runs first and the
-    session-scoped setup/teardown still works.  We delete everything here;
-    the session-scoped finalizer on _ensure_test_session will recreate the
-    test session at the end of the test run.
+    session-scoped setup/teardown still works; its finalizer recreates the test
+    session at the end of the run.
+
+    Deletes only test-owned names. It used to delete every session the API
+    returned, which on a real machine meant `tmux kill-session` on each of the
+    developer's own sessions — and once the last one goes, so does the tmux
+    server. `test/conftest.py` now refuses to run this suite outside a sandbox,
+    and this filter is the second line of defence if that guard is ever bypassed.
+    On a clean VM only test-owned sessions exist, so the empty state still shows.
     """
     with httpx.Client(base_url=base_url, timeout=30.0) as client:
         r = client.get("/api/sessions")
         for session in r.json().get("sessions", []):
-            client.delete(f"/api/sessions/{session['name']}")
+            if _is_test_owned(session["name"]):
+                client.delete(f"/api/sessions/{session['name']}")
 
 
 @then("I should see the empty state message")

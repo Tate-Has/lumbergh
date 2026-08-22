@@ -99,8 +99,12 @@ Run `./lint.sh` before finishing any task. It auto-fixes what it can (ruff forma
 
 - **Red-green-refactor**: When fixing a bug, write a failing test first that reproduces it, verify it fails, then fix the code and verify the test passes.
 - Backend unit tests: `cd backend && uv run pytest`
-- E2E tests: `./test/e2e-vm.sh` (spins up QEMU VM, runs all E2E + UI tests)
-- Run E2E locally against running server: `cd test/e2e && pytest`
+- E2E tests: `./test/e2e-vm.sh` (spins up QEMU VM, runs all E2E + UI tests). This is
+  the only supported way to run them. The suites delete every session they own on the
+  target, and `DELETE /api/sessions/{name}` runs `tmux kill-session` — pointed at your
+  own machine they take out your tmux sessions and then the tmux server. `test/conftest.py`
+  refuses to run outside the VM; do not work around it by setting `LUMBERGH_E2E_SANDBOX=1`
+  and aiming at localhost:8420.
 
 ## Logs
 

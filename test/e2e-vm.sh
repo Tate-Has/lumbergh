@@ -299,6 +299,12 @@ echo "=== Phase 5: E2E Tests ==="
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# The suites delete sessions on whatever they are pointed at, and deleting a
+# session kills its tmux session. Only a throwaway target may be aimed at, so
+# test/conftest.py refuses to run without this. Everything below talks to the
+# VM on $HOST_PORT, which is that throwaway target.
+export LUMBERGH_E2E_SANDBOX=1
+
 # Run pytest against the VM (|| true to capture exit code under set -e)
 E2E_EXIT=0
 uv run --with httpx --with pytest \

@@ -9,8 +9,11 @@ from pytest_bdd import given, parsers, then, when
 def pytest_addoption(parser):
     parser.addoption(
         "--base-url",
-        default="http://localhost:8420",
-        help="Base URL for the Lumbergh UI",
+        # The QEMU VM from ./test/e2e-vm.sh, matching the API suite's default.
+        # Never default to 8420: that is the developer's own server, and this
+        # suite deletes sessions on whatever it is pointed at.
+        default="http://localhost:18420",
+        help="Base URL for the Lumbergh UI (must be a disposable target)",
     )
     parser.addoption(
         "--repo-dir",
