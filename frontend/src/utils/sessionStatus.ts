@@ -10,6 +10,8 @@ export interface SessionBase {
   theOne?: boolean
   role?: 'bill' | 'worker' | 'session'
   parent?: string | null
+  workdir?: string | null
+  worktreeParentRepo?: string | null
 }
 
 /** Whether a session has an unhandled action for the user: it is stuck

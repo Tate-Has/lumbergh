@@ -57,9 +57,24 @@ describe('orderSessionsForNavigator', () => {
     expect(groups.rest.map((s) => s.name)).toEqual(['docs'])
   })
 
+  it('adopts a worker whose recorded parent died into the session on its repo', () => {
+    const ordered = orderSessionsForNavigator([
+      session('mom_work'),
+      session('lumbergh', { workdir: '/src/lumbergh' }),
+      session('badge-fix', {
+        role: 'worker',
+        parent: 'zen-verify-htop',
+        worktreeParentRepo: '/src/lumbergh',
+      }),
+      session('aio'),
+    ])
+
+    expect(ordered.map((s) => s.name)).toEqual(['aio', 'lumbergh', 'badge-fix', 'mom_work'])
+  })
+
   it('promotes an orphan worker to a top-level session', () => {
     const ordered = orderSessionsForNavigator([
-      session('stray', { role: 'worker', parent: 'gone' }),
+      session('stray', { role: 'worker', parent: 'gone', worktreeParentRepo: '/src/vanished' }),
       session('api'),
     ])
 
