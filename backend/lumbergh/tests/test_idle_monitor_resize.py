@@ -28,21 +28,47 @@ async def _noop(*_a, **_k):
     return None
 
 
-async def test_a_resize_does_not_report_the_agent_as_working(monkeypatch):
-    """The classifier will call it working; the reshape says why, so we do not."""
+async def test_a_pane_resized_every_poll_still_tracks_state(monkeypatch):
+    """A reshape re-baselines the picture; it must never stop judging it.
+
+    Skipping the pass outright let a session whose pane kept changing shape sit
+    frozen on whatever it last was — "constantly working" for an agent that had
+    long since stopped.
+    """
+    sizes = iter(["107x60", "80x60", "100x60", "90x60", "70x60"])
     monitor = _monitor_seeing(monkeypatch, "107x60")
-    monkeypatch.setattr(monitor, "_classify_burst", lambda *_a, **_k: SessionState.IDLE)
+    monkeypatch.setattr(im, "capture_pane_geometry", lambda _name: next(sizes))
     monkeypatch.setattr(im.session_attention, "mark_attention", lambda *_a: None)
     monkeypatch.setattr(im.session_attention, "clear_unseen", lambda _n: None)
-    await monitor._check_session("s")
-    assert monitor.get_state("s") is SessionState.IDLE
-
-    # The viewer attaches: narrower pane, agent redraws, content churns.
-    monkeypatch.setattr(im, "capture_pane_geometry", lambda _name: "80x60")
     monkeypatch.setattr(monitor, "_classify_burst", lambda *_a, **_k: SessionState.WORKING)
     await monitor._check_session("s")
 
-    assert monitor.get_state("s") is SessionState.IDLE, "a repaint is not work"
+    monkeypatch.setattr(monitor, "_classify_burst", lambda *_a, **_k: SessionState.IDLE)
+    await monitor._check_session("s")
+    await monitor._check_session("s")
+
+    assert monitor.get_state("s") is SessionState.IDLE
+
+
+async def test_a_reflow_is_not_counted_as_a_change(monkeypatch):
+    """The real classifier, not a stub: same text at a new width, still idle."""
+    monitor = _monitor_seeing(monkeypatch, "107x60", frames=("hello world",))
+    monkeypatch.setattr(im.session_attention, "mark_attention", lambda *_a: None)
+    monkeypatch.setattr(im.session_attention, "clear_unseen", lambda _n: None)
+    await monitor._check_session("s")
+    monitor._last_change["s"] = 0.0  # long quiet, so stability means idle
+
+    # Narrower pane: the agent redraws and the text comes back rewrapped.
+    monkeypatch.setattr(im, "capture_pane_geometry", lambda _name: "80x60")
+
+    async def rewrapped(_name):
+        return ["hello\nworld"]
+
+    monkeypatch.setattr(monitor, "_burst_capture", rewrapped)
+    await monitor._check_session("s")
+
+    assert monitor.get_state("s") is SessionState.IDLE
+    assert monitor._fingerprints["s"] == im.IdleMonitor._fingerprint("hello\nworld")
 
 
 async def test_a_resize_does_not_flag_done_while_you_were_away(monkeypatch):

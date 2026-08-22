@@ -601,13 +601,13 @@ class IdleMonitor:
 
         if self._reshaped(session_name, geometry):
             # The pane changed shape — a viewer attached, a phone rotated — and the
-            # agent redrew itself to fit. Every byte of that is our doing, so take
-            # the new picture as the baseline and let the next pass judge it.
+            # agent redrew itself to fit. Take the new picture as the baseline so the
+            # repaint is not read as the agent doing something. Judging continues:
+            # skipping the pass entirely lets a pane that keeps being resized freeze
+            # its state at whatever it last was.
             logger.debug("Session %s pane reshaped to %s; re-baselining", session_name, geometry)
             self._fingerprints[session_name] = self._fingerprint(captures[-1])
-            self._last_change[session_name] = time.time()
             self._reshaped_at[session_name] = time.time()
-            return
 
         state = self._classify_burst(session_name, captures, time.time(), osc_title)
 
