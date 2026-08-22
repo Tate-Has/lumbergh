@@ -29,12 +29,39 @@ def reset() -> None:
     _unseen.clear()
 
 
+def _session_of(target: str) -> str:
+    """The session a target belongs to: `batch:1187` is work inside `batch`."""
+    return target.split(":", 1)[0]
+
+
+def clear_session(name: str) -> None:
+    """Mark a session seen, windows included.
+
+    Work inside a batch session is flagged per window (`batch:1187`), but there is
+    only one thing to open — the session. Clearing just the bare name left those
+    window flags standing for good.
+    """
+    for target in [t for t in _unseen if _session_of(t) == name]:
+        _unseen.pop(target, None)
+
+
 def set_viewing(name: str, viewing: bool) -> None:
     if viewing:
         _viewing.add(name)
-        _unseen.pop(name, None)
+        clear_session(name)
     else:
         _viewing.discard(name)
+
+
+def forget_missing(live_sessions: set[str]) -> None:
+    """Drop flags for sessions that no longer exist.
+
+    Nothing ever removed these, so every finished batch left its windows behind:
+    a "while you were away" that no click could ever answer, because the session
+    it pointed at was long gone.
+    """
+    for target in [t for t in _unseen if _session_of(t) not in live_sessions]:
+        _unseen.pop(target, None)
 
 
 def mark_attention(name: str, state: str) -> None:

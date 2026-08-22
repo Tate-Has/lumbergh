@@ -593,6 +593,8 @@ async def list_sessions():
     _reap_dead_worktree_sessions()
     live = get_live_sessions()
     stored = get_stored_sessions()
+    # Sessions come and go; their attention flags used to stay behind forever.
+    session_attention.forget_missing(set(live))
 
     sessions = []
     seen_names = set()
@@ -685,6 +687,11 @@ async def touch_session(name: str):
 
     record["lastUsedAt"] = datetime.now(UTC).isoformat()
     sessions_table.upsert(record, session_q.name == name)
+
+    # Opening a session is seeing it. The terminal socket says the same thing for
+    # a live session, but a dead one has no socket — and its "done while you were
+    # away" would otherwise stand forever.
+    session_attention.clear_session(name)
 
     return {"ok": True}
 
