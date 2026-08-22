@@ -1132,6 +1132,55 @@ def delete_branch(
     return {"status": "success", "message": message}
 
 
+def list_remote_tags(cwd: Path, remote: str = "origin") -> list[str]:
+    """The tags ``remote`` has, newest-first as git reports them.
+
+    Git keeps no local record of which tags it pushed — ``refs/tags`` is one flat
+    namespace — so the only way to know whether deleting a tag affects anyone else
+    is to ask the remote. Callers should cache this: it is a network round trip.
+    Returns an empty list for a repo with no such remote rather than raising.
+    """
+    try:
+        repo = get_repo(cwd)
+    except InvalidGitRepositoryError:
+        return []
+    if remote not in [r.name for r in repo.remotes]:
+        return []
+    try:
+        output = repo.git.ls_remote("--tags", "--refs", remote)
+    except GitCommandError:
+        return []
+    tags = []
+    for line in output.splitlines():
+        _, _, ref = line.partition("\t")
+        if ref.startswith("refs/tags/"):
+            tags.append(ref[len("refs/tags/") :])
+    return tags
+
+
+def delete_tag(cwd: Path, tag: str, delete_remote: bool = False) -> dict:
+    """Delete a tag locally, and on origin when ``delete_remote`` is set."""
+    try:
+        repo = get_repo(cwd)
+    except InvalidGitRepositoryError:
+        return {"error": "Not a git repository"}
+
+    try:
+        repo.git.tag("-d", tag)
+    except GitCommandError as e:
+        return {"error": f"Failed to delete tag: {e}"}
+    message = f"Deleted tag '{tag}'"
+
+    if delete_remote:
+        try:
+            repo.git.push("origin", "--delete", f"refs/tags/{tag}")
+        except GitCommandError as e:
+            return {"status": "partial", "message": f"{message}, but remote delete failed: {e}"}
+        message += " on origin too"
+
+    return {"status": "success", "message": message}
+
+
 def reset_to_head(cwd: Path) -> dict:
     """
     Reset all changes to HEAD (discard all uncommitted changes).

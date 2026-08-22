@@ -5,6 +5,7 @@ import type { GraphData, GraphWorktree } from '../diff/types'
 import GraphToolbar from './GraphToolbar'
 import { applyGraphResponse } from './graphSync'
 import { buildBranchMenuItems } from './branchMenu'
+import { buildTagMenuItems } from './tagMenu'
 import type { MenuBranchInfo } from './branchMenu'
 import { confirmHardReset, resetMenuEntries } from './resetMenu'
 import type { ResetMode } from './resetMenu'
@@ -53,12 +54,64 @@ function WorktreeBadge({
   )
 }
 
-function TagBadge({ name }: { name: string }) {
+function TagBadge({
+  name,
+  isMenuOpen,
+  onToggleMenu,
+}: {
+  name: string
+  isMenuOpen: boolean
+  onToggleMenu: (name: string | null, rect: DOMRect) => void
+}) {
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-1 text-base rounded font-medium leading-none max-w-full bg-slate-700/30 text-slate-400 ring-1 ring-slate-600/40">
+    <button
+      type="button"
+      title={`Tag ${name}`}
+      onClick={(e) => {
+        e.stopPropagation()
+        onToggleMenu(isMenuOpen ? null : name, e.currentTarget.getBoundingClientRect())
+      }}
+      className={`inline-flex items-center gap-1 px-2 py-1 text-base rounded font-medium leading-none max-w-full ring-1 ring-slate-600/40 text-slate-400 hover:bg-slate-700/50 ${
+        isMenuOpen ? 'bg-slate-700/60' : 'bg-slate-700/30'
+      }`}
+    >
       <Tag size={12} className="opacity-70 shrink-0" />
       <span className="truncate">{name}</span>
-    </span>
+    </button>
+  )
+}
+
+function TagContextMenu({
+  menuTag,
+  tagMenuRef,
+  remoteTags,
+  onDelete,
+}: {
+  menuTag: { name: string; x: number; y: number } | null
+  tagMenuRef: React.RefObject<HTMLDivElement | null>
+  remoteTags: Set<string> | null
+  onDelete: (deleteRemote: boolean) => void
+}) {
+  if (!menuTag) return null
+  return (
+    <div
+      ref={tagMenuRef}
+      className="absolute z-50 w-56 py-1 bg-bg-surface border border-border-default rounded-[var(--radius-xl)] shadow-xl"
+      style={{ left: menuTag.x, top: menuTag.y + 4 }}
+    >
+      <div className="px-3 py-1.5 text-xs text-text-muted border-b border-border-default truncate">
+        <span className="font-mono font-medium text-text-secondary">{menuTag.name}</span>
+      </div>
+      {buildTagMenuItems(menuTag.name, remoteTags, onDelete).map((item) => (
+        <button
+          key={item.key}
+          onClick={item.onClick}
+          className="w-full text-left px-3 py-1.5 text-sm text-danger hover:bg-danger/10 hover:text-danger/80"
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
   )
 }
 
@@ -635,6 +688,8 @@ export default function GitGraph({
     x: number
     y: number
   } | null>(null)
+  const [menuTag, setMenuTag] = useState<{ name: string; x: number; y: number } | null>(null)
+  const [remoteTags, setRemoteTags] = useState<Set<string> | null>(null)
   const [deleteBranchConfirm, setDeleteBranchConfirm] = useState<{
     name: string
     local: boolean
@@ -646,6 +701,7 @@ export default function GitGraph({
   const menuRef = useRef<HTMLDivElement>(null)
   const branchMenuRef = useRef<HTMLDivElement>(null)
   const stashMenuRef = useRef<HTMLDivElement>(null)
+  const tagMenuRef = useRef<HTMLDivElement>(null)
   const didAutoSelect = useRef(false)
   const didAutoScroll = useRef(false)
   const onSelectCommitRef = useRef(onSelectCommit)
@@ -789,10 +845,12 @@ export default function GitGraph({
   const closeCommitMenu = useCallback(() => setMenuCommit(null), [])
   const closeBranchMenu = useCallback(() => setMenuBranch(null), [])
   const closeStashMenu = useCallback(() => setMenuStash(null), [])
+  const closeTagMenu = useCallback(() => setMenuTag(null), [])
 
   useClickOutside(menuRef, !!menuCommit, closeCommitMenu)
   useClickOutside(branchMenuRef, !!menuBranch, closeBranchMenu)
   useClickOutside(stashMenuRef, !!menuStash, closeStashMenu)
+  useClickOutside(tagMenuRef, !!menuTag, closeTagMenu)
 
   const afterAction = useCallback(() => {
     setMenuCommit(null)
@@ -964,6 +1022,36 @@ export default function GitGraph({
       afterAction()
     }
   }, [sessionName, menuStash, afterAction, gitAction])
+
+  /** Ask origin which tags it has — one network round trip, on demand, kept for
+   * the rest of the session unless a delete changes the answer. */
+  const ensureRemoteTags = useCallback(async () => {
+    if (!sessionName || remoteTags) return
+    try {
+      const res = await fetch(`${getApiBase()}/sessions/${sessionName}/git/remote-tags`)
+      if (!res.ok) return
+      const data = await res.json()
+      setRemoteTags(new Set<string>(data.tags ?? []))
+    } catch {
+      // No origin, no network, no problem: the menu just offers the local delete.
+    }
+  }, [sessionName, remoteTags])
+
+  const handleDeleteTag = useCallback(
+    async (deleteRemote: boolean) => {
+      if (!sessionName || !menuTag) return
+      const ok = await gitAction(`${getApiBase()}/sessions/${sessionName}/git/delete-tag`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tag: menuTag.name, delete_remote: deleteRemote }),
+      })
+      if (!ok) return
+      if (deleteRemote) setRemoteTags(null)
+      setMenuTag(null)
+      afterAction()
+    },
+    [sessionName, menuTag, afterAction, gitAction]
+  )
 
   const handleStashDrop = useCallback(async () => {
     if (!sessionName || !menuStash) return
@@ -1363,7 +1451,30 @@ export default function GitGraph({
 
                 const renderBadge = (ref: RefInfo) =>
                   ref.tag ? (
-                    <TagBadge key={ref.name} name={ref.name} />
+                    <TagBadge
+                      key={ref.name}
+                      name={ref.name}
+                      isMenuOpen={menuTag?.name === ref.name}
+                      onToggleMenu={(tagName, rect) => {
+                        if (!tagName) {
+                          setMenuTag(null)
+                          return
+                        }
+                        const containerRect = containerRef.current?.getBoundingClientRect()
+                        setMenuTag({
+                          name: tagName,
+                          x: rect.left - (containerRect?.left ?? 0),
+                          y:
+                            rect.bottom -
+                            (containerRect?.top ?? 0) +
+                            (containerRef.current?.scrollTop ?? 0),
+                        })
+                        setMenuCommit(null)
+                        setMenuBranch(null)
+                        setMenuStash(null)
+                        ensureRemoteTags()
+                      }}
+                    />
                   ) : (
                     <RefBadge
                       key={ref.name}
@@ -1642,6 +1753,13 @@ export default function GitGraph({
               stashMenuRef={stashMenuRef}
               handleStashPop={handleStashPop}
               handleStashDrop={handleStashDrop}
+            />
+
+            <TagContextMenu
+              menuTag={menuTag}
+              tagMenuRef={tagMenuRef}
+              remoteTags={remoteTags}
+              onDelete={handleDeleteTag}
             />
 
             {/* Branch context menu */}

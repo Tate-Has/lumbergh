@@ -174,6 +174,13 @@ class DeleteBranchInput(BaseModel):
     remote_only: bool = False
 
 
+class DeleteTagInput(BaseModel):
+    """Input for deleting a git tag."""
+
+    tag: str
+    delete_remote: bool = False
+
+
 class StatusSummaryInput(BaseModel):
     """Input for generating a status summary."""
 

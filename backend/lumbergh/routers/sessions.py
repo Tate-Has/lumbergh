@@ -41,6 +41,7 @@ from lumbergh.git_utils import (
     checkout_branch,
     create_branch_at,
     delete_branch,
+    delete_tag,
     get_branches,
     get_branches_for_worktree,
     get_commit_diff,
@@ -59,6 +60,7 @@ from lumbergh.git_utils import (
     git_stash,
     git_stash_drop,
     git_stash_pop,
+    list_remote_tags,
     reset_to_commit,
     reset_to_head,
     revert_file,
@@ -75,6 +77,7 @@ from lumbergh.models import (
     CreateBranchInput,
     CreateSessionRequest,
     DeleteBranchInput,
+    DeleteTagInput,
     PromptTemplateList,
     ResetToInput,
     RevertFileInput,
@@ -1803,6 +1806,40 @@ async def session_git_create_branch(name: str, body: CreateBranchInput):
     try:
         result = await _run_git(
             create_branch_at, workdir, body.name, body.start_point, timeout=GIT_WRITE_TIMEOUT
+        )
+        if "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{name}/git/remote-tags")
+async def session_git_remote_tags(name: str):
+    """Which tags origin has — the ones whose deletion would affect other people.
+
+    A network round trip, so it is fetched on demand (when a tag menu opens)
+    rather than folded into every graph poll.
+    """
+    workdir = get_session_workdir(name)
+
+    try:
+        tags = await _run_git(list_remote_tags, workdir, timeout=GIT_WRITE_TIMEOUT)
+        return {"tags": tags}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{name}/git/delete-tag")
+async def session_git_delete_tag(name: str, body: DeleteTagInput):
+    """Delete a tag locally, and on origin when asked."""
+    workdir = get_session_workdir(name)
+
+    try:
+        result = await _run_git(
+            delete_tag, workdir, body.tag, body.delete_remote, timeout=GIT_WRITE_TIMEOUT
         )
         if "error" in result:
             raise HTTPException(status_code=400, detail=result["error"])
