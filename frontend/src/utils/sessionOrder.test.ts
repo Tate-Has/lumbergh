@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { orderSessionsForNavigator, adjacentSessionName } from './sessionOrder'
+import { orderSessionsForNavigator, adjacentSessionName, navigatorGroups } from './sessionOrder'
 import type { SessionBase } from './sessionStatus'
 
 function session(name: string, overrides: Partial<SessionBase> = {}): SessionBase {
@@ -33,6 +33,55 @@ describe('orderSessionsForNavigator', () => {
     const ordered = orderSessionsForNavigator([session('web'), session('api')])
 
     expect(ordered.map((s) => s.name)).toEqual(['api', 'web'])
+  })
+
+  it('trails each worker directly behind its parent', () => {
+    const ordered = orderSessionsForNavigator([
+      session('docs'),
+      session('api-fix', { role: 'worker', parent: 'api' }),
+      session('api'),
+      session('api-docs', { role: 'worker', parent: 'api' }),
+    ])
+
+    expect(ordered.map((s) => s.name)).toEqual(['api', 'api-docs', 'api-fix', 'docs'])
+  })
+
+  it('keeps a worker beside a starred parent instead of demoting it', () => {
+    const groups = navigatorGroups([
+      session('api', { theOne: true }),
+      session('api-fix', { role: 'worker', parent: 'api' }),
+      session('docs'),
+    ])
+
+    expect(groups.starred.map((s) => s.name)).toEqual(['api', 'api-fix'])
+    expect(groups.rest.map((s) => s.name)).toEqual(['docs'])
+  })
+
+  it('promotes an orphan worker to a top-level session', () => {
+    const ordered = orderSessionsForNavigator([
+      session('stray', { role: 'worker', parent: 'gone' }),
+      session('api'),
+    ])
+
+    expect(ordered.map((s) => s.name)).toEqual(['api', 'stray'])
+  })
+})
+
+describe('navigatorGroups', () => {
+  it('splits bill, starred, and the rest', () => {
+    const groups = navigatorGroups([
+      session('bill'),
+      session('web', { theOne: true }),
+      session('db'),
+    ])
+
+    expect(groups.bill?.name).toBe('bill')
+    expect(groups.starred.map((s) => s.name)).toEqual(['web'])
+    expect(groups.rest.map((s) => s.name)).toEqual(['db'])
+  })
+
+  it('has no bill when none is running', () => {
+    expect(navigatorGroups([session('api')]).bill).toBeNull()
   })
 })
 

@@ -4,17 +4,54 @@ const BILL_NAME = 'bill'
 
 const byName = (a: SessionBase, b: SessionBase) => a.name.localeCompare(b.name)
 
-/** The order the session switcher presents: Bill, then starred sessions, then the
- * rest. Both the navigator dots and the Alt+Arrow bindings read from here so the
- * keys always land on the dot beside the current one. */
-export function orderSessionsForNavigator(sessions: SessionBase[]): SessionBase[] {
+export interface NavigatorGroups<T extends SessionBase = SessionBase> {
+  bill: T | null
+  starred: T[]
+  rest: T[]
+}
+
+/** The switcher's three runs of bubbles: Bill, starred sessions, then the rest.
+ * A worker trails immediately behind its parent inside whichever run the parent
+ * landed in, so a sub-session never drifts away from the session that spawned it.
+ * A worker whose parent is not running stands on its own as a top-level session. */
+export function navigatorGroups<T extends SessionBase>(sessions: T[]): NavigatorGroups<T> {
   const active = sessions.filter((s) => s.alive && !s.paused)
   const peers = active.filter((s) => s.name !== BILL_NAME)
-  return [
-    ...active.filter((s) => s.name === BILL_NAME),
-    ...peers.filter((s) => s.theOne).sort(byName),
-    ...peers.filter((s) => !s.theOne).sort(byName),
-  ]
+  const present = new Set(peers.map((s) => s.name))
+
+  const workersByParent = new Map<string, T[]>()
+  for (const s of peers) {
+    if (s.role === 'worker' && s.parent && present.has(s.parent)) {
+      const list = workersByParent.get(s.parent) ?? []
+      list.push(s)
+      workersByParent.set(s.parent, list)
+    }
+  }
+  for (const workers of workersByParent.values()) workers.sort(byName)
+
+  const nested = new Set([...workersByParent.values()].flat().map((s) => s.name))
+  const tops = peers.filter((s) => !nested.has(s.name))
+  const withWorkers = (s: T) => [s, ...(workersByParent.get(s.name) ?? [])]
+
+  return {
+    bill: active.find((s) => s.name === BILL_NAME) ?? null,
+    starred: tops
+      .filter((s) => s.theOne)
+      .sort(byName)
+      .flatMap(withWorkers),
+    rest: tops
+      .filter((s) => !s.theOne)
+      .sort(byName)
+      .flatMap(withWorkers),
+  }
+}
+
+/** The order the session switcher presents, flattened. Both the navigator dots and
+ * the Alt+Arrow bindings read from here so the keys always land on the dot beside
+ * the current one. */
+export function orderSessionsForNavigator<T extends SessionBase>(sessions: T[]): T[] {
+  const { bill, starred, rest } = navigatorGroups(sessions)
+  return [...(bill ? [bill] : []), ...starred, ...rest]
 }
 
 /** The session one step from `current`, wrapping at both ends. Null when there is

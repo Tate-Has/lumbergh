@@ -5,7 +5,7 @@ import { getApiBase } from '../config'
 import { useIsDesktop } from '../hooks/useMediaQuery'
 import type { SessionBase } from '../utils/sessionStatus'
 import { getSessionStatus, statusColorClasses, parseSessionsPayload } from '../utils/sessionStatus'
-import { orderSessionsForNavigator } from '../utils/sessionOrder'
+import { navigatorGroups } from '../utils/sessionOrder'
 
 const statusRingClasses: Record<string, string> = {
   gray: 'ring-gray-500/60',
@@ -56,9 +56,81 @@ function BillDot({
   )
 }
 
+function initialsFor(label: string) {
+  if (label.includes('-')) {
+    const parts = label.split('-')
+    return (parts[0][0] + parts[1][0]).toUpperCase()
+  }
+  const camelMatch = label.match(/^(.).*?([A-Z])/)
+  if (camelMatch) {
+    return (camelMatch[1] + camelMatch[2]).toUpperCase()
+  }
+  return label.slice(0, 2).toUpperCase()
+}
+
+/** Bubble geometry. A worker's is a notch smaller than the session it belongs to,
+ * in both the desktop row and the compact mobile strip. */
+function dotSize(isWorker: boolean, compact: boolean, isCurrent: boolean) {
+  if (isWorker) {
+    if (!compact) return 'w-5 h-5 text-[10px]'
+    return `${isCurrent ? 'w-5 h-5' : 'w-4 h-4'} text-[7px]`
+  }
+  if (!compact) return 'w-7 h-7 text-sm'
+  return `${isCurrent ? 'w-6 h-6' : 'w-5 h-5'} text-[8px]`
+}
+
+/** One session bubble. A worker's bubble is smaller and tucked against the right of
+ * the session that spawned it; the row bottom-aligns, so the smaller bubble sits on
+ * the floor rather than floating mid-row — the shape that reads as "belongs to". */
+function SessionDot({
+  session,
+  parentLabel,
+  compact,
+  isCurrent,
+  isPulsing,
+  routeSuffix,
+}: {
+  session: SessionBase
+  parentLabel: string | null
+  compact: boolean
+  isCurrent: boolean
+  isPulsing: boolean
+  routeSuffix: string
+}) {
+  const navigate = useNavigate()
+  const status = getSessionStatus(session)
+  const colors = statusColorClasses[status.color]
+  const isWorker = parentLabel !== null
+
+  const size = dotSize(isWorker, compact, isCurrent)
+  const ring = isCurrent
+    ? `ring-2 ${session.theOne ? 'ring-blue-400' : statusRingClasses[status.color]} ring-offset-1 ring-offset-[var(--bg-surface)]`
+    : `hover:scale-110${session.theOne ? ' ring-1 ring-blue-400/50' : ''}`
+  const hug = isWorker ? (compact ? '-ml-0.5' : '-ml-1') : ''
+
+  const tooltipText = isWorker
+    ? `${session.displayName || session.name} — ${status.label} · sub-session of ${parentLabel}`
+    : `${session.displayName || session.name} — ${status.label}`
+
+  return (
+    <div className={`group relative shrink-0 ${hug}`}>
+      <button
+        onClick={() => navigate(`/session/${session.name}${routeSuffix}`)}
+        className={`shrink-0 rounded-full transition-all ${colors.dot} flex items-center justify-center font-bold text-black/60 ${size} ${ring} ${
+          isPulsing ? 'animate-[pulse-dot_1.2s_ease-in-out_3]' : ''
+        }`}
+      >
+        {initialsFor(session.displayName || session.name)}
+      </button>
+      <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-1.5 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity z-50">
+        {tooltipText}
+      </span>
+    </div>
+  )
+}
+
 export default function SessionNavigatorDots({ currentSessionName, compact = false }: Props) {
   const isDesktop = useIsDesktop()
-  const navigate = useNavigate()
   const location = useLocation()
   const routeSuffix = location.pathname.endsWith('/term') ? '/term' : ''
   const [sessions, setSessions] = useState<SessionBase[]>([])
@@ -70,12 +142,12 @@ export default function SessionNavigatorDots({ currentSessionName, compact = fal
       try {
         const res = await fetch(`${getApiBase()}/sessions`)
         if (!res.ok) return
-        const active = orderSessionsForNavigator(parseSessionsPayload(await res.json()))
+        const active = parseSessionsPayload(await res.json())
         setSessions(active)
 
         // Detect transitions away from 'working' to trigger 3-pulse alert
         const newAlerting: Record<string, boolean> = {}
-        for (const s of active as SessionBase[]) {
+        for (const s of active) {
           const prev = prevStates.current[s.name]
           const curr = s.idleState || 'unknown'
           if (prev === 'working' && curr !== 'working') {
@@ -108,97 +180,60 @@ export default function SessionNavigatorDots({ currentSessionName, compact = fal
 
   if (!compact && !isDesktop) return null
 
-  const getInitial = (label: string) => {
-    if (label.includes('-')) {
-      const parts = label.split('-')
-      return (parts[0][0] + parts[1][0]).toUpperCase()
-    }
-    const camelMatch = label.match(/^(.).*?([A-Z])/)
-    if (camelMatch) {
-      return (camelMatch[1] + camelMatch[2]).toUpperCase()
-    }
-    return label.slice(0, 2).toUpperCase()
+  const { bill, starred, rest } = navigatorGroups(sessions)
+  const labelOf = (name: string) => {
+    const parent = sessions.find((s) => s.name === name)
+    return parent?.displayName || name
   }
+  const nestedUnder = (s: SessionBase) =>
+    s.role === 'worker' && s.parent && sessions.some((p) => p.name === s.parent)
+      ? labelOf(s.parent)
+      : null
 
-  const billSession = sessions.find((s) => s.name === 'bill')
-  const billDot = billSession ? (
+  const renderDots = (group: SessionBase[]) =>
+    group.map((s) => (
+      <SessionDot
+        key={s.name}
+        session={s}
+        parentLabel={nestedUnder(s)}
+        compact={compact}
+        isCurrent={s.name === currentSessionName}
+        isPulsing={Boolean(alerting[s.name])}
+        routeSuffix={routeSuffix}
+      />
+    ))
+
+  const billDot = bill ? (
     <BillDot
-      session={billSession}
+      session={bill}
       compact={compact}
-      isCurrent={billSession.name === currentSessionName}
+      isCurrent={bill.name === currentSessionName}
       routeSuffix={routeSuffix}
     />
   ) : null
 
-  const dots = sessions
-    .filter((s) => s.name !== 'bill')
-    .map((s) => {
-      const status = getSessionStatus(s)
-      const colors = statusColorClasses[status.color]
-      const isCurrent = s.name === currentSessionName
-      const isPulsing = alerting[s.name]
-
-      const tooltipText = `${s.displayName || s.name} — ${status.label}`
-
-      if (compact) {
-        return (
-          <div key={s.name} className="group relative shrink-0">
-            <button
-              onClick={() => navigate(`/session/${s.name}${routeSuffix}`)}
-              className={`shrink-0 rounded-full transition-all ${colors.dot} flex items-center justify-center font-bold text-black/60 text-[8px] ${
-                isCurrent
-                  ? `w-6 h-6 ring-2 ${s.theOne ? 'ring-blue-400' : statusRingClasses[status.color]} ring-offset-1 ring-offset-[var(--bg-surface)]`
-                  : `w-5 h-5 hover:scale-110${s.theOne ? ' ring-1 ring-blue-400/50' : ''}`
-              } ${isPulsing ? 'animate-[pulse-dot_1.2s_ease-in-out_3]' : ''}`}
-            >
-              {getInitial(s.displayName || s.name)}
-            </button>
-            <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-1.5 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity z-50">
-              {tooltipText}
-            </span>
-          </div>
-        )
-      }
-
-      return (
-        <div key={s.name} className="group relative">
-          <button
-            onClick={() => navigate(`/session/${s.name}${routeSuffix}`)}
-            className={`rounded-full transition-all ${colors.dot} flex items-center justify-center font-bold text-black/60 ${
-              isCurrent
-                ? `w-7 h-7 text-sm ring-2 ${s.theOne ? 'ring-blue-400' : statusRingClasses[status.color]} ring-offset-1 ring-offset-[var(--bg-surface)]`
-                : `w-7 h-7 text-sm hover:scale-110${s.theOne ? ' ring-1 ring-blue-400/50' : ''}`
-            } ${isPulsing ? 'animate-[pulse-dot_1.2s_ease-in-out_3]' : ''}`}
-          >
-            {getInitial(s.displayName || s.name)}
-          </button>
-          <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-1.5 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity z-50">
-            {tooltipText}
-          </span>
-        </div>
-      )
-    })
-
-  const starredNames = new Set(sessions.filter((s) => s.theOne).map((s) => s.name))
-  const starredDots = dots.filter((d) => starredNames.has(d.key as string))
-  const restDots = dots.filter((d) => !starredNames.has(d.key as string))
-
   return (
-    <DotRow billDot={billDot} starredDots={starredDots} restDots={restDots} compact={compact} />
+    <DotRow
+      billDot={billDot}
+      starredDots={renderDots(starred)}
+      restDots={renderDots(rest)}
+      compact={compact}
+    />
   )
 }
 
 function Separator({ compact }: { compact: boolean }) {
   return (
     <div
-      className={`w-0.5 ${compact ? 'h-3.5' : 'h-4'} bg-text-secondary/50 mx-1 shrink-0 rounded-full`}
+      className={`w-0.5 ${compact ? 'h-3.5' : 'h-4'} bg-text-secondary/50 mx-1 shrink-0 self-center rounded-full`}
     />
   )
 }
 
 /** Lays out the switcher: Bill first, then starred sessions, then the rest, with a
  * separator between any two non-empty groups. Compact is the mobile tab-bar strip;
- * non-compact is the centered desktop header row. */
+ * non-compact is the centered desktop header row. Bubbles sit on a shared floor so
+ * the smaller worker bubbles hang below their parent instead of beside its middle. */
 function DotRow({
   billDot,
   starredDots,
@@ -222,11 +257,11 @@ function DotRow({
     </>
   )
   if (compact) {
-    return <div className="flex items-center gap-1 shrink-0">{inner}</div>
+    return <div className="flex items-end gap-1 shrink-0">{inner}</div>
   }
   return (
     <div className="flex-1 flex items-center justify-center">
-      <div className="flex items-center gap-1.5">{inner}</div>
+      <div className="flex items-end gap-1.5">{inner}</div>
     </div>
   )
 }
