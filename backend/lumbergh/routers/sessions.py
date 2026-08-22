@@ -1816,6 +1816,25 @@ async def session_git_create_branch(name: str, body: CreateBranchInput):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/{name}/git/pull-requests")
+async def session_git_pull_requests(name: str):
+    """Open PRs for this repo, if `gh` can see any.
+
+    Absent rather than failing: no gh, no auth, or a non-GitHub remote all
+    return an empty list, and the UI just shows no badges.
+    """
+    from lumbergh.github import GH_TIMEOUT, list_open_prs
+
+    workdir = get_session_workdir(name)
+
+    try:
+        prs = await _run_git(list_open_prs, workdir, timeout=GH_TIMEOUT + 2)
+        return {"prs": prs}
+    except Exception:
+        logger.debug("pull request lookup failed for %s", name, exc_info=True)
+        return {"prs": []}
+
+
 @router.get("/{name}/git/remote-tags")
 async def session_git_remote_tags(name: str):
     """Which tags origin has — the ones whose deletion would affect other people.

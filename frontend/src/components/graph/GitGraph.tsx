@@ -1,11 +1,22 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { MoreVertical, Monitor, Cloud, Archive, Tag, AlertTriangle, GitBranch } from 'lucide-react'
+import {
+  MoreVertical,
+  Monitor,
+  Cloud,
+  Archive,
+  Tag,
+  AlertTriangle,
+  GitBranch,
+  GitPullRequest,
+} from 'lucide-react'
 import { getApiBase } from '../../config'
 import type { GraphData, GraphWorktree } from '../diff/types'
 import GraphToolbar from './GraphToolbar'
 import { applyGraphResponse } from './graphSync'
 import { buildBranchMenuItems } from './branchMenu'
 import { buildTagMenuItems } from './tagMenu'
+import { prsByBranch, refBranchName } from './pullRequests'
+import type { PullRequest } from './pullRequests'
 import type { MenuBranchInfo } from './branchMenu'
 import { confirmHardReset, resetMenuEntries } from './resetMenu'
 import type { ResetMode } from './resetMenu'
@@ -112,6 +123,26 @@ function TagContextMenu({
         </button>
       ))}
     </div>
+  )
+}
+
+function PullRequestBadge({ pr }: { pr: PullRequest }) {
+  return (
+    <button
+      type="button"
+      title={`#${pr.number} ${pr.title}${pr.isDraft ? ' (draft)' : ''}`}
+      onClick={(e) => {
+        e.stopPropagation()
+        window.open(pr.url, '_blank', 'noopener,noreferrer')
+      }}
+      className={`inline-flex items-center gap-1 px-1.5 py-1 text-xs rounded font-medium leading-none shrink-0 ring-1 ${
+        pr.isDraft
+          ? 'bg-slate-700/30 text-slate-400 ring-slate-600/40 hover:bg-slate-700/50'
+          : 'bg-success/10 text-success ring-success/30 hover:bg-success/20'
+      }`}
+    >
+      <GitPullRequest size={11} className="shrink-0" />#{pr.number}
+    </button>
   )
 }
 
@@ -690,6 +721,7 @@ export default function GitGraph({
   } | null>(null)
   const [menuTag, setMenuTag] = useState<{ name: string; x: number; y: number } | null>(null)
   const [remoteTags, setRemoteTags] = useState<Set<string> | null>(null)
+  const [pullRequests, setPullRequests] = useState<Map<string, PullRequest>>(new Map())
   const [deleteBranchConfirm, setDeleteBranchConfirm] = useState<{
     name: string
     local: boolean
@@ -1022,6 +1054,26 @@ export default function GitGraph({
       afterAction()
     }
   }, [sessionName, menuStash, afterAction, gitAction])
+
+  /** Open PRs, if `gh` can see any. Absent for a non-GitHub repo, and never
+   * worth an error: the badges just do not appear. */
+  useEffect(() => {
+    if (!sessionName) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(`${getApiBase()}/sessions/${sessionName}/git/pull-requests`)
+        if (!res.ok) return
+        const data = await res.json()
+        if (!cancelled) setPullRequests(prsByBranch(data.prs ?? []))
+      } catch {
+        // No gh, no network, no badges.
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [sessionName, refreshTrigger])
 
   /** Ask origin which tags it has — one network round trip, on demand, kept for
    * the rest of the session unless a delete changes the answer. */
@@ -1449,6 +1501,21 @@ export default function GitGraph({
                 const isExpanded = expandedRow === row
                 const commit = nodes[row].commit
 
+                const renderRefBadge = (ref: RefInfo) => {
+                  const pr = pullRequests.get(refBranchName(ref.name))
+                  return pr ? (
+                    <span
+                      key={ref.name}
+                      className="inline-flex items-center gap-1 min-w-0 max-w-full"
+                    >
+                      <span className="flex min-w-0">{renderBadge(ref)}</span>
+                      <PullRequestBadge pr={pr} />
+                    </span>
+                  ) : (
+                    renderBadge(ref)
+                  )
+                }
+
                 const renderBadge = (ref: RefInfo) =>
                   ref.tag ? (
                     <TagBadge
@@ -1536,7 +1603,7 @@ export default function GitGraph({
                     style={{ top: rowToY(row), height: ROW_HEIGHT }}
                   >
                     <div className="flex flex-row items-center gap-1 px-2 h-full overflow-hidden">
-                      {renderBadge(primaryRef)}
+                      {renderRefBadge(primaryRef)}
                       {extraCount > 0 && (
                         <span
                           className="inline-flex items-center px-1.5 py-1 text-xs rounded font-medium leading-none bg-bg-surface text-text-muted ring-1 ring-border-default cursor-default shrink-0"
@@ -1570,7 +1637,7 @@ export default function GitGraph({
                           expandedRowTimeout.current = setTimeout(() => setExpandedRow(null), 300)
                         }}
                       >
-                        {refs.slice(1).map((ref) => renderBadge(ref))}
+                        {refs.slice(1).map((ref) => renderRefBadge(ref))}
                       </div>
                     )}
                   </div>
