@@ -66,7 +66,7 @@ export default function TerminalHeader({
   return (
     <div className="glass border-b border-border-default">
       {/* Main row */}
-      <div className="flex items-center gap-2 p-2 overflow-x-auto scrollbar-hide">
+      <div className="flex items-center gap-2 p-2 overflow-x-auto overflow-y-hidden scrollbar-hide">
         <div className="flex items-center gap-2 shrink-0">
           {onBack && (
             <>
@@ -80,27 +80,6 @@ export default function TerminalHeader({
               <div className="w-px h-4 bg-border-subtle mx-1" />
             </>
           )}
-          {onSpawnSession && (
-            <button
-              onClick={onSpawnSession}
-              className="text-text-tertiary hover:text-text-primary transition-colors"
-              title="New session from this repo"
-              data-testid="spawn-session"
-            >
-              <GitBranchPlus size={16} />
-            </button>
-          )}
-          {onForkSession && (
-            <button
-              onClick={onForkSession}
-              className="text-text-tertiary hover:text-text-primary transition-colors"
-              title="Fork this session — a new agent that starts from this conversation"
-              data-testid="fork-session"
-            >
-              <Split size={16} />
-            </button>
-          )}
-          {(onSpawnSession || onForkSession) && <div className="w-px h-4 bg-border-subtle mx-1" />}
         </div>
         <span
           onClick={onCycleSession ? (e) => onCycleSession(e.shiftKey ? 'prev' : 'next') : undefined}
@@ -150,6 +129,8 @@ export default function TerminalHeader({
           onSendTmuxCommand={onSendTmuxCommand}
           onFit={onFit}
           onReset={onReset}
+          onSpawnSession={onSpawnSession}
+          onForkSession={onForkSession}
           onCollapse={() => onHeaderExpandedChange(false)}
         />
       )}
@@ -206,21 +187,12 @@ function QuickActions({
       )}
       <Button
         variant="danger"
-        size="sm"
+        size="icon"
         onClick={() => onSendRaw('\x1b')}
         disabled={!isConnected}
         title="Send Escape key"
       >
-        Esc
-      </Button>
-      <Button
-        variant="primary"
-        size="sm"
-        onClick={() => onSendRaw('\x1b[Z')}
-        disabled={!isConnected}
-        title="Toggle Plan/Accept Edits mode (Shift+Tab)"
-      >
-        Mode
+        <span className="text-xs">Esc</span>
       </Button>
       <Button
         variant="secondary"
@@ -232,8 +204,8 @@ function QuickActions({
         1
       </Button>
       <Button
-        variant="secondary"
-        size="sm"
+        variant="ghost"
+        size="icon"
         onClick={() => onSendViaApi('/clear')}
         disabled={!isConnected}
         title="Send /clear"
@@ -263,6 +235,8 @@ function ExpandedRow({
   onSendTmuxCommand,
   onFit,
   onReset,
+  onSpawnSession,
+  onForkSession,
   onCollapse,
 }: {
   view: 'term' | 'conv'
@@ -276,11 +250,13 @@ function ExpandedRow({
   onSendTmuxCommand: (command: string) => void
   onFit: () => void
   onReset?: () => void
+  onSpawnSession?: () => void
+  onForkSession?: () => void
   onCollapse: () => void
 }) {
   const isConv = view === 'conv'
   return (
-    <div className="flex items-center gap-2 px-2 pb-2 overflow-x-auto scrollbar-hide">
+    <div className="flex items-center gap-2 px-2 pb-2 overflow-x-auto overflow-y-hidden scrollbar-hide">
       {/* Font/zoom controls and reset - left aligned */}
       <div className="flex items-center gap-3 shrink-0">
         {isConv ? (
@@ -356,6 +332,47 @@ function ExpandedRow({
       <div className="flex-1 min-w-0" />
       {/* Quick buttons - right aligned */}
       <div className="flex items-center gap-2 shrink-0">
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => {
+            onSendRaw('\x1b[Z')
+          }}
+          disabled={!isConnected}
+          title="Toggle Plan/Accept Edits mode (Shift+Tab)"
+        >
+          Mode
+        </Button>
+        {onSpawnSession && (
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              onSpawnSession()
+              onCollapse()
+            }}
+            title="New session from this repo"
+            data-testid="spawn-session"
+          >
+            <GitBranchPlus size={14} />
+            New
+          </Button>
+        )}
+        {onForkSession && (
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              onForkSession()
+              onCollapse()
+            }}
+            title="Fork this session — a new agent that starts from this conversation"
+            data-testid="fork-session"
+          >
+            <Split size={14} />
+            Fork
+          </Button>
+        )}
         <Button
           variant="success"
           size="sm"

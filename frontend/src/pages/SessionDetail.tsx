@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, GitBranchPlus, Maximize2, Minimize2, Settings } from 'lucide-react'
+import { ArrowLeft, Maximize2, Minimize2, Settings } from 'lucide-react'
 import { getApiBase } from '../config'
 import Terminal from '../components/Terminal'
 import FileBrowser from '../components/FileBrowser'
@@ -808,16 +808,6 @@ export default function SessionDetail() {
             >
               <ArrowLeft size={16} />
             </button>
-            {sessionRepo && (
-              <button
-                onClick={() => setSpawnFromRepo(sessionRepo)}
-                className="shrink-0 px-2 py-1.5 text-text-tertiary hover:text-text-primary transition-colors"
-                title="New session from this repo"
-                data-testid="spawn-session-mobile"
-              >
-                <GitBranchPlus size={16} />
-              </button>
-            )}
             {/* Separator */}
             <div className="w-px shrink-0 bg-border-default my-1" />
             {showSessionDots && name && (
