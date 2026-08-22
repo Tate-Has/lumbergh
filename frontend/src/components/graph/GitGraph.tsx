@@ -134,17 +134,18 @@ function PullRequestBadge({ pr }: { pr: PullRequest }) {
     <button
       type="button"
       title={`#${pr.number} ${pr.title}${pr.isDraft ? ' (draft)' : ''}`}
+      aria-label={`Open pull request #${pr.number}`}
       onClick={(e) => {
         e.stopPropagation()
         window.open(pr.url, '_blank', 'noopener,noreferrer')
       }}
-      className={`inline-flex items-center gap-1 px-1.5 py-1 text-xs rounded font-medium leading-none shrink-0 ring-1 ${
+      className={`inline-flex items-center justify-center p-1 rounded leading-none shrink-0 ring-1 ${
         pr.isDraft
           ? 'bg-slate-700/30 text-slate-400 ring-slate-600/40 hover:bg-slate-700/50'
           : 'bg-success/10 text-success ring-success/30 hover:bg-success/20'
       }`}
     >
-      <GitPullRequest size={11} className="shrink-0" />#{pr.number}
+      <GitPullRequest size={12} className="shrink-0" />
     </button>
   )
 }
