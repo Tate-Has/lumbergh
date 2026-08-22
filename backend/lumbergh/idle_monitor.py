@@ -40,6 +40,7 @@ from lumbergh.targets import format_target, parse_target
 from lumbergh.tmux_pty import (
     IS_WINDOWS,
     capture_pane_content,
+    capture_pane_geometry,
     capture_pane_text,
     capture_pane_title,
 )
@@ -136,6 +137,9 @@ class IdleMonitor:
     BURST_CAPTURES = 3
     BURST_GAP_SECONDS = 0.15
     QUIET_THRESHOLD_SECONDS = 5.0
+    # How long a pane may keep churning after it changed shape before we believe
+    # the churn again. One repaint can span several polls on a busy agent.
+    RESHAPE_SETTLE_SECONDS = 12.0
     FINGERPRINT_LINE_COUNT = 20
     # How long a session must sit continuously IDLE before we spend a cheap-LLM
     # call asking whether it is actually waiting on a human answer.
@@ -153,6 +157,8 @@ class IdleMonitor:
 
     def __init__(self):
         self._fingerprints: dict[str, str] = {}
+        self._geometry: dict[str, str] = {}
+        self._reshaped_at: dict[str, float] = {}
         self._last_change: dict[str, float] = {}
         self._states: dict[str, SessionState] = {}
         self._state_since: dict[str, float] = {}
@@ -565,15 +571,43 @@ class IdleMonitor:
             captures.append(content or "")
         return captures
 
+    def _reshaped(self, session_name: str, geometry: str) -> bool:
+        """Whether the pane changed size since the last look.
+
+        An empty geometry means tmux would not answer; treat that as "no news"
+        rather than a reshape, so a failing query cannot freeze state updates.
+        """
+        if not geometry:
+            return False
+        previous = self._geometry.get(session_name)
+        self._geometry[session_name] = geometry
+        return previous is not None and previous != geometry
+
+    def _settling_after_reshape(self, session_name: str) -> bool:
+        reshaped_at = self._reshaped_at.get(session_name)
+        return reshaped_at is not None and time.time() - reshaped_at < self.RESHAPE_SETTLE_SECONDS
+
     async def _check_session(self, session_name: str) -> None:
         captures = await self._burst_capture(session_name)
         if not any(captures):
             return
 
         loop = asyncio.get_event_loop()
-        osc_title = await loop.run_in_executor(None, capture_pane_title, tmux_ref(session_name))
+        ref = tmux_ref(session_name)
+        osc_title = await loop.run_in_executor(None, capture_pane_title, ref)
+        geometry = await loop.run_in_executor(None, capture_pane_geometry, ref)
 
         self._context[session_name] = context_used(_ANSI_PATTERN.sub("", captures[-1]))
+
+        if self._reshaped(session_name, geometry):
+            # The pane changed shape — a viewer attached, a phone rotated — and the
+            # agent redrew itself to fit. Every byte of that is our doing, so take
+            # the new picture as the baseline and let the next pass judge it.
+            logger.debug("Session %s pane reshaped to %s; re-baselining", session_name, geometry)
+            self._fingerprints[session_name] = self._fingerprint(captures[-1])
+            self._last_change[session_name] = time.time()
+            self._reshaped_at[session_name] = time.time()
+            return
 
         state = self._classify_burst(session_name, captures, time.time(), osc_title)
 
@@ -582,8 +616,13 @@ class IdleMonitor:
             logger.info(f"Session {session_name} state: {old_state.value} -> {state.value}")
             self._record_state_change(session_name, state)
             await self._persist_state(session_name, state)
+            settling = state is SessionState.IDLE and self._settling_after_reshape(session_name)
             if state in (SessionState.IDLE, SessionState.BLOCKED, SessionState.ERROR):
-                session_attention.mark_attention(session_name, state.value)
+                # Going quiet right after a reshape is the repaint finishing, not the
+                # agent. Flagging it hands you a "done while you were away" for work
+                # that never happened — and only ever right after you looked.
+                if not settling:
+                    session_attention.mark_attention(session_name, state.value)
             else:
                 session_attention.clear_unseen(session_name)
             await session_attention.persist()

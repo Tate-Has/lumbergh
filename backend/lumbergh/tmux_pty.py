@@ -222,6 +222,27 @@ def capture_pane_title(target: str) -> str:
         return ""
 
 
+def capture_pane_geometry(target: str) -> str:
+    """The active pane's size as ``"<cols>x<rows>"``, or "" if tmux will not say.
+
+    Resizing a pane makes the agent redraw itself, which every content-based
+    check reads as activity — so the monitor needs to know the shape changed.
+    """
+    try:
+        result = subprocess.run(
+            [TMUX_CMD, "display-message", "-t", target, "-p", "#{pane_width}x#{pane_height}"],
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=2,
+        )
+        if result.returncode != 0:
+            return ""
+        return result.stdout.strip()
+    except Exception:
+        return ""
+
+
 def refresh_client(session_name: str) -> bool:
     """Force tmux to redraw every client attached to a session.
 
