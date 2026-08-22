@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useConversationSocket } from '../../hooks/useConversationSocket'
 import { decideFollow } from '../../utils/conversationFollow'
@@ -20,7 +20,10 @@ export default function ConversationView({
   enabled?: boolean
   scale?: number
 }) {
-  const { items, noTranscript } = useConversationSocket({ sessionName, enabled })
+  const { items, noTranscript, remaining, loadingOlder, loadOlder } = useConversationSocket({
+    sessionName,
+    enabled,
+  })
   const scrollRef = useRef<HTMLDivElement>(null)
   const [following, setFollowing] = useState(true)
   const followingRef = useRef(true)
@@ -48,7 +51,12 @@ export default function ConversationView({
 
   // Thinking is ephemeral: keep it only while it's the latest event (the agent is
   // still thinking). Once any real output follows, it drops out of the history.
-  const visibleItems = items.filter((item, i) => item.type !== 'thinking' || i === items.length - 1)
+  const visibleItems = items.filter(
+    (item, i) =>
+      // An unresolved tool_result renders nothing — it is waiting for its call to
+      // arrive with an older page — so it must not take up a row either.
+      item.type !== 'tool_result' && (item.type !== 'thinking' || i === items.length - 1)
+  )
   // Grouping happens before virtualization: a folded run is one row, so the
   // virtualizer counts, keys and measures what is actually on screen.
   const rows = groupToolRuns(visibleItems)
@@ -104,6 +112,27 @@ export default function ConversationView({
     observer.observe(el)
     return () => observer.disconnect()
   }, [scrollToLatest])
+
+  // Prepending grows the feed above the viewport, which would shove whatever the
+  // reader is looking at down the screen. Hold the distance from the bottom
+  // instead: that is the fixed point when history arrives on top.
+  const pendingAnchorRef = useRef<number | null>(null)
+  const requestOlder = () => {
+    const el = scrollRef.current
+    if (el) pendingAnchorRef.current = el.scrollHeight - el.scrollTop
+    setFollowing(false)
+    followingRef.current = false
+    loadOlder()
+  }
+
+  useLayoutEffect(() => {
+    const anchor = pendingAnchorRef.current
+    const el = scrollRef.current
+    if (anchor === null || !el) return
+    if (el.scrollHeight <= anchor) return
+    el.scrollTop = el.scrollHeight - anchor
+    pendingAnchorRef.current = null
+  }, [totalSize])
 
   const markGesture = () => {
     gestureAtRef.current = Date.now()
@@ -178,6 +207,16 @@ export default function ConversationView({
         onPointerDown={onPointerDown}
         className="flex-1 overflow-y-auto overscroll-contain"
       >
+        {remaining > 0 && (
+          <button
+            onClick={requestOlder}
+            disabled={loadingOlder}
+            data-testid="load-older"
+            className="mx-auto my-2 block rounded border border-border-default px-3 py-1 text-xs text-text-tertiary hover:bg-control-bg-hover hover:text-text-secondary disabled:opacity-50"
+          >
+            {loadingOlder ? 'Loading…' : `Load earlier activity (${remaining} more)`}
+          </button>
+        )}
         <div style={{ height: totalSize, position: 'relative' }}>
           {virtualizer.getVirtualItems().map((row) => (
             <div

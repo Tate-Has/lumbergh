@@ -6,6 +6,7 @@ Run with: uv run python main.py
 
 import asyncio
 import hashlib
+import json
 import logging
 import tempfile
 from contextlib import asynccontextmanager
@@ -557,10 +558,19 @@ async def session_stream(
         await session_manager.unregister_client(session_name, websocket)
 
 
+def _wants_older_history(message: str) -> bool:
+    """Whether an inbound activity frame is a request for the previous page."""
+    try:
+        return json.loads(message).get("type") == "more_history"
+    except (ValueError, AttributeError):
+        return False
+
+
 @app.websocket("/api/session/{session_name}/activity")
 async def session_activity(websocket: WebSocket, session_name: str):
     from fastapi import WebSocketDisconnect
 
+    from lumbergh.activity.history import HistoryWindow
     from lumbergh.activity.resolve import resolve_adapter
     from lumbergh.routers.sessions import get_stored_sessions
 
@@ -575,15 +585,36 @@ async def session_activity(websocket: WebSocket, session_name: str):
 
     stop = asyncio.Event()
 
-    async def drain_client():
-        # We don't expect inbound frames, but reading detects disconnect promptly.
+    # Parse the transcript once, then hand it over newest-page-first. Streaming
+    # every event as its own frame made opening a long session cost thousands of
+    # round trips and client re-renders.
+    window = HistoryWindow(await asyncio.to_thread(adapter.read_new))
+    await websocket.send_json(
+        {
+            "type": "history",
+            "events": [event.model_dump() for event in window.first_page()],
+            "remaining": window.remaining,
+        }
+    )
+
+    async def serve_requests():
+        # The only thing a client asks for is more history; reading also detects
+        # disconnect promptly.
         try:
             while True:
-                await websocket.receive_text()
+                message = await websocket.receive_text()
+                if _wants_older_history(message):
+                    await websocket.send_json(
+                        {
+                            "type": "history_older",
+                            "events": [e.model_dump() for e in window.older_page()],
+                            "remaining": window.remaining,
+                        }
+                    )
         except WebSocketDisconnect:
             stop.set()
 
-    reader = asyncio.create_task(drain_client())
+    reader = asyncio.create_task(serve_requests())
     try:
         async for event in adapter.tail(stop):
             await websocket.send_json(event.model_dump())

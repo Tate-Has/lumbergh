@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { getWsBase } from '../config'
 
 export interface ActivityEvent {
@@ -35,13 +35,41 @@ export type RenderItem = ActivityEvent | ToolItem
 export function mergeEvents(prev: RenderItem[], incoming: ActivityEvent): RenderItem[] {
   if (incoming.type === 'no_transcript') return prev
   if (incoming.type === 'tool_result') {
-    return prev.map((item) =>
-      item.type === 'tool_call' && item.tool_use_id === incoming.tool_use_id
-        ? { ...item, result: { status: incoming.status, text: incoming.text } }
-        : item
-    )
+    let matched = false
+    const merged = prev.map((item) => {
+      if (item.type !== 'tool_call' || item.tool_use_id !== incoming.tool_use_id) return item
+      matched = true
+      return { ...item, result: { status: incoming.status, text: incoming.text } }
+    })
+    // A result whose call is not here yet belongs to an older page. Keeping it
+    // (it renders as nothing) lets the call pick it up when that page loads;
+    // dropping it left a finished command showing as still running.
+    return matched ? merged : [...prev, incoming as RenderItem]
   }
   return [...prev, incoming as RenderItem]
+}
+
+/** Apply a page of history in one update.
+ *
+ * The server sends the newest page as a single frame rather than one frame per
+ * event: folding it here costs one render instead of five hundred, which is the
+ * difference between the view opening and the view scrolling.
+ */
+export function applyHistory(_prev: RenderItem[], events: ActivityEvent[]): RenderItem[] {
+  return events.reduce<RenderItem[]>((items, event) => mergeEvents(items, event), [])
+}
+
+/** Prepend an older page, keeping what is already on screen.
+ *
+ * A result whose call lives in the older page only becomes resolvable now, so
+ * the whole list is refolded rather than concatenated.
+ */
+export function applyOlderHistory(shown: RenderItem[], older: ActivityEvent[]): RenderItem[] {
+  if (older.length === 0) return shown
+  return [...older, ...shown].reduce<RenderItem[]>(
+    (items, event) => mergeEvents(items, event as ActivityEvent),
+    []
+  )
 }
 
 /**
@@ -63,6 +91,9 @@ export function useConversationSocket({
   const [items, setItems] = useState<RenderItem[]>([])
   const [isConnected, setIsConnected] = useState(false)
   const [noTranscript, setNoTranscript] = useState(false)
+  // How much transcript is still behind the oldest event on screen.
+  const [remaining, setRemaining] = useState(0)
+  const [loadingOlder, setLoadingOlder] = useState(false)
   const wsRef = useRef<WebSocket | null>(null)
 
   useEffect(() => {
@@ -77,6 +108,8 @@ export function useConversationSocket({
       // offset 0, so clearing avoids duplicating events across a reconnect.
       setItems([])
       setNoTranscript(false)
+      setRemaining(0)
+      setLoadingOlder(false)
       const url = `${getWsBase()}/session/${encodeURIComponent(sessionName)}/activity`
       const ws = new WebSocket(url)
       wsRef.current = ws
@@ -98,7 +131,19 @@ export function useConversationSocket({
       }
       ws.onmessage = (e) => {
         if (!isActive) return
-        const event: ActivityEvent = JSON.parse(e.data)
+        const frame = JSON.parse(e.data)
+        if (frame.type === 'history') {
+          setItems((prev) => applyHistory(prev, frame.events ?? []))
+          setRemaining(frame.remaining ?? 0)
+          return
+        }
+        if (frame.type === 'history_older') {
+          setItems((prev) => applyOlderHistory(prev, frame.events ?? []))
+          setRemaining(frame.remaining ?? 0)
+          setLoadingOlder(false)
+          return
+        }
+        const event: ActivityEvent = frame
         if (event.type === 'no_transcript') {
           setNoTranscript(true)
           return
@@ -117,5 +162,12 @@ export function useConversationSocket({
     }
   }, [sessionName, enabled])
 
-  return { items, isConnected, noTranscript }
+  const loadOlder = useCallback(() => {
+    const ws = wsRef.current
+    if (!ws || ws.readyState !== WebSocket.OPEN) return
+    setLoadingOlder(true)
+    ws.send(JSON.stringify({ type: 'more_history' }))
+  }, [])
+
+  return { items, isConnected, noTranscript, remaining, loadingOlder, loadOlder }
 }
