@@ -38,9 +38,9 @@ def server(monkeypatch):
             item = _todo(kw["json"]["text"], description=kw["json"].get("description"))
             state["todos"].append(item)
             return _Resp({"todo": item, "index": len(state["todos"])})
-        if path == "/api/bill/todos/done":
+        if path in ("/api/bill/todos/done", "/api/bill/todos/undo"):
             item = state["todos"][kw["json"]["index"] - 1]
-            item["done"] = True
+            item["done"] = path.endswith("/done")
             return _Resp({"todo": item, "index": kw["json"]["index"]})
         raise AssertionError(f"unexpected path {path}")
 
@@ -158,3 +158,28 @@ def test_lb_dispatches_todo(server, capsys):
     server["todos"] = [_todo("via lb main")]
     assert lb.main(["todo"]) == 0
     assert "via lb main" in capsys.readouterr().out
+
+
+def test_undo_puts_a_finished_item_back(server, capsys):
+    server["todos"] = [_todo("ticked by mistake", done=True)]
+
+    assert todo_cli.run(["undo", "1"], {}) == 0
+
+    out = capsys.readouterr().out
+    assert "done: false" in out
+    assert "ticked by mistake" in out
+    assert server["calls"][-1]["path"] == "/api/bill/todos/undo"
+    assert server["calls"][-1]["json"]["index"] == 1
+    assert server["todos"][0]["done"] is False
+
+
+@pytest.mark.usefixtures("server")
+def test_undo_without_a_number_says_which_one(capsys):
+    assert todo_cli.run(["undo"], {}) == 2
+    assert "which todo" in capsys.readouterr().out
+
+
+@pytest.mark.usefixtures("server")
+def test_undo_rejects_a_non_number(capsys):
+    assert todo_cli.run(["undo", "second"], {}) == 2
+    assert "not a number" in capsys.readouterr().out

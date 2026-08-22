@@ -109,3 +109,48 @@ def test_unknown_repo_is_refused_rather_than_silently_creating_a_backlog(tmp_pat
         bill.bill_todos(repo=str(tmp_path / "nope"))
 
     assert exc.value.status_code == 400
+
+
+@pytest.mark.usefixtures("project_db")
+def test_undo_puts_a_finished_item_back(tmp_path):
+    repo = _repo(tmp_path)
+    bill.add_bill_todo(bill.TodoAddBody(repo=repo, text="ticked by mistake"))
+    bill.finish_bill_todo(bill.TodoDoneBody(repo=repo, index=1))
+
+    reopened = bill.undo_bill_todo(bill.TodoDoneBody(repo=repo, index=1))
+
+    assert reopened["todo"]["done"] is False
+    assert bill.bill_todos(repo=repo)["todos"][0]["done"] is False
+
+
+@pytest.mark.usefixtures("project_db")
+def test_undo_on_an_open_item_is_harmless(tmp_path):
+    repo = _repo(tmp_path)
+    bill.add_bill_todo(bill.TodoAddBody(repo=repo, text="never finished"))
+
+    assert bill.undo_bill_todo(bill.TodoDoneBody(repo=repo, index=1))["todo"]["done"] is False
+
+
+@pytest.mark.usefixtures("project_db")
+def test_undo_indexes_the_same_way_done_does(tmp_path):
+    repo = _repo(tmp_path)
+    for text in ("first", "second"):
+        bill.add_bill_todo(bill.TodoAddBody(repo=repo, text=text))
+    bill.finish_bill_todo(bill.TodoDoneBody(repo=repo, index=1))
+    bill.finish_bill_todo(bill.TodoDoneBody(repo=repo, index=2))
+
+    bill.undo_bill_todo(bill.TodoDoneBody(repo=repo, index=2))
+
+    assert [t["done"] for t in bill.bill_todos(repo=repo)["todos"]] == [True, False]
+
+
+@pytest.mark.usefixtures("project_db")
+def test_undo_out_of_range_names_the_valid_range(tmp_path):
+    repo = _repo(tmp_path)
+    bill.add_bill_todo(bill.TodoAddBody(repo=repo, text="only one"))
+
+    with pytest.raises(HTTPException) as exc:
+        bill.undo_bill_todo(bill.TodoDoneBody(repo=repo, index=9))
+
+    assert exc.value.status_code == 400
+    assert "1" in exc.value.detail["error"]

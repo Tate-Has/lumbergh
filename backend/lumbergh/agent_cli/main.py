@@ -158,9 +158,9 @@ _COMMAND_HELP = {
     ),
     "prefs": 'lb prefs read | lb prefs add "<text>" --reason "<why>"',
     "todo": (
-        'lb todo [--repo <path>] | lb todo next | lb todo done <n> | lb todo add "<text>" '
-        '[--description "<why>"]  (--repo defaults to the cwd; `next` exits 1 when nothing '
-        "is left)"
+        "lb todo [--repo <path>] | lb todo next | lb todo done <n> | lb todo undo <n> | "
+        'lb todo add "<text>" [--description "<why>"]  (--repo defaults to the cwd; '
+        "`next` exits 1 when nothing is left)"
     ),
 }
 

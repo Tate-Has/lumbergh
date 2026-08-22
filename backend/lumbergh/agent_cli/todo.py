@@ -14,7 +14,7 @@ from lumbergh.agent_cli.main import _COMMAND_HELP, _emit, _err, _request
 from lumbergh.agent_cli.toon import render_collection, render_object
 
 _HELP = _COMMAND_HELP["todo"]
-SUBCOMMANDS = ("next", "done", "add")
+SUBCOMMANDS = ("next", "done", "undo", "add")
 
 
 def run(positional: list[str], flags: dict) -> int:
@@ -27,7 +27,9 @@ def run(positional: list[str], flags: dict) -> int:
     if sub == "next":
         return _next(repo)
     if sub == "done":
-        return _done(repo, rest[0] if rest else "")
+        return _set_done(repo, rest[0] if rest else "", done=True)
+    if sub == "undo":
+        return _set_done(repo, rest[0] if rest else "", done=False)
     if sub == "add":
         return _add(repo, rest[0] if rest else "", flags)
     return _err(f"unknown subcommand `{sub}`", _HELP, 2)
@@ -87,17 +89,19 @@ def _next(repo: str) -> int:
     return 1
 
 
-def _done(repo: str, raw_index: str) -> int:
+def _set_done(repo: str, raw_index: str, *, done: bool) -> int:
+    """`done <n>` and `undo <n>` — the same call with the flag flipped."""
     if not raw_index:
         return _err("which todo? pass its number", _HELP, 2)
     if not raw_index.lstrip("-").isdigit():
         return _err(f"`{raw_index}` is not a number", "run `lb todo` for the numbering", 2)
 
-    resp = _request("POST", "/api/bill/todos/done", json={"repo": repo, "index": int(raw_index)})
+    path = "/api/bill/todos/done" if done else "/api/bill/todos/undo"
+    resp = _request("POST", path, json={"repo": repo, "index": int(raw_index)})
     if resp.status_code >= 400:
         return _refused(resp)
     d = resp.json()
-    _emit(render_object([("index", d["index"]), ("done", True), ("text", d["todo"]["text"])]))
+    _emit(render_object([("index", d["index"]), ("done", done), ("text", d["todo"]["text"])]))
     return 0
 
 

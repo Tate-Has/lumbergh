@@ -1275,27 +1275,43 @@ def add_bill_todo(body: TodoAddBody):
     return {"todo": todo, "index": len(todos)}
 
 
-@router.post("/todos/done")
-def finish_bill_todo(body: TodoDoneBody):
-    """Tick off item ``index``, counting from 1 over the whole list.
+def _set_todo_done(repo: str, index: int, done: bool) -> dict:
+    """Flip item ``index``, counting from 1 over the whole list.
 
     The mutation happens here, not as a read-modify-write in the CLI, so it cannot lose a
     concurrent edit from the dashboard. ``index`` counts done items too, so the numbers
     `lb todo` prints are the numbers this accepts.
     """
-    table = _todos_table(body.repo)
+    table = _todos_table(repo)
     todos = get_single_document_items(table)
     if not todos:
         raise _fail("index", "the backlog is empty", 'add one with `lb todo add "<text>"`')
-    if not 1 <= body.index <= len(todos):
+    if not 1 <= index <= len(todos):
         raise _fail(
             "index",
-            f"no todo {body.index} — the backlog runs 1..{len(todos)}",
+            f"no todo {index} — the backlog runs 1..{len(todos)}",
             "run `lb todo` for the current numbering",
         )
-    todos[body.index - 1]["done"] = True
+    todos[index - 1]["done"] = done
     save_single_document_items(table, todos)
-    return {"todo": todos[body.index - 1], "index": body.index}
+    return {"todo": todos[index - 1], "index": index}
+
+
+@router.post("/todos/done")
+def finish_bill_todo(body: TodoDoneBody):
+    """Tick off item ``index``."""
+    return _set_todo_done(body.repo, body.index, True)
+
+
+@router.post("/todos/undo")
+def undo_bill_todo(body: TodoDoneBody):
+    """Put item ``index`` back on the backlog.
+
+    Ticking off the wrong number is easy — the list renumbers as items are added
+    while you work — and until now the only way back was rewriting the whole list
+    through the session API.
+    """
+    return _set_todo_done(body.repo, body.index, False)
 
 
 class BatchBody(BaseModel):

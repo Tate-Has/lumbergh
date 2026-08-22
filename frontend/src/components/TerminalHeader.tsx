@@ -195,15 +195,6 @@ function QuickActions({
         <span className="text-xs">Esc</span>
       </Button>
       <Button
-        variant="secondary"
-        size="sm"
-        onClick={() => onSendViaApi('1')}
-        disabled={!isConnected}
-        title="Send 1"
-      >
-        1
-      </Button>
-      <Button
         variant="ghost"
         size="icon"
         onClick={() => onSendViaApi('/clear')}
