@@ -51,8 +51,15 @@ def _get_defaults() -> dict:
         "questionDetectionEnabled": False,
         "cloudUrl": "https://app.lumbergh.dev",
         "ai": {
-            "provider": "ollama",
+            # The claude CLI is the out-of-the-box default: anyone running Lumbergh
+            # already has Claude Code installed and logged in, so AI features work
+            # with no key to paste and no server to install. Existing installs keep
+            # whatever provider they already saved.
+            "provider": "claude_cli",
             "providers": {
+                "claude_cli": {
+                    "model": "haiku",
+                },
                 "ollama": {
                     "baseUrl": "http://localhost:11434",
                     "model": "gemma3:latest",
@@ -180,6 +187,8 @@ def _is_ai_configured(settings: dict) -> bool:
     provider = ai.get("provider", "ollama")
     config = ai.get("providers", {}).get(provider, {})
 
+    if provider == "claude_cli":
+        return True  # nothing to configure — that is the whole point of it
     if provider == "ollama":
         return bool(config.get("baseUrl"))
     if provider == "openai_compatible":

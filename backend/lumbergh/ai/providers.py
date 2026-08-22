@@ -4,6 +4,8 @@ AI provider abstraction layer.
 Supports multiple AI backends with a unified interface.
 """
 
+import asyncio
+import shutil
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -209,6 +211,71 @@ class LumberghCloudProvider(AIProvider):
         return [{"name": m["id"]} for m in data.get("data", [])]
 
 
+class ClaudeCliProvider(AIProvider):
+    """The `claude` CLI in one-shot mode.
+
+    Anyone running Lumbergh already has Claude Code installed and logged in, so
+    this is the provider that needs no API key and no configuration. Tools and
+    MCP servers are switched off: these prompts summarize text, and an agent
+    that can read files or run commands would be slower and less predictable
+    for no benefit.
+    """
+
+    def __init__(self, model: str = "haiku", timeout: float = 60.0):
+        self.model = model
+        self.timeout = timeout
+
+    def _command(self, prompt: str) -> list[str]:
+        return [
+            "claude",
+            "-p",
+            prompt,
+            "--model",
+            self.model,
+            "--allowed-tools",
+            "",
+            "--strict-mcp-config",
+            "--mcp-config",
+            '{"mcpServers":{}}',
+        ]
+
+    async def complete(self, prompt: str) -> str:
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *self._command(prompt),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        except OSError as e:
+            raise RuntimeError(f"Could not run the claude CLI: {e}") from e
+
+        try:
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=self.timeout)
+        except TimeoutError as e:
+            process.kill()
+            raise RuntimeError(f"claude timed out after {self.timeout}s") from e
+
+        if process.returncode != 0:
+            detail = stderr.decode(errors="replace").strip() or "no output"
+            raise RuntimeError(f"claude exited {process.returncode}: {detail[:300]}")
+        return stdout.decode(errors="replace").strip()
+
+    async def health_check(self) -> bool:
+        if shutil.which("claude") is None:
+            return False
+        try:
+            process = await asyncio.create_subprocess_exec(
+                "claude",
+                "--version",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            await asyncio.wait_for(process.communicate(), timeout=10.0)
+        except (OSError, TimeoutError):
+            return False
+        return True
+
+
 class OpenAICompatibleProvider(AIProvider):
     """OpenAI-compatible API provider (e.g., local vLLM, text-generation-inference)."""
 
@@ -283,6 +350,8 @@ def get_provider(ai_settings: dict, settings: dict | None = None) -> AIProvider:
             api_key=config.get("apiKey", ""),
             model=config.get("model", "gemini-3-flash-preview"),
         )
+    if provider_name == "claude_cli":
+        return ClaudeCliProvider(model=config.get("model") or "haiku")
     if provider_name == "openai_compatible":
         return OpenAICompatibleProvider(
             base_url=config.get("baseUrl", ""),

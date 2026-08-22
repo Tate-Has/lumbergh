@@ -21,6 +21,23 @@ export interface ProviderDef {
 
 export const PROVIDERS: ProviderDef[] = [
   {
+    id: 'claude_cli',
+    label: 'Claude Code CLI (no API key)',
+    defaultModel: 'haiku',
+    fields: [
+      {
+        key: 'model',
+        label: 'Model',
+        type: 'select',
+        options: [
+          { value: 'haiku', label: 'haiku (fastest, cheapest)' },
+          { value: 'sonnet', label: 'sonnet' },
+          { value: 'opus', label: 'opus' },
+        ],
+      },
+    ],
+  },
+  {
     id: 'ollama',
     label: 'Ollama (Local)',
     defaultModel: '',
