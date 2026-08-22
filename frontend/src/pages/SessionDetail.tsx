@@ -108,6 +108,7 @@ export default function SessionDetail() {
   const [isScratch, setIsScratch] = useState(false)
   const [sessionRepo, setSessionRepo] = useState('')
   const [spawnFromRepo, setSpawnFromRepo] = useState<string | null>(null)
+  const [forkFrom, setForkFrom] = useState<string | null>(null)
   const tabSettingsRef = useRef<HTMLDivElement>(null)
   const focusFnRef = useRef<(() => void) | null>(null)
 
@@ -501,6 +502,7 @@ export default function SessionDetail() {
           onFocusReady={handleFocusReady}
           onBack={isDesktop ? handleBack : undefined}
           onSpawnSession={sessionRepo ? () => setSpawnFromRepo(sessionRepo) : undefined}
+          onForkSession={name ? () => setForkFrom(name) : undefined}
           onReset={handleReset}
           onCycleSession={handleCycleSession}
           showSessionDots={showSessionDots}
@@ -528,6 +530,15 @@ export default function SessionDetail() {
           initialParentRepo={spawnFromRepo}
           onClose={() => setSpawnFromRepo(null)}
           onCreated={() => setSpawnFromRepo(null)}
+        />
+      )}
+      {forkFrom && (
+        <CreateSessionModal
+          forkFrom={forkFrom}
+          initialMode="worktree"
+          initialParentRepo={sessionRepo}
+          onClose={() => setForkFrom(null)}
+          onCreated={() => setForkFrom(null)}
         />
       )}
       {showSummary && name && (

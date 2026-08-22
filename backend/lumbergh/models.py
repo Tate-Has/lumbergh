@@ -131,6 +131,7 @@ class CreateSessionRequest(BaseModel):
     init_repo: bool = False  # Create dir + git init if it doesn't exist
     agent_provider: str | None = None  # Override global default agent provider
     tab_visibility: dict[str, bool] | None = None  # Override global tab visibility
+    fork_from: str | None = None  # Start from this session's conversation, branched
 
 
 class SessionUpdate(BaseModel):

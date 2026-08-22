@@ -16,6 +16,8 @@ interface Props {
   initialMode?: SessionMode
   /** Prefill the repo a worktree branches from. */
   initialParentRepo?: string
+  /** Branch this session's conversation into the new one. */
+  forkFrom?: string
 }
 
 type SessionMode = 'existing' | 'new' | 'worktree'
@@ -82,14 +84,120 @@ function deriveSlug(
   return lastSegment(parentRepo)
 }
 
+/** What the dialog opens on — a plain "New Session", or prefilled for a spawn
+ * or a fork from the session you were just in. */
+function openingState(initialMode?: SessionMode, initialParentRepo?: string) {
+  return { mode: initialMode ?? 'existing', parentRepo: initialParentRepo ?? '' }
+}
+
+function modalTitle(forkFrom?: string): string {
+  return forkFrom ? 'Fork Session' : 'New Session'
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : 'Failed to create session'
+}
+
+/** The optional half of the payload: only send what differs from the defaults. */
+function optionsPayload(f: {
+  agentProvider: string
+  defaultAgent: string
+  customizeTabs: boolean
+  tabVisibility: Record<string, boolean>
+  forkFrom?: string
+}): Record<string, unknown> {
+  return {
+    ...(f.agentProvider && f.agentProvider !== f.defaultAgent
+      ? { agent_provider: f.agentProvider }
+      : {}),
+    ...(f.customizeTabs ? { tab_visibility: f.tabVisibility } : {}),
+    ...(f.forkFrom ? { fork_from: f.forkFrom } : {}),
+  }
+}
+
+/** Whether the form has everything the chosen mode needs. */
+function canSubmit(
+  mode: SessionMode,
+  f: {
+    slug: string
+    workdir: string
+    manualEntry: boolean
+    dirStatus: DirStatus
+    projectSlug: string
+    parentDir: string
+    parentRepo: string
+    branch: string
+    createNewBranch: boolean
+    newBranchName: string
+  }
+): boolean {
+  if (!f.slug) return false
+  if (mode === 'existing') {
+    if (!f.workdir.trim()) return false
+    return !(f.manualEntry && (f.dirStatus === 'not_found' || f.dirStatus === 'checking'))
+  }
+  if (mode === 'new') {
+    return f.projectSlug !== '' && f.parentDir.trim() !== ''
+  }
+  return (
+    f.parentRepo.trim() !== '' &&
+    (f.createNewBranch ? f.newBranchName.trim() !== '' : f.branch !== '')
+  )
+}
+
+/** Where the new session lives — the half of the payload the mode decides. */
+function locationPayload(
+  mode: SessionMode,
+  fields: {
+    workdir: string
+    newRepoPath: string
+    parentRepo: string
+    branch: string
+    createNewBranch: boolean
+    newBranchName: string
+  }
+): Record<string, unknown> {
+  if (mode === 'existing') {
+    return { mode: 'direct', workdir: fields.workdir.trim() }
+  }
+  if (mode === 'new') {
+    return { mode: 'direct', workdir: fields.newRepoPath, init_repo: true }
+  }
+  return {
+    mode: 'worktree',
+    worktree: {
+      parent_repo: fields.parentRepo.trim(),
+      branch: fields.createNewBranch ? fields.newBranchName.trim() : fields.branch,
+      create_branch: fields.createNewBranch,
+    },
+  }
+}
+
+/** Says what a fork inherits, so "New Session" and "Fork Session" are not the
+ * same dialog with a different heading. */
+function ForkNotice({ forkFrom }: { forkFrom?: string }) {
+  if (!forkFrom) return null
+  return (
+    <p
+      className="text-sm text-text-tertiary bg-control-bg rounded-[var(--radius-md)] px-3 py-2"
+      data-testid="fork-notice"
+    >
+      Starts from <span className="text-text-primary font-medium">{forkFrom}</span>&rsquo;s
+      conversation so far, branched — that session keeps going untouched.
+    </p>
+  )
+}
+
 export default function CreateSessionModal({
   onClose,
   onCreated,
   initialMode,
   initialParentRepo,
+  forkFrom,
 }: Props) {
+  const initial = openingState(initialMode, initialParentRepo)
   const navigate = useNavigate()
-  const [mode, setMode] = useState<SessionMode>(initialMode ?? 'existing')
+  const [mode, setMode] = useState<SessionMode>(initial.mode)
   const [name, setName] = useState('')
   const [workdir, setWorkdir] = useState('')
   const [description, setDescription] = useState('')
@@ -105,7 +213,7 @@ export default function CreateSessionModal({
   const [editingParentDir, setEditingParentDir] = useState(false)
 
   // Worktree mode state
-  const [parentRepo, setParentRepo] = useState(initialParentRepo ?? '')
+  const [parentRepo, setParentRepo] = useState(initial.parentRepo)
   const [branch, setBranch] = useState('')
   const [createNewBranch, setCreateNewBranch] = useState(false)
   const [newBranchName, setNewBranchName] = useState('')
@@ -174,21 +282,19 @@ export default function CreateSessionModal({
     return () => clearTimeout(timer)
   }, [workdir, manualEntry, mode])
 
-  const isValid = () => {
-    if (!slug) return false
-    if (mode === 'existing') {
-      if (!workdir.trim()) return false
-      if (manualEntry && dirStatus === 'not_found') return false
-      if (manualEntry && dirStatus === 'checking') return false
-      return true
-    }
-    if (mode === 'new') {
-      return projectSlug !== '' && parentDir.trim() !== ''
-    }
-    return (
-      parentRepo.trim() !== '' && (createNewBranch ? newBranchName.trim() !== '' : branch !== '')
-    )
-  }
+  const isValid = () =>
+    canSubmit(mode, {
+      slug,
+      workdir,
+      manualEntry,
+      dirStatus,
+      projectSlug,
+      parentDir,
+      parentRepo,
+      branch,
+      createNewBranch,
+      newBranchName,
+    })
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -201,43 +307,29 @@ export default function CreateSessionModal({
       const body: Record<string, unknown> = {
         name: slug,
         description: description.trim(),
+        ...optionsPayload({ agentProvider, defaultAgent, customizeTabs, tabVisibility, forkFrom }),
       }
 
-      if (agentProvider && agentProvider !== defaultAgent) {
-        body.agent_provider = agentProvider
-      }
-      if (customizeTabs) {
-        body.tab_visibility = tabVisibility
-      }
-
-      if (mode === 'existing') {
-        body.mode = 'direct'
-        body.workdir = workdir.trim()
-      } else if (mode === 'new') {
-        body.mode = 'direct'
-        body.workdir = newRepoPath
-        body.init_repo = true
-      } else {
-        body.mode = 'worktree'
-        body.worktree = {
-          parent_repo: parentRepo.trim(),
-          branch: createNewBranch ? newBranchName.trim() : branch,
-          create_branch: createNewBranch,
-        }
-      }
+      Object.assign(
+        body,
+        locationPayload(mode, {
+          workdir,
+          newRepoPath,
+          parentRepo,
+          branch,
+          createNewBranch,
+          newBranchName,
+        })
+      )
 
       const data = await postSession(body)
-      if (data.existing) {
-        navigate(`/session/${data.name}`)
-        onClose()
-        return
-      }
-
-      onCreated()
+      // An already-existing session is not an error: just go to it, without
+      // telling the caller a session was created.
+      if (!data.existing) onCreated()
       onClose()
       navigate(`/session/${data.name}`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create session')
+      setError(errorMessage(err))
     } finally {
       setIsCreating(false)
     }
@@ -250,7 +342,7 @@ export default function CreateSessionModal({
         data-testid="create-session-modal"
       >
         <div className="flex items-center justify-between p-4 border-b border-border-default">
-          <h2 className="text-lg font-semibold text-text-primary">New Session</h2>
+          <h2 className="text-lg font-semibold text-text-primary">{modalTitle(forkFrom)}</h2>
           <button
             onClick={onClose}
             className="w-7 h-7 rounded-full bg-control-bg hover:bg-control-bg-hover flex items-center justify-center text-text-tertiary hover:text-text-primary transition-colors cursor-pointer"
@@ -260,6 +352,7 @@ export default function CreateSessionModal({
         </div>
 
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
+          <ForkNotice forkFrom={forkFrom} />
           <ModeToggle mode={mode} onModeChange={setMode} />
 
           {mode !== 'new' && (

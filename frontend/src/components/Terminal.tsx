@@ -48,6 +48,7 @@ interface TerminalProps {
   onFocusReady?: (focus: () => void) => void
   onBack?: () => void
   onSpawnSession?: () => void
+  onForkSession?: () => void
   onReset?: () => void
   onCycleSession?: (direction: 'next' | 'prev') => void
   showSessionDots?: boolean
@@ -69,6 +70,7 @@ export default memo(function Terminal({
   onFocusReady,
   onBack,
   onSpawnSession,
+  onForkSession,
   onReset,
   onCycleSession,
   showSessionDots = true,
@@ -1046,6 +1048,7 @@ export default memo(function Terminal({
           onFit={handleManualFit}
           onBack={onBack}
           onSpawnSession={onSpawnSession}
+          onForkSession={onForkSession}
           onReset={onReset}
           onCycleSession={onCycleSession}
           showSessionDots={showSessionDots}

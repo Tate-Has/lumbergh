@@ -829,9 +829,34 @@ def _resolve_direct_workdir(body: CreateSessionRequest) -> Path:
     return workdir
 
 
+def _fork_launch_command(body: CreateSessionRequest) -> str:
+    """The launch command for a session forked off another one's conversation."""
+    from lumbergh.fork import claude_session_id, fork_launch_command
+
+    source = body.fork_from or ""
+    stored = get_stored_sessions().get(source)
+    if stored is None:
+        raise HTTPException(status_code=404, detail=f"No session named '{source}' to fork")
+
+    provider = body.agent_provider or stored.get("agent_provider")
+    source_cwd = Path(stored["workdir"]) if stored.get("workdir") else None
+    session_id = claude_session_id(source, source_cwd)
+    command = fork_launch_command(provider, session_id)
+    if command is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"'{source}' has no conversation to fork yet, or its agent cannot fork one.",
+        )
+    return command
+
+
 def _spawn_tmux_or_raise(body: CreateSessionRequest, workdir: Path) -> None:
     """Spawn the tmux session, mapping exceptions to meaningful HTTP errors."""
-    launch_cmd = _resolve_launch_command(body.agent_provider)
+    launch_cmd = (
+        _fork_launch_command(body)
+        if body.fork_from
+        else _resolve_launch_command(body.agent_provider)
+    )
     try:
         create_tmux_session(body.name, workdir, launch_command=launch_cmd)
     except RuntimeError as e:
