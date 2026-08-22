@@ -1132,6 +1132,52 @@ def delete_branch(
     return {"status": "success", "message": message}
 
 
+def get_reflog(cwd: Path, limit: int = 50) -> list[dict]:
+    """Recent HEAD movements, newest first.
+
+    This is the undo history the commit graph cannot show: after a hard reset or
+    an abandoned rebase the commit you want is unreachable, so `git log` — which
+    only walks what is still reachable — is exactly the wrong place to look for
+    it. Every entry here is a commit HEAD once pointed at, recoverable by
+    branching from it or resetting back to it.
+    """
+    try:
+        repo = get_repo(cwd)
+    except (InvalidGitRepositoryError, NoSuchPathError):
+        return []
+
+    # --date=relative makes %gd read "HEAD@{2 hours ago}", which says when but is
+    # no longer a selector git will take back. Keep it for the human timestamp and
+    # rebuild the real selector from the position, which is what HEAD@{n} means.
+    unit = chr(31)
+    try:
+        output = repo.git.reflog("--date=relative", f"--format=%H{unit}%gd{unit}%gs", f"-{limit}")
+    except GitCommandError:
+        return []
+
+    entries = []
+    for index, line in enumerate(output.splitlines()):
+        parts = line.split(unit)
+        if len(parts) != 3:
+            continue
+        hexsha, dated_selector, message = parts
+        _, _, when = dated_selector.partition("@{")
+        entries.append(
+            {
+                "hash": hexsha,
+                "shortHash": hexsha[:7],
+                "selector": f"HEAD@{{{index}}}",
+                # "commit", "reset", "rebase", "checkout"... — what moved HEAD.
+                # Just the verb: git qualifies some of them ("commit (initial)",
+                # "merge feat/x") and that detail belongs in the message.
+                "action": message.split(":", 1)[0].split(" ", 1)[0].strip(),
+                "message": message,
+                "relativeDate": when.rstrip("}"),
+            }
+        )
+    return entries
+
+
 def list_remote_tags(cwd: Path, remote: str = "origin") -> list[str]:
     """The tags ``remote`` has, newest-first as git reports them.
 

@@ -50,6 +50,7 @@ from lumbergh.git_utils import (
     get_full_diff_with_untracked,
     get_graph_log,
     get_porcelain_status,
+    get_reflog,
     get_remote_status,
     git_cherry_pick,
     git_fast_forward,
@@ -1858,6 +1859,18 @@ async def session_git_pull_requests(name: str):
     except Exception:
         logger.debug("pull request lookup failed for %s", name, exc_info=True)
         return {"prs": []}
+
+
+@router.get("/{name}/git/reflog")
+async def session_git_reflog(name: str, limit: int = 50):
+    """Recent HEAD movements — the undo history behind the graph."""
+    workdir = get_session_workdir(name)
+
+    try:
+        entries = await _run_git(get_reflog, workdir, limit)
+        return {"entries": entries}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{name}/git/remote-tags")

@@ -3,9 +3,15 @@ interface Props {
   /** False once a payload reports no resolvable git identity to filter by. */
   mineAvailable: boolean
   onToggleMineOnly: () => void
+  onOpenReflog?: () => void
 }
 
-export default function GraphToolbar({ mineOnly, mineAvailable, onToggleMineOnly }: Props) {
+export default function GraphToolbar({
+  mineOnly,
+  mineAvailable,
+  onToggleMineOnly,
+  onOpenReflog,
+}: Props) {
   const active = mineOnly && mineAvailable
 
   return (
@@ -29,6 +35,16 @@ export default function GraphToolbar({ mineOnly, mineAvailable, onToggleMineOnly
         Just mine
       </button>
       {active && <span className="text-text-muted">trunk + branches you have worked on</span>}
+      {onOpenReflog && (
+        <button
+          data-testid="graph-reflog-toggle"
+          onClick={onOpenReflog}
+          title="Where was I? — recent HEAD movements, including commits the graph no longer shows"
+          className="ml-auto px-2 py-1 rounded-sm ring-1 bg-control-bg text-text-secondary ring-border-default hover:bg-control-bg-hover"
+        >
+          Where was I?
+        </button>
+      )}
     </div>
   )
 }

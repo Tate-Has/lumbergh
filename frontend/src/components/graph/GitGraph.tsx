@@ -15,6 +15,8 @@ import GraphToolbar from './GraphToolbar'
 import { applyGraphResponse } from './graphSync'
 import { buildBranchMenuItems } from './branchMenu'
 import { buildTagMenuItems } from './tagMenu'
+import { ReflogOverlay } from './ReflogPanel'
+import type { ReflogEntry } from './ReflogPanel'
 import { prsByBranch, refBranchName } from './pullRequests'
 import type { PullRequest } from './pullRequests'
 import type { MenuBranchInfo } from './branchMenu'
@@ -721,6 +723,7 @@ export default function GitGraph({
   } | null>(null)
   const [menuTag, setMenuTag] = useState<{ name: string; x: number; y: number } | null>(null)
   const [remoteTags, setRemoteTags] = useState<Set<string> | null>(null)
+  const [showReflog, setShowReflog] = useState(false)
   const [pullRequests, setPullRequests] = useState<Map<string, PullRequest>>(new Map())
   const [deleteBranchConfirm, setDeleteBranchConfirm] = useState<{
     name: string
@@ -1088,6 +1091,43 @@ export default function GitGraph({
       // No origin, no network, no problem: the menu just offers the local delete.
     }
   }, [sessionName, remoteTags])
+
+  const openReflog = useCallback(() => setShowReflog(true), [])
+  const closeReflog = useCallback(() => setShowReflog(false), [])
+
+  const handleBranchFromReflog = useCallback(
+    async (entry: ReflogEntry) => {
+      if (!sessionName) return
+      const suggested = `recover/${entry.shortHash}`
+      const name = prompt(`Branch name for ${entry.shortHash} (${entry.message})`, suggested)
+      if (!name) return
+      const ok = await gitAction(`${getApiBase()}/sessions/${sessionName}/git/create-branch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, start_point: entry.hash }),
+      })
+      if (!ok) return
+      setShowReflog(false)
+      afterAction()
+    },
+    [sessionName, afterAction, gitAction]
+  )
+
+  const handleResetFromReflog = useCallback(
+    async (entry: ReflogEntry) => {
+      if (!sessionName) return
+      if (!confirmHardReset(`${entry.shortHash} (${entry.selector})`)) return
+      const ok = await gitAction(`${getApiBase()}/sessions/${sessionName}/git/reset-to`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hash: entry.hash, mode: 'hard' }),
+      })
+      if (!ok) return
+      setShowReflog(false)
+      afterAction()
+    },
+    [sessionName, afterAction, gitAction]
+  )
 
   const handleDeleteTag = useCallback(
     async (deleteRemote: boolean) => {
@@ -1460,6 +1500,15 @@ export default function GitGraph({
         mineOnly={mineOnly}
         mineAvailable={graphData?.mine?.available ?? true}
         onToggleMineOnly={toggleMineOnly}
+        onOpenReflog={sessionName ? openReflog : undefined}
+      />
+
+      <ReflogOverlay
+        open={showReflog}
+        sessionName={sessionName}
+        onClose={closeReflog}
+        onBranchFrom={handleBranchFromReflog}
+        onResetTo={handleResetFromReflog}
       />
 
       {/* Off-screen worktrees — HEADs older than the commit limit */}
