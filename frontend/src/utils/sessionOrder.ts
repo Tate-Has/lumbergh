@@ -1,4 +1,5 @@
 import type { SessionBase } from './sessionStatus'
+import { resolveWorkerParent } from './sessionStatus'
 
 const BILL_NAME = 'bill'
 
@@ -8,25 +9,6 @@ export interface NavigatorGroups<T extends SessionBase = SessionBase> {
   bill: T | null
   starred: T[]
   rest: T[]
-}
-
-/** The running session a worker belongs to, or null if none is on screen.
- *
- * The recorded `parent` is the session that spawned the worker, which may since
- * have died while the worker lives on — its bubble would then drift off to be
- * name-sorted among the top-level sessions. Fall back to the repo the worktree
- * was cut from: whichever live session is checked out there is the one the user
- * thinks of as the parent. */
-function resolveParent<T extends SessionBase>(
-  worker: T,
-  peers: T[],
-  present: Set<string>
-): string | null {
-  if (worker.role !== 'worker') return null
-  if (worker.parent && present.has(worker.parent)) return worker.parent
-  const repo = worker.worktreeParentRepo
-  if (!repo) return null
-  return peers.find((s) => s.role !== 'worker' && s.workdir === repo)?.name ?? null
 }
 
 /** The switcher's three runs of bubbles: Bill, starred sessions, then the rest.
@@ -40,7 +22,7 @@ export function navigatorGroups<T extends SessionBase>(sessions: T[]): Navigator
 
   const workersByParent = new Map<string, T[]>()
   for (const s of peers) {
-    const parent = resolveParent(s, peers, present)
+    const parent = resolveWorkerParent(s, peers, present)
     if (!parent) continue
     const list = workersByParent.get(parent) ?? []
     list.push(s)

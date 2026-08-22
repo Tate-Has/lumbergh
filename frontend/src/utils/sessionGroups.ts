@@ -1,5 +1,5 @@
 import type { SessionBase } from './sessionStatus'
-import { sessionUrgencyRank } from './sessionStatus'
+import { sessionUrgencyRank, resolveWorkerParent } from './sessionStatus'
 
 interface Groupable extends SessionBase {
   lastUsedAt?: string | null
@@ -26,9 +26,10 @@ function topLevelOrder<T extends Groupable>(a: T, b: T): number {
 
 /** Partition sessions into Bill, overseer groups, and solos.
  *
- * A worker nests under a session named by its `parent` only when that parent is
- * present in this list; a worker whose parent is absent (or that has no parent —
- * an orphan worker) becomes a top-level solo so it never falls through the cracks.
+ * Parent/child grouping is resolved by `resolveWorkerParent`, the same call the
+ * navigator dots make, so a sub-session nests under the same session in both views.
+ * A worker with no parent on screen becomes a top-level solo so it never falls
+ * through the cracks.
  * Top-level items (overseers + solos) are ordered by urgency then recency, matching
  * the flat dashboard sort; workers within a group are ordered by urgency alone.
  */
@@ -36,26 +37,24 @@ export function groupSessions<T extends Groupable>(sessions: T[]): GroupedSessio
   const present = new Set(sessions.map((s) => s.name))
   const bill = sessions.find((s) => s.role === 'bill') ?? null
 
+  const peers = sessions.filter((s) => s !== bill)
+
   const workersByParent = new Map<string, T[]>()
-  for (const s of sessions) {
-    if (s === bill) continue
-    if (s.role === 'worker' && s.parent && present.has(s.parent)) {
-      const list = workersByParent.get(s.parent) ?? []
-      list.push(s)
-      workersByParent.set(s.parent, list)
-    }
+  for (const s of peers) {
+    const parent = resolveWorkerParent(s, peers, present)
+    if (!parent) continue
+    const list = workersByParent.get(parent) ?? []
+    list.push(s)
+    workersByParent.set(parent, list)
   }
   for (const workers of workersByParent.values()) {
     workers.sort((a, b) => sessionUrgencyRank(a) - sessionUrgencyRank(b))
   }
 
-  const items: SessionGroup<T>[] = []
-  for (const s of sessions) {
-    if (s === bill) continue
-    const nestedElsewhere = s.role === 'worker' && s.parent && workersByParent.has(s.parent)
-    if (nestedElsewhere) continue
-    items.push({ parent: s, workers: workersByParent.get(s.name) ?? [] })
-  }
+  const nested = new Set([...workersByParent.values()].flat().map((s) => s.name))
+  const items: SessionGroup<T>[] = peers
+    .filter((s) => !nested.has(s.name))
+    .map((s) => ({ parent: s, workers: workersByParent.get(s.name) ?? [] }))
   items.sort((a, b) => topLevelOrder(a.parent, b.parent))
 
   return { bill, items }

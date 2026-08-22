@@ -14,6 +14,27 @@ export interface SessionBase {
   worktreeParentRepo?: string | null
 }
 
+/** The name of the running session a worker belongs to, or null if none is on
+ * screen. The single source of truth for parent/child grouping — the dashboard
+ * cards and the navigator dots both resolve through here, so a sub-session nests
+ * under the same session in both views.
+ *
+ * The recorded `parent` is the session that spawned the worker, which may since
+ * have died while the worker lives on; its bubble would then drift off among the
+ * top-level sessions. Fall back to the repo the worktree was cut from: whichever
+ * live session is checked out there is the one the user means by "the parent". */
+export function resolveWorkerParent<T extends SessionBase>(
+  worker: T,
+  peers: T[],
+  present: Set<string>
+): string | null {
+  if (worker.role !== 'worker') return null
+  if (worker.parent && present.has(worker.parent)) return worker.parent
+  const repo = worker.worktreeParentRepo
+  if (!repo) return null
+  return peers.find((s) => s.role !== 'worker' && s.workdir === repo)?.name ?? null
+}
+
 /** Whether a session has an unhandled action for the user: it is stuck
  * (blocked/error), has a pending question, or finished a chunk unseen
  * (idle + "while you were away"). Mirrors the backend's `fleet.needs_attention`

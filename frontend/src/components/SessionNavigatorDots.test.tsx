@@ -11,7 +11,14 @@ vi.mock('../hooks/useMediaQuery', () => ({ useIsDesktop: () => true }))
 const payload = {
   sessions: [
     { name: 'api', alive: true, displayName: 'api', idleState: 'idle', role: 'session' },
-    { name: 'docs', alive: true, displayName: 'docs', idleState: 'idle', role: 'session' },
+    {
+      name: 'docs',
+      alive: true,
+      displayName: 'docs',
+      idleState: 'idle',
+      role: 'session',
+      workdir: '/src/docs',
+    },
     {
       name: 'api-fix',
       alive: true,
@@ -19,6 +26,15 @@ const payload = {
       idleState: 'working',
       role: 'worker',
       parent: 'api',
+    },
+    {
+      name: 'docs-fix',
+      alive: true,
+      displayName: 'docs-fix',
+      idleState: 'idle',
+      role: 'worker',
+      parent: 'a-session-that-died',
+      worktreeParentRepo: '/src/docs',
     },
   ],
 }
@@ -47,7 +63,7 @@ describe('SessionNavigatorDots', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'AF' })).toBeTruthy())
     const labels = [...document.querySelectorAll('button')].map((b) => b.textContent)
 
-    expect(labels).toEqual(['AP', 'AF', 'DO'])
+    expect(labels).toEqual(['AP', 'AF', 'DO', 'DF'])
   })
 
   it('draws the worker smaller than the session it belongs to', async () => {
@@ -56,7 +72,7 @@ describe('SessionNavigatorDots', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'AF' })).toBeTruthy())
 
     expect(screen.getByRole('button', { name: 'AP' }).className).toContain('w-7 h-7')
-    expect(screen.getByRole('button', { name: 'AF' }).className).toContain('w-5 h-5')
+    expect(screen.getByRole('button', { name: 'AF' }).className).toContain('w-5.5 h-5.5')
   })
 
   it('stands the bubbles on a shared floor so the small one hangs below', async () => {
@@ -66,6 +82,16 @@ describe('SessionNavigatorDots', () => {
     const row = screen.getByRole('button', { name: 'AF' }).closest('.flex.items-end')
 
     expect(row).not.toBeNull()
+  })
+
+  it('nests and names a worker whose spawning session died, via its repo', async () => {
+    renderDots()
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'DF' })).toBeTruthy())
+    const labels = [...document.querySelectorAll('button')].map((b) => b.textContent)
+
+    expect(labels).toEqual(['AP', 'AF', 'DO', 'DF'])
+    expect(screen.getByText(/sub-session of docs/)).toBeTruthy()
   })
 
   it('names the parent in the worker tooltip', async () => {

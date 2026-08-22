@@ -4,7 +4,12 @@ import { UserRoundCog } from 'lucide-react'
 import { getApiBase } from '../config'
 import { useIsDesktop } from '../hooks/useMediaQuery'
 import type { SessionBase } from '../utils/sessionStatus'
-import { getSessionStatus, statusColorClasses, parseSessionsPayload } from '../utils/sessionStatus'
+import {
+  getSessionStatus,
+  statusColorClasses,
+  parseSessionsPayload,
+  resolveWorkerParent,
+} from '../utils/sessionStatus'
 import { navigatorGroups } from '../utils/sessionOrder'
 
 const statusRingClasses: Record<string, string> = {
@@ -72,7 +77,7 @@ function initialsFor(label: string) {
  * in both the desktop row and the compact mobile strip. */
 function dotSize(isWorker: boolean, compact: boolean, isCurrent: boolean) {
   if (isWorker) {
-    if (!compact) return 'w-5 h-5 text-[10px]'
+    if (!compact) return 'w-5.5 h-5.5 text-[11px]'
     return `${isCurrent ? 'w-5 h-5' : 'w-4 h-4'} text-[7px]`
   }
   if (!compact) return 'w-7 h-7 text-sm'
@@ -181,14 +186,16 @@ export default function SessionNavigatorDots({ currentSessionName, compact = fal
   if (!compact && !isDesktop) return null
 
   const { bill, starred, rest } = navigatorGroups(sessions)
-  const labelOf = (name: string) => {
-    const parent = sessions.find((s) => s.name === name)
-    return parent?.displayName || name
+
+  // Resolve the tooltip's parent through the same call that placed the bubble, so
+  // an adopted worker is never nested beside a session the tooltip declines to name.
+  const peers = sessions.filter((s) => s.alive && !s.paused)
+  const present = new Set(peers.map((s) => s.name))
+  const nestedUnder = (s: SessionBase) => {
+    const parent = resolveWorkerParent(s, peers, present)
+    if (!parent) return null
+    return peers.find((p) => p.name === parent)?.displayName || parent
   }
-  const nestedUnder = (s: SessionBase) =>
-    s.role === 'worker' && s.parent && sessions.some((p) => p.name === s.parent)
-      ? labelOf(s.parent)
-      : null
 
   const renderDots = (group: SessionBase[]) =>
     group.map((s) => (

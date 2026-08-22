@@ -34,6 +34,21 @@ describe('groupSessions', () => {
     expect(items.map((i) => i.parent.name)).toEqual(['lumbergh'])
   })
 
+  it('adopts a worker whose spawning session died into the session on its repo', () => {
+    const sessions = [
+      row('lumbergh', { workdir: '/src/lumbergh' }),
+      row('badge-fix', {
+        role: 'worker',
+        parent: 'zen-verify-htop',
+        worktreeParentRepo: '/src/lumbergh',
+      }),
+    ]
+    const { items } = groupSessions(sessions)
+    expect(items).toHaveLength(1)
+    expect(items[0].parent.name).toBe('lumbergh')
+    expect(items[0].workers.map((w) => w.name)).toEqual(['badge-fix'])
+  })
+
   it('surfaces an orphan worker as a top-level solo', () => {
     const sessions = [row('auth-fix', { role: 'worker', parent: 'herdr' })]
     const { items } = groupSessions(sessions)
