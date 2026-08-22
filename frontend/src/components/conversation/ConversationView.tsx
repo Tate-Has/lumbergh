@@ -3,7 +3,13 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { useConversationSocket } from '../../hooks/useConversationSocket'
 import { decideFollow } from '../../utils/conversationFollow'
 import ConversationRespondBox from './ConversationRespondBox'
-import { Item } from './ConversationItem'
+import { Item, ToolGroup } from './ConversationItem'
+import { groupToolRuns, type ConversationRow } from '../../utils/conversationGroups'
+
+function Row({ row }: { row: ConversationRow }) {
+  if (row.kind === 'group') return <ToolGroup items={row.items} isLatest={row.isLatest} />
+  return <Item item={row.item} />
+}
 
 export default function ConversationView({
   sessionName,
@@ -43,19 +49,22 @@ export default function ConversationView({
   // Thinking is ephemeral: keep it only while it's the latest event (the agent is
   // still thinking). Once any real output follows, it drops out of the history.
   const visibleItems = items.filter((item, i) => item.type !== 'thinking' || i === items.length - 1)
+  // Grouping happens before virtualization: a folded run is one row, so the
+  // virtualizer counts, keys and measures what is actually on screen.
+  const rows = groupToolRuns(visibleItems)
 
   // TanStack Virtual returns functions React Compiler can't memoize; skipping
   // memoization here is safe (and the compiler's own advice).
   // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
-    count: visibleItems.length,
+    count: rows.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => 80,
     overscan: 8,
     // Key sizes by item, not index: the trailing `thinking` item drops out of
     // visibleItems, and an index-keyed cache would hand its height to whatever
     // row slides into its place.
-    getItemKey: (index) => visibleItems[index].id,
+    getItemKey: (index) => rows[index].key,
   })
 
   // The spacer height and every row's `start` come out of the same measurements
@@ -172,7 +181,7 @@ export default function ConversationView({
         <div style={{ height: totalSize, position: 'relative' }}>
           {virtualizer.getVirtualItems().map((row) => (
             <div
-              key={visibleItems[row.index].id}
+              key={rows[row.index].key}
               data-index={row.index}
               ref={virtualizer.measureElement}
               style={{
@@ -184,7 +193,7 @@ export default function ConversationView({
               }}
               className="px-3 py-1.5"
             >
-              <Item item={visibleItems[row.index]} />
+              <Row row={rows[row.index]} />
             </div>
           ))}
         </div>
