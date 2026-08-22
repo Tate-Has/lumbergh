@@ -102,6 +102,23 @@ Run `./lint.sh` before finishing any task. It auto-fixes what it can (ruff forma
 - E2E tests: `./test/e2e-vm.sh` (spins up QEMU VM, runs all E2E + UI tests)
 - Run E2E locally against running server: `cd test/e2e && pytest`
 
+## Logs
+
+The backend configures only the `lumbergh` namespace (uvicorn keeps its own), at
+INFO by default — state transitions, PTY lifecycle, and any background check that
+threw. Raise it with `LUMBERGH_LOG_LEVEL=debug` before starting the backend.
+
+DEBUG adds one line per session per poll from the idle monitor:
+
+```
+poll port geometry=107x60 state=idle was=working quiet=6.3s reshaped=False fingerprint=2cd4cf2b
+```
+
+That is the line to reach for when a session's state looks wrong — it says what
+the pane looked like, how long it had been still, and whether the pane had just
+changed shape (a viewer attaching resizes it, the agent redraws, and content-based
+detection reads the repaint as activity).
+
 ## Debugging Event Loop Lag
 
 A permanent watchdog in `main.py` logs to `/tmp/lumbergh-lag.log` whenever the event loop is blocked >200ms, including thread stacks. If the terminal feels laggy:

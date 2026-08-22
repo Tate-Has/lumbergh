@@ -326,10 +326,18 @@ class IdleMonitor:
 
         await self._check_babysit_health(set(targets))
 
-        await asyncio.gather(
+        # return_exceptions keeps one bad session from cancelling the rest — but the
+        # results have to be read, or a target that throws every poll goes unnoticed
+        # forever while its state quietly freezes.
+        results = await asyncio.gather(
             *(self._check_session(target) for target in targets),
             return_exceptions=True,
         )
+        for target, result in zip(targets, results, strict=True):
+            if isinstance(result, asyncio.CancelledError):
+                raise result
+            if isinstance(result, BaseException):
+                logger.warning("idle check failed for %s: %s", target, result, exc_info=result)
 
         try:
             await self._maybe_nudge_bill(loop)
@@ -612,6 +620,20 @@ class IdleMonitor:
         state = self._classify_burst(session_name, captures, time.time(), osc_title)
 
         old_state = self._states.get(session_name, SessionState.UNKNOWN)
+        if logger.isEnabledFor(logging.DEBUG):
+            # One line per target per poll: everything needed to explain a state
+            # that looks wrong — what the pane looked like, how long it has been
+            # still, and whether we reshaped it ourselves.
+            logger.debug(
+                "poll %s geometry=%s state=%s was=%s quiet=%.1fs reshaped=%s fingerprint=%s",
+                session_name,
+                geometry or "unknown",
+                state.value,
+                old_state.value,
+                time.time() - self._last_change.get(session_name, time.time()),
+                self._settling_after_reshape(session_name),
+                self._fingerprints.get(session_name, "")[:8],
+            )
         if state != old_state:
             logger.info(f"Session {session_name} state: {old_state.value} -> {state.value}")
             self._record_state_change(session_name, state)

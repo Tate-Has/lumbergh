@@ -33,11 +33,13 @@ from lumbergh.git_utils import (
     revert_file,
     stage_all_and_commit,
 )
+from lumbergh.logging_setup import configure_logging
 from lumbergh.models import CommitInput, RevertFileInput, SendInput, TmuxCommand
 from lumbergh.routers import agent, ai, backup, cloud, notes, sessions, settings, shared, tmux
 from lumbergh.routers import bill as bill_router
 from lumbergh.routers import worktrees as worktrees_router
 
+configure_logging()
 logger = logging.getLogger(__name__)
 
 
