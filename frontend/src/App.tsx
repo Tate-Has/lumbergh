@@ -6,6 +6,7 @@ import SessionDetail from './pages/SessionDetail'
 import TerminalWindow from './pages/TerminalWindow'
 import PWAUpdatePrompt from './components/PWAUpdatePrompt'
 import AttentionNotifier from './components/AttentionNotifier'
+import ErrorBoundary from './components/ErrorBoundary'
 
 function App() {
   const { loading, authenticated } = useAuth()
@@ -15,11 +16,13 @@ function App() {
 
   return (
     <>
-      <Routes>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/session/:name" element={<SessionDetail />} />
-        <Route path="/session/:name/term" element={<TerminalWindow />} />
-      </Routes>
+      <ErrorBoundary label="Lumbergh">
+        <Routes>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/session/:name" element={<SessionDetail />} />
+          <Route path="/session/:name/term" element={<TerminalWindow />} />
+        </Routes>
+      </ErrorBoundary>
       <PWAUpdatePrompt />
       <AttentionNotifier />
     </>

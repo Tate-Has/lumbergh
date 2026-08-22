@@ -1349,10 +1349,22 @@ async def delete_session(name: str, cleanup_worktree: bool = False):
 
 
 def get_session_workdir(name: str) -> Path:
-    """Get the workdir for a session, raising 404 if not found."""
+    """Get the workdir for a session, raising 404 if not found.
+
+    A recorded workdir that has since been deleted — a reaped worktree, a
+    renamed checkout — is its own 404 with its own message. Letting it through
+    turns every git call into a 500 whose only detail is a bare path, which the
+    UI cannot turn into anything a person can act on.
+    """
     stored = get_stored_sessions()
     if name in stored and stored[name].get("workdir"):
-        return Path(stored[name]["workdir"])
+        workdir = Path(stored[name]["workdir"])
+        if not workdir.is_dir():
+            raise HTTPException(
+                status_code=404,
+                detail=f"This session's directory no longer exists: {workdir}",
+            )
+        return workdir
 
     try:
         result = subprocess.run(

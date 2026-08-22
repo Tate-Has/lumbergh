@@ -11,6 +11,7 @@ interface DiffData {
 interface Props {
   sessionName?: string
   diffData: DiffData | null
+  diffError?: string | null
   onRefreshDiff: () => void
   onFocusTerminal?: () => void
   onJumpToTodos?: () => void
@@ -20,6 +21,7 @@ interface Props {
 export default function GitTab({
   sessionName,
   diffData,
+  diffError,
   onRefreshDiff,
   onFocusTerminal,
   onJumpToTodos,
@@ -55,6 +57,7 @@ export default function GitTab({
           <DiffViewer
             sessionName={sessionName}
             diffData={diffData}
+            diffError={diffError}
             onRefreshDiff={onRefreshDiff}
             onFocusTerminal={onFocusTerminal}
             onJumpToTodos={onJumpToTodos}

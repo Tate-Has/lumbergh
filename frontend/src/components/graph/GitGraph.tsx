@@ -18,6 +18,7 @@ import { buildTagMenuItems } from './tagMenu'
 import { ReflogOverlay } from './ReflogPanel'
 import type { ReflogEntry } from './ReflogPanel'
 import { prsByBranch, refBranchName } from './pullRequests'
+import { errorDetail } from '../../utils/apiError'
 import type { PullRequest } from './pullRequests'
 import type { MenuBranchInfo } from './branchMenu'
 import { confirmHardReset, resetMenuEntries } from './resetMenu'
@@ -817,7 +818,7 @@ export default function GitGraph({
         { headers }
       )
       if (res.status === 304) return // Not modified
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      if (!res.ok) throw new Error(await errorDetail(res))
       etagRef.current = res.headers.get('etag') || ''
 
       const { graph, cursorValid } = applyGraphResponse(graphDataRef.current, await res.json())

@@ -9,6 +9,8 @@ import type { DiffData, CommitDiff } from './diff'
 interface Props {
   sessionName?: string
   diffData?: DiffData | null
+  /** Why the diff could not be read, when it could not be. */
+  diffError?: string | null
   onRefreshDiff?: () => void
   onFocusTerminal?: () => void
   onJumpToTodos?: () => void
@@ -34,9 +36,29 @@ type ViewState =
   | { level: 'changes'; commit: string | null }
   | { level: 'file'; commit: string | null; file: string }
 
+/** The viewer's own fetch error, else the one the parent hit handing us data. */
+function firstError(...candidates: (string | null | undefined)[]): string | null {
+  return candidates.find(Boolean) ?? null
+}
+
+function DiffError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center h-full gap-4 p-6 text-center">
+      <span className="text-danger">{message}</span>
+      <button
+        onClick={onRetry}
+        className="px-4 py-2 bg-action hover:brightness-110 text-white rounded"
+      >
+        Retry
+      </button>
+    </div>
+  )
+}
+
 const DiffViewer = memo(function DiffViewer({
   sessionName,
   diffData: externalDiffData,
+  diffError: externalDiffError,
   onRefreshDiff,
   onFocusTerminal,
   onJumpToTodos,
@@ -57,7 +79,7 @@ const DiffViewer = memo(function DiffViewer({
   const [commitData, setCommitData] = useState<CommitDiff | null>(null)
 
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [internalError, setError] = useState<string | null>(null)
 
   // Remote status for push button (when no changes)
   const [remoteStatus, setRemoteStatus] = useState<RemoteStatus | null>(null)
@@ -383,20 +405,10 @@ const DiffViewer = memo(function DiffViewer({
       )
     }
 
-    // Error state
-    if (error) {
-      return (
-        <div className="flex flex-col items-center justify-center h-full gap-4">
-          <span className="text-danger">Error: {error}</span>
-          <button
-            onClick={handleRefresh}
-            className="px-4 py-2 bg-action hover:brightness-110 text-white rounded"
-          >
-            Retry
-          </button>
-        </div>
-      )
-    }
+    // An error the parent hit fetching the diff counts too, or the empty state
+    // below would claim "no changes" for a repo we could not read.
+    const error = firstError(internalError, externalDiffError)
+    if (error) return <DiffError message={error} onRetry={handleRefresh} />
 
     const data = getCurrentData()
 

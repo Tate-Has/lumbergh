@@ -14,6 +14,9 @@ import TelemetryOptIn from '../components/TelemetryOptIn'
 import SessionSummaryOverlay from '../components/SessionSummaryBanner'
 import CreateSessionModal from '../components/CreateSessionModal'
 import { spawnParentRepo } from '../utils/spawnFrom'
+import { parseDiffPayload } from '../utils/diffPayload'
+import { errorDetail } from '../utils/apiError'
+import ErrorBoundary from '../components/ErrorBoundary'
 import ScratchPromoteBanner from '../components/ScratchPromoteBanner'
 import { isSummaryDismissed, dismissSummary, enableSummary } from '../hooks/useSessionSummary'
 import GitTab from '../components/graph/GitTab'
@@ -52,6 +55,18 @@ const DEFAULT_TAB_VISIBILITY: TabVisibility = {
 }
 
 // Compare diff data to avoid unnecessary re-renders
+const PANEL_LABELS: Record<string, string> = {
+  git: 'The git view',
+  files: 'The file browser',
+  todos: 'The todo panel',
+  prompts: 'The prompts panel',
+  shared: 'The shared files panel',
+}
+
+function panelLabel(panel: string): string {
+  return PANEL_LABELS[panel] ?? 'This panel'
+}
+
 function diffDataEquals(a: DiffData | null, b: DiffData | null): boolean {
   if (a === b) return true
   if (!a || !b) return false
@@ -98,6 +113,7 @@ export default function SessionDetail() {
   const [gitTabResetTrigger, setGitTabResetTrigger] = useState(0)
   const [mobileTab, setMobileTab] = useState<MobileTab>('terminal')
   const [diffData, setDiffData] = useState<DiffData | null>(null)
+  const [diffError, setDiffError] = useState<string | null>(null)
   const [showTelemetryOptIn, setShowTelemetryOptIn] = useState(false)
   const [showSessionDots, setShowSessionDots] = useState(true)
   const [globalTabVisibility, setGlobalTabVisibility] =
@@ -391,7 +407,11 @@ export default function SessionDetail() {
         }
         const res = await fetch(`${getApiBase()}/sessions/${name}/git/diff`, { headers })
         if (res.status === 304) return
-        const data = await res.json()
+        // A failed call answers with an error body, not a diff. Storing that is
+        // how a reaped worktree used to take the whole page down — and reporting
+        // "no changes" for a directory we cannot read would be a lie.
+        setDiffError(res.ok ? null : await errorDetail(res))
+        const data = res.ok ? parseDiffPayload(await res.json()) : null
         diffEtagRef.current = res.headers.get('etag') || ''
         // Only update state if data actually changed to prevent scroll resets
         setDiffData((prev) => (diffDataEquals(prev, data) ? prev : data))
@@ -552,11 +572,12 @@ export default function SessionDetail() {
   )
 
   const renderMobileTabContent = () => (
-    <>
+    <ErrorBoundary key={`${name}:${mobileTab}`} label={panelLabel(mobileTab)}>
       {mobileTab === 'git' && (
         <GitTab
           sessionName={name}
           diffData={diffData}
+          diffError={diffError}
           onRefreshDiff={() => fetchDiffData({ force: true })}
           onJumpToTodos={handleJumpToTodos}
           onFocusTerminal={handleFocusTerminal}
@@ -593,7 +614,7 @@ export default function SessionDetail() {
           refreshTrigger={sharedRefreshTrigger}
         />
       )}
-    </>
+    </ErrorBoundary>
   )
 
   const renderRightPanel = () => (
@@ -699,49 +720,53 @@ export default function SessionDetail() {
           )}
         </div>
       </div>
-      {/* Panel content */}
+      {/* Panel content — boundaried so a panel that throws does not take the
+          terminal (and the rest of the app) down with it. */}
       <div className="flex-1 min-h-0 overflow-hidden">
-        {rightPanel === 'git' && (
-          <GitTab
-            key={name}
-            sessionName={name}
-            diffData={diffData}
-            onRefreshDiff={() => fetchDiffData({ force: true })}
-            onJumpToTodos={handleJumpToTodos}
-            onFocusTerminal={handleFocusTerminal}
-            resetTrigger={gitTabResetTrigger}
-          />
-        )}
-        {rightPanel === 'files' && (
-          <FileBrowser sessionName={name} onFocusTerminal={handleFocusTerminal} />
-        )}
-        {rightPanel === 'todos' && name && (
-          <VerticalResizablePanes
-            top={
-              <TodoList
-                sessionName={name}
-                onFocusTerminal={handleFocusTerminal}
-                onTodoSent={handleTodoSent}
-                onSwitchToTerminal={handleSwitchToTerminal}
-              />
-            }
-            bottom={<Scratchpad sessionName={name} onFocusTerminal={handleFocusTerminal} />}
-            defaultTopHeight={50}
-            minTopHeight={20}
-            maxTopHeight={80}
-            storageKey="lumbergh:todoSplitHeight"
-          />
-        )}
-        {rightPanel === 'prompts' && (
-          <PromptTemplates sessionName={name} onFocusTerminal={handleFocusTerminal} />
-        )}
-        {rightPanel === 'shared' && (
-          <SharedFiles
-            sessionName={name}
-            onFocusTerminal={handleFocusTerminal}
-            refreshTrigger={sharedRefreshTrigger}
-          />
-        )}
+        <ErrorBoundary key={`${name}:${rightPanel}`} label={panelLabel(rightPanel)}>
+          {rightPanel === 'git' && (
+            <GitTab
+              key={name}
+              sessionName={name}
+              diffData={diffData}
+              diffError={diffError}
+              onRefreshDiff={() => fetchDiffData({ force: true })}
+              onJumpToTodos={handleJumpToTodos}
+              onFocusTerminal={handleFocusTerminal}
+              resetTrigger={gitTabResetTrigger}
+            />
+          )}
+          {rightPanel === 'files' && (
+            <FileBrowser sessionName={name} onFocusTerminal={handleFocusTerminal} />
+          )}
+          {rightPanel === 'todos' && name && (
+            <VerticalResizablePanes
+              top={
+                <TodoList
+                  sessionName={name}
+                  onFocusTerminal={handleFocusTerminal}
+                  onTodoSent={handleTodoSent}
+                  onSwitchToTerminal={handleSwitchToTerminal}
+                />
+              }
+              bottom={<Scratchpad sessionName={name} onFocusTerminal={handleFocusTerminal} />}
+              defaultTopHeight={50}
+              minTopHeight={20}
+              maxTopHeight={80}
+              storageKey="lumbergh:todoSplitHeight"
+            />
+          )}
+          {rightPanel === 'prompts' && (
+            <PromptTemplates sessionName={name} onFocusTerminal={handleFocusTerminal} />
+          )}
+          {rightPanel === 'shared' && (
+            <SharedFiles
+              sessionName={name}
+              onFocusTerminal={handleFocusTerminal}
+              refreshTrigger={sharedRefreshTrigger}
+            />
+          )}
+        </ErrorBoundary>
       </div>
     </div>
   )
