@@ -64,8 +64,22 @@ describe('sessionUrgencyRank', () => {
 
   it('ranks blocked above ordinary sessions', () => {
     expect(sessionUrgencyRank({ theOne: false, idleState: 'blocked' })).toBe(1)
-    expect(sessionUrgencyRank({ theOne: false, idleState: 'working' })).toBe(3)
-    expect(sessionUrgencyRank({ idleState: 'idle' })).toBe(3)
+    expect(sessionUrgencyRank({ theOne: false, idleState: 'working' })).toBe(2)
+    expect(sessionUrgencyRank({ idleState: 'idle' })).toBe(2)
+  })
+
+  it('does not let "done while you were away" outrank a session you just used', () => {
+    // Finished-while-away is worth a badge, not a place above the session in
+    // front of you: promoting it buried whatever you touched most recently at
+    // the bottom of the dashboard.
+    expect(sessionUrgencyRank({ unseen: true, idleState: 'idle' })).toBe(
+      sessionUrgencyRank({ idleState: 'idle' })
+    )
+  })
+
+  it('still floats a session that is actually waiting on a human', () => {
+    expect(sessionUrgencyRank({ needsAnswer: true })).toBe(1)
+    expect(sessionUrgencyRank({ idleState: 'blocked', unseen: true })).toBe(1)
   })
 })
 
@@ -112,11 +126,14 @@ describe('unseen "while you were away" overlay', () => {
     expect(status.label).toBe('Failed — while you were away')
   })
 
-  it('ranks unseen sessions above ordinary ones but below the pinned favorite', () => {
-    expect(sessionUrgencyRank({ theOne: false, idleState: 'idle', unseen: true })).toBeLessThan(
+  it('keeps the pinned favorite on top even when it has unseen work', () => {
+    expect(sessionUrgencyRank({ theOne: true, idleState: 'idle', unseen: true })).toBe(0)
+  })
+
+  it('leaves an unseen session ranked with its peers, so recency decides', () => {
+    expect(sessionUrgencyRank({ theOne: false, idleState: 'idle', unseen: true })).toBe(
       sessionUrgencyRank({ theOne: false, idleState: 'idle', unseen: false })
     )
-    expect(sessionUrgencyRank({ theOne: true, idleState: 'idle', unseen: true })).toBe(0)
   })
 })
 

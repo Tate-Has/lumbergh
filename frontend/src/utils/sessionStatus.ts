@@ -88,12 +88,19 @@ export const statusColorClasses: Record<string, { dot: string; text: string }> =
   },
 }
 
+/** Sort key for the dashboard: lower floats higher.
+ *
+ * Only two things outrank recency — the session you pinned, and one that has
+ * actually stopped and is waiting on a human. "Done while you were away" used to
+ * sit in between, which pushed whatever you had just been working on to the
+ * bottom of the list; it keeps its badge and its colour, but not a place above
+ * the session in front of you.
+ */
 export function sessionUrgencyRank(
   session: Pick<SessionBase, 'theOne' | 'idleState' | 'unseen' | 'needsAnswer'>
 ): number {
   if (session.theOne) return 0
   if (session.idleState === 'blocked') return 1
   if (session.needsAnswer) return 1
-  if (session.unseen) return 2
-  return 3
+  return 2
 }
