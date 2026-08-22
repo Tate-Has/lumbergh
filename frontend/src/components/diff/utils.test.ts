@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { commitHeaderInfo } from './utils'
+import { commitHeaderInfo, reviewFilePrompt } from './utils'
 import type { CommitDiff } from './types'
 
 const fetched: CommitDiff = {
@@ -34,5 +34,13 @@ describe('commitHeaderInfo', () => {
   it('has nothing to show while the selected commit is still loading', () => {
     expect(commitHeaderInfo(null, '27bb825a4c55')).toBeNull()
     expect(commitHeaderInfo(fetched, '469af81721e5')).toBeNull()
+  })
+})
+
+describe('reviewFilePrompt', () => {
+  it('asks for a review by path, ready to edit before sending', () => {
+    expect(reviewFilePrompt('src/components/diff/FileDiff.tsx')).toBe(
+      'Review src/components/diff/FileDiff.tsx'
+    )
   })
 })

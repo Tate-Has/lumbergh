@@ -5,7 +5,7 @@ import { _cacheMap } from '@git-diff-view/core'
 import { ArrowLeft, Play, Maximize2 } from 'lucide-react'
 import { getApiBase } from '../../config'
 import type { DiffFile } from './types'
-import { extractDiffContent, getFileStats, getLangFromPath } from './utils'
+import { extractDiffContent, getFileStats, getLangFromPath, reviewFilePrompt } from './utils'
 import MarkdownViewer from '../MarkdownViewer'
 import { useTheme } from '../../hooks/useTheme'
 
@@ -121,6 +121,24 @@ const FileDiff = memo(function FileDiff({
     return () => document.removeEventListener('selectionchange', handleSelectionChange)
   }, [handleSelectionChange])
 
+  const sendToTerminal = async (message: string) => {
+    if (!sessionName) return
+    try {
+      const response = await fetch(`${getApiBase()}/session/${sessionName}/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: message, send_enter: false }),
+      })
+      if (!response.ok) {
+        console.error('Failed to send to terminal:', await response.text())
+      }
+      onFocusTerminal?.()
+      onCloseExpanded?.()
+    } catch (err) {
+      console.error('Failed to send to terminal:', err)
+    }
+  }
+
   const handleSendToTerminal = async () => {
     const text = selectedTextRef.current
     if (!text || !sessionName) return
@@ -140,20 +158,7 @@ const FileDiff = memo(function FileDiff({
       message = `From ${file.path}:\n${text}`
     }
 
-    try {
-      const response = await fetch(`${getApiBase()}/session/${sessionName}/send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: message, send_enter: false }),
-      })
-      if (!response.ok) {
-        console.error('Failed to send to terminal:', await response.text())
-      }
-      onFocusTerminal?.()
-      onCloseExpanded?.()
-    } catch (err) {
-      console.error('Failed to send to terminal:', err)
-    }
+    await sendToTerminal(message)
   }
 
   return (
@@ -175,6 +180,15 @@ const FileDiff = memo(function FileDiff({
             title="Preview new version"
           >
             Preview
+          </button>
+        )}
+        {sessionName && (
+          <button
+            onClick={() => sendToTerminal(reviewFilePrompt(file.path))}
+            className="px-1.5 py-0.5 text-text-muted hover:text-warning transition-colors"
+            title={`Ask the terminal to review ${file.path}`}
+          >
+            <Play size={14} />
           </button>
         )}
         <span className="text-success text-xs">+{stats.additions}</span>

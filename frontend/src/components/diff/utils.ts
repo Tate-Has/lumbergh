@@ -65,3 +65,13 @@ export function getFileStats(diff: string): FileStats {
 export function getLangFromPath(path: string): string {
   return path.split('.').pop()?.toLowerCase() || 'plaintext'
 }
+
+/** What the one-click review button types into the terminal.
+ *
+ * Sent unsent (send_enter false) so it lands on the prompt line as a starting
+ * point — "Review <path>" is the common case, and anything more specific is a
+ * few keystrokes away.
+ */
+export function reviewFilePrompt(path: string): string {
+  return `Review ${path}`
+}

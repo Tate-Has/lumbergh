@@ -1,7 +1,7 @@
 import { useMemo, memo } from 'react'
-import { Undo2, ChevronRight } from 'lucide-react'
+import { Undo2, ChevronRight, Play } from 'lucide-react'
 import type { DiffData } from './types'
-import { getFileStats } from './utils'
+import { getFileStats, reviewFilePrompt } from './utils'
 import { useGitActions } from './useGitActions'
 import FileListHeader from './FileListHeader'
 import CommitForm from './CommitForm'
@@ -43,12 +43,14 @@ const FileRow = memo(function FileRow({
   revertingFile,
   onSelectFile,
   onRevertFile,
+  onSendToTerminal,
 }: {
   file: { path: string; diff: string }
   isWorkingChanges: boolean
   revertingFile: string | null
   onSelectFile: (path: string) => void
   onRevertFile: (path: string, e: React.MouseEvent) => void
+  onSendToTerminal?: (text: string, sendEnter: boolean) => void
 }) {
   const stats = useMemo(() => getFileStats(file.diff), [file.diff])
   return (
@@ -58,6 +60,18 @@ const FileRow = memo(function FileRow({
       className="group w-full flex items-center gap-3 px-3 py-2 hover:bg-bg-surface border-b border-border-default/50 text-left cursor-pointer"
     >
       <span className="text-action font-mono text-sm truncate flex-1">{file.path}</span>
+      {onSendToTerminal && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            onSendToTerminal(reviewFilePrompt(file.path), false)
+          }}
+          className="opacity-0 group-hover:opacity-100 px-1 py-0.5 text-text-muted hover:text-warning transition-all"
+          title={`Ask the terminal to review ${file.path}`}
+        >
+          <Play size={14} />
+        </button>
+      )}
       {isWorkingChanges && (
         <button
           onClick={(e) => onRevertFile(file.path, e)}
@@ -149,6 +163,7 @@ const FileList = memo(function FileList({
             revertingFile={git.revertingFile}
             onSelectFile={onSelectFile}
             onRevertFile={git.handleRevertFile}
+            onSendToTerminal={onSendToTerminal}
           />
         ))}
       </div>
