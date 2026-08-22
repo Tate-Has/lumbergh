@@ -1151,7 +1151,9 @@ def get_reflog(cwd: Path, limit: int = 50) -> list[dict]:
     # rebuild the real selector from the position, which is what HEAD@{n} means.
     unit = chr(31)
     try:
-        output = repo.git.reflog("--date=relative", f"--format=%H{unit}%gd{unit}%gs", f"-{limit}")
+        output = str(
+            repo.git.reflog("--date=relative", f"--format=%H{unit}%gd{unit}%gs", f"-{limit}")
+        )
     except GitCommandError:
         return []
 
@@ -1193,7 +1195,7 @@ def list_remote_tags(cwd: Path, remote: str = "origin") -> list[str]:
     if remote not in [r.name for r in repo.remotes]:
         return []
     try:
-        output = repo.git.ls_remote("--tags", "--refs", remote)
+        output = str(repo.git.ls_remote("--tags", "--refs", remote))
     except GitCommandError:
         return []
     tags = []
