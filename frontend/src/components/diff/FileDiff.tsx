@@ -2,12 +2,12 @@ import { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react'
 import { DiffView, DiffModeEnum } from '@git-diff-view/react'
 import { highlighter } from '@git-diff-view/lowlight'
 import { _cacheMap } from '@git-diff-view/core'
-import { ArrowLeft, Play, Maximize2 } from 'lucide-react'
+import { ArrowLeft, Play, Maximize2, Eye, Code2 } from 'lucide-react'
 import { getApiBase } from '../../config'
 import type { DiffFile } from './types'
 import { extractDiffContent, getFileStats, getLangFromPath, reviewFilePrompt } from './utils'
 import FilePicker from './FilePicker'
-import MarkdownViewer from '../MarkdownViewer'
+import MarkdownViewer, { MarkdownBody } from '../MarkdownViewer'
 import { useTheme } from '../../hooks/useTheme'
 
 // Disable the global File cache in @git-diff-view/core.
@@ -45,6 +45,7 @@ interface Props {
 }
 
 const FONT_SIZE_KEY = 'diff-font-size'
+const INLINE_MARKDOWN_KEY = 'diff-inline-markdown'
 const DEFAULT_FONT_SIZE = 14
 const MIN_FONT_SIZE = 8
 const MAX_FONT_SIZE = 20
@@ -67,6 +68,48 @@ function Breadcrumb({
   return <span className="font-mono text-sm text-action truncate flex-1">{path}</span>
 }
 
+/** The markdown-only header controls: render the file inline, or blow it up
+ * full screen. */
+function MarkdownControls({
+  content,
+  filePath,
+  rendered,
+  onToggleRendered,
+}: {
+  content: string
+  filePath: string
+  rendered: boolean
+  onToggleRendered: () => void
+}) {
+  const [showPreview, setShowPreview] = useState(false)
+  return (
+    <>
+      <button
+        onClick={onToggleRendered}
+        data-testid="inline-markdown-toggle"
+        className="px-1.5 py-0.5 text-text-muted hover:text-text-primary transition-colors"
+        title={rendered ? 'Show diff' : 'Render markdown inline'}
+      >
+        {rendered ? <Code2 size={14} /> : <Eye size={14} />}
+      </button>
+      <button
+        onClick={() => setShowPreview(true)}
+        className="text-xs px-2 py-1 bg-action hover:brightness-110 text-white rounded"
+        title="Preview new version"
+      >
+        Preview
+      </button>
+      {showPreview && (
+        <MarkdownViewer
+          content={content}
+          filePath={filePath}
+          onClose={() => setShowPreview(false)}
+        />
+      )}
+    </>
+  )
+}
+
 const FileDiff = memo(function FileDiff({
   file,
   files,
@@ -78,7 +121,9 @@ const FileDiff = memo(function FileDiff({
   onExpand,
 }: Props) {
   const { theme } = useTheme()
-  const [showMarkdownPreview, setShowMarkdownPreview] = useState(false)
+  const [renderMarkdown, setRenderMarkdown] = useState(
+    () => localStorage.getItem(INLINE_MARKDOWN_KEY) === 'true'
+  )
   const [hasSelection, setHasSelection] = useState(false)
   const [buttonPos, setButtonPos] = useState({ top: 0 })
   const [fontSize, setFontSize] = useState(() => {
@@ -104,6 +149,16 @@ const FileDiff = memo(function FileDiff({
   const oldContent = file.oldContent ?? ''
   const newContent = file.newContent ?? ''
   const isMarkdown = file.path.endsWith('.md')
+  // A deleted file has no new content left to render.
+  const markdownSource = newContent || oldContent
+  const showInlineMarkdown = isMarkdown && renderMarkdown
+
+  const toggleRenderMarkdown = useCallback(() => {
+    setRenderMarkdown((prev) => {
+      localStorage.setItem(INLINE_MARKDOWN_KEY, String(!prev))
+      return !prev
+    })
+  }, [])
 
   // Memoize the data prop to prevent re-renders of DiffView
   const diffViewData = useMemo(
@@ -196,13 +251,12 @@ const FileDiff = memo(function FileDiff({
         <span className="text-text-muted">/</span>
         <Breadcrumb path={file.path} files={files} onSelectFile={onSelectFile} />
         {isMarkdown && (
-          <button
-            onClick={() => setShowMarkdownPreview(true)}
-            className="text-xs px-2 py-1 bg-action hover:brightness-110 text-white rounded"
-            title="Preview new version"
-          >
-            Preview
-          </button>
+          <MarkdownControls
+            content={markdownSource}
+            filePath={file.path}
+            rendered={renderMarkdown}
+            onToggleRendered={toggleRenderMarkdown}
+          />
         )}
         {sessionName && (
           <button
@@ -245,7 +299,13 @@ const FileDiff = memo(function FileDiff({
       </div>
 
       {/* Diff viewer */}
-      {isImagePath(file.path) ? (
+      {showInlineMarkdown ? (
+        <div className="flex-1 overflow-auto p-4">
+          <div className="max-w-4xl mx-auto">
+            <MarkdownBody content={markdownSource} />
+          </div>
+        </div>
+      ) : isImagePath(file.path) ? (
         <div className="flex-1 overflow-auto flex items-center justify-center gap-8 p-4 bg-[repeating-conic-gradient(#80808018_0%_25%,transparent_0%_50%)] bg-[length:20px_20px]">
           {sessionName && (
             <img
@@ -289,15 +349,6 @@ const FileDiff = memo(function FileDiff({
             </div>
           )}
         </div>
-      )}
-
-      {/* Markdown preview modal */}
-      {showMarkdownPreview && isMarkdown && (
-        <MarkdownViewer
-          content={newContent}
-          filePath={file.path}
-          onClose={() => setShowMarkdownPreview(false)}
-        />
       )}
     </div>
   )

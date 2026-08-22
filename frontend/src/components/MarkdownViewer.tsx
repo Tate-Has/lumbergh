@@ -72,6 +72,26 @@ function Code({ children, className }: { children?: React.ReactNode; className?:
   return <code className={className}>{children}</code>
 }
 
+/** The rendered markdown itself, shared by the modal and the inline diff view. */
+export function MarkdownBody({ content }: { content: string }) {
+  const { theme } = useTheme()
+  return (
+    <MarkdownPreview
+      source={content}
+      style={{
+        backgroundColor: 'transparent',
+        color: theme === 'dark' ? '#e5e7eb' : '#073642',
+      }}
+      wrapperElement={{
+        'data-color-mode': theme,
+      }}
+      components={{
+        code: Code,
+      }}
+    />
+  )
+}
+
 export default function MarkdownViewer({ content, filePath, onClose }: Props) {
   const { theme } = useTheme()
   const [viewSource, setViewSource] = useState(false)
@@ -166,19 +186,7 @@ export default function MarkdownViewer({ content, filePath, onClose }: Props) {
               {content}
             </pre>
           ) : (
-            <MarkdownPreview
-              source={content}
-              style={{
-                backgroundColor: 'transparent',
-                color: theme === 'dark' ? '#e5e7eb' : '#073642',
-              }}
-              wrapperElement={{
-                'data-color-mode': theme,
-              }}
-              components={{
-                code: Code,
-              }}
-            />
+            <MarkdownBody content={content} />
           )}
         </div>
       </div>
