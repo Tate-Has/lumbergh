@@ -73,3 +73,18 @@ def mock_git_repo_with_changes(mock_git_repo):
     (mock_git_repo / "new_file.txt").write_text("This is a new file.\n")
 
     return mock_git_repo
+
+
+@pytest.fixture(autouse=True)
+def isolated_worktree_registry(tmp_path, monkeypatch):
+    """No test may record into the developer's own worktree registry.
+
+    A row written from a test points at a tmp dir pytest then deletes, and every
+    later reconcile of that registry fails on a repo that is no longer there.
+    """
+    from lumbergh import worktrees
+
+    db = TinyDB(tmp_path / "test_worktrees.json")
+    monkeypatch.setattr(worktrees, "get_worktrees_db", lambda: db)
+    yield db
+    db.close()

@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 from tinydb import TinyDB
 
+from lumbergh.db_utils import CONFIG_DIR
 from lumbergh.main import app
 from lumbergh.quick_worktree import next_quick_name
 from lumbergh.routers import sessions as sessions_router
@@ -75,3 +76,15 @@ class TestEndpoint:
 
         assert response.status_code == 400
         assert "git repository" in response.json()["detail"]
+
+
+class TestRegistryIsolation:
+    def test_the_run_does_not_touch_the_developers_own_registry(self, client, mock_git_repo):
+        """Rows written here point at tmp dirs pytest then deletes, and every later
+        `lb fleet` dies reconciling a repo that is no longer on disk."""
+        registry = CONFIG_DIR / "worktrees.json"
+        before = registry.read_text() if registry.exists() else None
+
+        client.post("/api/sessions/quick-worktree", json={"parent_repo": str(mock_git_repo)})
+
+        assert (registry.read_text() if registry.exists() else None) == before
