@@ -468,6 +468,19 @@ async def send_to_session(session_name: str, body: SendInput):
     return {"status": "sent"}
 
 
+@app.post("/api/session/{session_name}/interrupt")
+async def interrupt_session(session_name: str):
+    """Stop whatever the agent is doing, over HTTP rather than the terminal socket.
+
+    Escape is the agent's interrupt key, but a phone's terminal WebSocket is
+    routinely mid-reconnect (rotation, PWA resume, network flip) exactly when the
+    user wants to stop a runaway agent — so this path does not depend on it.
+    """
+    await _exit_copy_mode(session_name)
+    await _run_tmux("send-keys", "-t", session_name, "Escape")
+    return {"status": "sent"}
+
+
 # A picker deep enough to need this many keystrokes is not a picker.
 MAX_PICKER_OPTIONS = 32
 

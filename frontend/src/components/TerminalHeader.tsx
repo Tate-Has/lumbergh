@@ -28,6 +28,7 @@ interface Props {
   onSendRaw: (data: string) => void
   onSendViaApi: (text: string) => void
   onSendTmuxCommand: (command: string) => void
+  onInterrupt: () => void
   onFit: () => void
   onBack?: () => void
   onSpawnSession?: () => void
@@ -53,6 +54,7 @@ export default function TerminalHeader({
   onSendRaw,
   onSendViaApi,
   onSendTmuxCommand,
+  onInterrupt,
   onFit,
   onBack,
   onReset,
@@ -111,8 +113,8 @@ export default function TerminalHeader({
           isConnected={isConnected}
           isTouchDevice={isTouchDevice}
           headerExpanded={headerExpanded}
-          onSendRaw={onSendRaw}
           onSendViaApi={onSendViaApi}
+          onInterrupt={onInterrupt}
           onHeaderExpandedChange={onHeaderExpandedChange}
           view={view}
           onToggleView={onToggleView}
@@ -147,8 +149,8 @@ function QuickActions({
   isConnected,
   isTouchDevice,
   headerExpanded,
-  onSendRaw,
   onSendViaApi,
+  onInterrupt,
   onHeaderExpandedChange,
   view,
   onToggleView,
@@ -157,8 +159,8 @@ function QuickActions({
   isConnected: boolean
   isTouchDevice: boolean
   headerExpanded: boolean
-  onSendRaw: (data: string) => void
   onSendViaApi: (text: string) => void
+  onInterrupt: () => void
   onHeaderExpandedChange: (expanded: boolean) => void
   view: 'term' | 'conv'
   onToggleView: () => void
@@ -192,9 +194,9 @@ function QuickActions({
       <Button
         variant="danger"
         size="icon"
-        onClick={() => onSendRaw('\x1b')}
-        disabled={!isConnected}
-        title="Send Escape key"
+        onClick={onInterrupt}
+        data-testid="interrupt-btn"
+        title="Stop the agent (Escape)"
       >
         <span className="text-xs">Esc</span>
       </Button>

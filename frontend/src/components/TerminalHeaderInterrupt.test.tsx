@@ -14,9 +14,9 @@ function renderHeader(props: Record<string, unknown> = {}) {
       isConnected
       fontSize={14}
       onFontSizeChange={noop}
-      headerExpanded
+      headerExpanded={false}
       onHeaderExpandedChange={noop}
-      isTouchDevice={false}
+      isTouchDevice
       onSendRaw={noop}
       onSendViaApi={noop}
       onSendTmuxCommand={noop}
@@ -34,19 +34,25 @@ function renderHeader(props: Record<string, unknown> = {}) {
 
 afterEach(cleanup)
 
-describe('the quick worktree button', () => {
-  it('is offered alongside the deliberate New Session button', () => {
-    const onQuickWorktree = vi.fn()
-    renderHeader({ onQuickWorktree, onSpawnSession: noop })
+describe('the Esc button', () => {
+  it('interrupts the agent', () => {
+    const onInterrupt = vi.fn()
+    renderHeader({ onInterrupt })
 
-    screen.getByTestId('quick-worktree').click()
+    screen.getByTestId('interrupt-btn').click()
 
-    expect(onQuickWorktree).toHaveBeenCalledTimes(1)
+    expect(onInterrupt).toHaveBeenCalledTimes(1)
   })
 
-  it('stays out of the way when the session has no repo to branch', () => {
-    renderHeader()
+  it('still stops the agent while the terminal socket is reconnecting', () => {
+    const onInterrupt = vi.fn()
+    renderHeader({ onInterrupt, isConnected: false })
 
-    expect(screen.queryByTestId('quick-worktree')).toBeNull()
+    const btn = screen.getByTestId('interrupt-btn') as HTMLButtonElement
+    expect(btn.disabled).toBe(false)
+
+    btn.click()
+
+    expect(onInterrupt).toHaveBeenCalledTimes(1)
   })
 })

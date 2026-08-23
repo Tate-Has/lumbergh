@@ -212,6 +212,18 @@ export default memo(function Terminal({
   )
 
   // Send tmux window navigation commands
+  const interrupt = useCallback(async () => {
+    // Over HTTP, not the terminal socket: a phone's WebSocket is routinely
+    // mid-reconnect (rotation, PWA resume, network flip) exactly when you want
+    // to stop a runaway agent, and a dropped Escape looks like a dead button.
+    try {
+      await fetch(`${getApiBase()}/session/${sessionName}/interrupt`, { method: 'POST' })
+      termRef.current?.focus()
+    } catch (err) {
+      console.error('Failed to interrupt session:', err)
+    }
+  }, [sessionName])
+
   const sendTmuxCommand = useCallback(
     async (command: string) => {
       try {
@@ -1043,6 +1055,7 @@ export default memo(function Terminal({
           }}
           onSendViaApi={sendViaApi}
           onSendTmuxCommand={sendTmuxCommand}
+          onInterrupt={interrupt}
           onFit={handleManualFit}
           onBack={onBack}
           onSpawnSession={onSpawnSession}
