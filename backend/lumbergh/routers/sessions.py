@@ -22,7 +22,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from tinydb import Query
 
-from lumbergh import session_attention, todo_spawn, worktrees
+from lumbergh import quick_worktree, session_attention, todo_spawn, worktrees
 from lumbergh.bill_nudge import BILL_SESSION
 from lumbergh.constants import IGNORE_DIRS, REPO_SEARCH_SKIP_DIRS, SCRATCH_DIR, TMUX_CMD
 from lumbergh.db_utils import (
@@ -80,6 +80,7 @@ from lumbergh.models import (
     DeleteBranchInput,
     DeleteTagInput,
     PromptTemplateList,
+    QuickWorktreeRequest,
     ResetToInput,
     RevertFileInput,
     RewordInput,
@@ -88,6 +89,7 @@ from lumbergh.models import (
     StatusSummaryInput,
     TodoList,
     TodoMoveRequest,
+    WorktreeConfig,
 )
 from lumbergh.providers import get_launch_command
 from lumbergh.tmux_pty import IS_WINDOWS
@@ -977,6 +979,33 @@ async def create_session(body: CreateSessionRequest):
         "worktreeParentRepo": worktree_parent_repo,
         "worktreeBranch": worktree_branch,
     }
+
+
+@router.post("/quick-worktree")
+async def create_quick_worktree(body: QuickWorktreeRequest):
+    """A worktree off this repo with the agent already running in it.
+
+    The full create flow wants a branch, a session name and a description. This is
+    the same worktree session with all three decided for you — for when you have a
+    second thing to work on and no wish to interrupt the agent you are talking to.
+    """
+    repo = Path(body.parent_repo).expanduser().resolve()
+    if not repo.is_dir():
+        raise HTTPException(status_code=400, detail=f"Directory does not exist: {repo}")
+    if not (repo / ".git").exists():
+        raise HTTPException(status_code=400, detail=f"Not a git repository: {repo}")
+
+    branch, name = quick_worktree.next_quick_name(
+        quick_worktree.branch_names(repo),
+        set(get_live_sessions()) | set(get_stored_sessions()),
+    )
+    return await create_session(
+        CreateSessionRequest(
+            name=name,
+            mode="worktree",
+            worktree=WorktreeConfig(parent_repo=str(repo), branch=branch, create_branch=True),
+        )
+    )
 
 
 @router.post("/scratch")

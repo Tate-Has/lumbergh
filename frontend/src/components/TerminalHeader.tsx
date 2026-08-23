@@ -12,6 +12,7 @@ import {
   SquareTerminal,
   GitBranchPlus,
   Split,
+  Zap,
 } from 'lucide-react'
 import Button from './ui/Button'
 import SessionNavigatorDots from './SessionNavigatorDots'
@@ -30,6 +31,7 @@ interface Props {
   onFit: () => void
   onBack?: () => void
   onSpawnSession?: () => void
+  onQuickWorktree?: () => void
   onForkSession?: () => void
   onReset?: () => void
   onCycleSession?: (direction: 'next' | 'prev') => void
@@ -61,6 +63,7 @@ export default function TerminalHeader({
   scale,
   onScaleChange,
   onSpawnSession,
+  onQuickWorktree,
   onForkSession,
 }: Props) {
   return (
@@ -130,6 +133,7 @@ export default function TerminalHeader({
           onFit={onFit}
           onReset={onReset}
           onSpawnSession={onSpawnSession}
+          onQuickWorktree={onQuickWorktree}
           onForkSession={onForkSession}
           onCollapse={() => onHeaderExpandedChange(false)}
         />
@@ -227,6 +231,7 @@ function ExpandedRow({
   onFit,
   onReset,
   onSpawnSession,
+  onQuickWorktree,
   onForkSession,
   onCollapse,
 }: {
@@ -242,6 +247,7 @@ function ExpandedRow({
   onFit: () => void
   onReset?: () => void
   onSpawnSession?: () => void
+  onQuickWorktree?: () => void
   onForkSession?: () => void
   onCollapse: () => void
 }) {
@@ -334,6 +340,21 @@ function ExpandedRow({
         >
           Mode
         </Button>
+        {onQuickWorktree && (
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              onQuickWorktree()
+              onCollapse()
+            }}
+            title="Quick worktree — a fresh branch and a fresh agent on this repo, nothing to fill in"
+            data-testid="quick-worktree"
+          >
+            <Zap size={14} />
+            Quick
+          </Button>
+        )}
         {onSpawnSession && (
           <Button
             variant="secondary"

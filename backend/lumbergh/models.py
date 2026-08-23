@@ -126,6 +126,12 @@ class WorktreeConfig(BaseModel):
     base_branch: str | None = None
 
 
+class QuickWorktreeRequest(BaseModel):
+    """Request for a one-click worktree — the repo to branch from, nothing else."""
+
+    parent_repo: str
+
+
 class CreateSessionRequest(BaseModel):
     """Request to create a new tmux session."""
 

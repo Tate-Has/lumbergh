@@ -48,6 +48,7 @@ interface TerminalProps {
   onFocusReady?: (focus: () => void) => void
   onBack?: () => void
   onSpawnSession?: () => void
+  onQuickWorktree?: () => void
   onForkSession?: () => void
   onReset?: () => void
   onCycleSession?: (direction: 'next' | 'prev') => void
@@ -68,6 +69,7 @@ export default memo(function Terminal({
   onFocusReady,
   onBack,
   onSpawnSession,
+  onQuickWorktree,
   onForkSession,
   onReset,
   onCycleSession,
@@ -1044,6 +1046,7 @@ export default memo(function Terminal({
           onFit={handleManualFit}
           onBack={onBack}
           onSpawnSession={onSpawnSession}
+          onQuickWorktree={onQuickWorktree}
           onForkSession={onForkSession}
           onReset={onReset}
           onCycleSession={onCycleSession}

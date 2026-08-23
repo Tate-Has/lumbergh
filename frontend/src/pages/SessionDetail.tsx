@@ -138,6 +138,7 @@ export default function SessionDetail() {
   const [sessionRepo, setSessionRepo] = useState('')
   const [spawnFromRepo, setSpawnFromRepo] = useState<string | null>(null)
   const [forkFrom, setForkFrom] = useState<string | null>(null)
+  const [spawningQuick, setSpawningQuick] = useState(false)
   const tabSettingsRef = useRef<HTMLDivElement>(null)
   const focusFnRef = useRef<(() => void) | null>(null)
 
@@ -394,6 +395,27 @@ export default function SessionDetail() {
     }
   }, [name])
 
+  /** A worktree off this repo with the agent already running — no dialog, because
+   * the point is to start a second thread of work without breaking this one. */
+  const handleQuickWorktree = useCallback(async () => {
+    if (!sessionRepo || spawningQuick) return
+    setSpawningQuick(true)
+    try {
+      const res = await fetch(`${getApiBase()}/sessions/quick-worktree`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parent_repo: sessionRepo }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || 'Failed to create worktree')
+      navigate(`/session/${data.name}`)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to create worktree')
+    } finally {
+      setSpawningQuick(false)
+    }
+  }, [sessionRepo, spawningQuick, navigate])
+
   const diffEtagRef = useRef<string>('')
 
   const fetchDiffData = useCallback(
@@ -525,6 +547,7 @@ export default function SessionDetail() {
           onFocusReady={handleFocusReady}
           onBack={isDesktop ? handleBack : undefined}
           onSpawnSession={sessionRepo ? () => setSpawnFromRepo(sessionRepo) : undefined}
+          onQuickWorktree={sessionRepo ? handleQuickWorktree : undefined}
           onForkSession={name ? () => setForkFrom(name) : undefined}
           onReset={handleReset}
           onCycleSession={handleCycleSession}
