@@ -35,7 +35,13 @@ from lumbergh.git_utils import (
     stage_all_and_commit,
 )
 from lumbergh.logging_setup import configure_logging
-from lumbergh.models import CommitInput, RevertFileInput, SendInput, TmuxCommand
+from lumbergh.models import (
+    CommitInput,
+    RevertFileInput,
+    SelectOptionInput,
+    SendInput,
+    TmuxCommand,
+)
 from lumbergh.routers import agent, ai, backup, cloud, notes, sessions, settings, shared, tmux
 from lumbergh.routers import bill as bill_router
 from lumbergh.routers import worktrees as worktrees_router
@@ -459,6 +465,26 @@ async def send_to_session(session_name: str, body: SendInput):
 
         message_buffer.add(session_name, body.text)
 
+    return {"status": "sent"}
+
+
+# A picker deep enough to need this many keystrokes is not a picker.
+MAX_PICKER_OPTIONS = 32
+
+
+@app.post("/api/session/{session_name}/select-option")
+async def select_session_option(session_name: str, body: SelectOptionInput):
+    """Answer an on-screen option picker by moving its highlight and confirming.
+
+    Arrow keys rather than the digit shortcuts some prompts also accept: a picker
+    that ignores an unsupported digit would read the Enter that follows as
+    "confirm the highlighted row" and silently answer the wrong question.
+    """
+    if not 0 <= body.index < MAX_PICKER_OPTIONS:
+        raise HTTPException(status_code=400, detail="option index out of range")
+    await _exit_copy_mode(session_name)
+    keys = ["Down"] * body.index + ["Enter"]
+    await _run_tmux("send-keys", "-t", session_name, *keys)
     return {"status": "sent"}
 
 

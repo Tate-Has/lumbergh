@@ -1,4 +1,5 @@
 import type { RenderItem, ToolItem } from '../hooks/useConversationSocket'
+import { ASK_QUESTION_TOOL } from './askUserQuestion'
 
 /** One row of the conversation feed: either a single item, or a run of adjacent
  * tool calls folded together.
@@ -39,7 +40,9 @@ export function groupToolRuns(items: RenderItem[]): ConversationRow[] {
   }
 
   for (const item of items) {
-    if (item.type === 'tool_call') {
+    // A question the session is stopped on is not machinery to fold away — it
+    // is the one row the reader has to see and act on.
+    if (item.type === 'tool_call' && item.tool_name !== ASK_QUESTION_TOOL) {
       run.push(item as ToolItem)
       continue
     }

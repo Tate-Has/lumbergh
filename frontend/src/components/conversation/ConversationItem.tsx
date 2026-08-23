@@ -3,6 +3,8 @@ import MarkdownPreview from '@uiw/react-markdown-preview'
 import { type RenderItem, type ToolItem } from '../../hooks/useConversationSocket'
 import { runStatus, summarizeRun, type RunStatus } from '../../utils/conversationGroups'
 import { useTheme } from '../../hooks/useTheme'
+import QuestionCard from './QuestionCard'
+import { ASK_QUESTION_TOOL } from '../../utils/askUserQuestion'
 
 const TOOL_ICONS: Record<string, string> = {
   Read: '📖',
@@ -209,7 +211,7 @@ function AgentMarkdown({ text }: { text: string }) {
   )
 }
 
-export function Item({ item }: { item: RenderItem }) {
+export function Item({ item, sessionName }: { item: RenderItem; sessionName: string }) {
   if (item.type === 'user_message')
     return (
       <div className="ml-auto max-w-[85%] rounded-lg bg-action/20 p-2 text-sm text-text-primary">
@@ -225,7 +227,11 @@ export function Item({ item }: { item: RenderItem }) {
       </div>
     )
   if (item.type === 'thinking') return <ThinkingBlock text={item.text ?? ''} />
-  if (item.type === 'tool_call') return <ToolCard item={item as ToolItem} />
+  if (item.type === 'tool_call') {
+    if (item.tool_name === ASK_QUESTION_TOOL)
+      return <QuestionCard item={item as ToolItem} sessionName={sessionName} />
+    return <ToolCard item={item as ToolItem} />
+  }
   if (item.type === 'status')
     return <div className="text-center text-xs text-text-muted">{item.text}</div>
   return null

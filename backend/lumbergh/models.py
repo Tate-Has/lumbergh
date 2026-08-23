@@ -28,6 +28,12 @@ class SendInput(BaseModel):
     send_enter: bool = True
 
 
+class SelectOptionInput(BaseModel):
+    """Which row of an on-screen option picker to answer with (0-based)."""
+
+    index: int
+
+
 class CommitInput(BaseModel):
     """Input for creating a git commit."""
 

@@ -29,6 +29,16 @@ describe('groupToolRuns', () => {
     expect(shape(rows)).toEqual(['a', 'group(2)', 'b'])
   })
 
+  it('never folds a question away inside a run of tool calls', () => {
+    const rows = groupToolRuns([
+      tool('t1', 'Bash'),
+      tool('q1', 'AskUserQuestion'),
+      tool('t2', 'Bash'),
+    ])
+
+    expect(shape(rows)).toEqual(['t1', 'q1', 't2'])
+  })
+
   it('groups a run that opens or closes the feed', () => {
     const rows = groupToolRuns([
       tool('t1', 'Bash'),

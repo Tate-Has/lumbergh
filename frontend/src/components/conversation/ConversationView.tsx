@@ -6,9 +6,9 @@ import ConversationRespondBox from './ConversationRespondBox'
 import { Item, ToolGroup } from './ConversationItem'
 import { groupToolRuns, type ConversationRow } from '../../utils/conversationGroups'
 
-function Row({ row }: { row: ConversationRow }) {
+function Row({ row, sessionName }: { row: ConversationRow; sessionName: string }) {
   if (row.kind === 'group') return <ToolGroup items={row.items} isLatest={row.isLatest} />
-  return <Item item={row.item} />
+  return <Item item={row.item} sessionName={sessionName} />
 }
 
 export default function ConversationView({
@@ -232,7 +232,7 @@ export default function ConversationView({
               }}
               className="px-3 py-1.5"
             >
-              <Row row={rows[row.index]} />
+              <Row row={rows[row.index]} sessionName={sessionName} />
             </div>
           ))}
         </div>
