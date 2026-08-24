@@ -98,16 +98,19 @@ async def list_shared_files():
 
 
 @router.delete("/files")
-async def clear_shared_files():
-    """Delete all files in the shared folder."""
+async def clear_shared_files(older_than: float | None = None):
+    """Delete shared files, or only those modified before `older_than` (epoch seconds)."""
     if not SHARED_DIR.exists():
         return {"deleted": 0}
 
     count = 0
     for f in SHARED_DIR.iterdir():
-        if f.is_file():
-            f.unlink()
-            count += 1
+        if not f.is_file():
+            continue
+        if older_than is not None and f.stat().st_mtime >= older_than:
+            continue
+        f.unlink()
+        count += 1
 
     return {"deleted": count}
 

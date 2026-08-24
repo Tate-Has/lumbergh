@@ -12,12 +12,7 @@ import {
 } from 'lucide-react'
 import { getApiBase } from '../config'
 import MarkdownViewer from './MarkdownViewer'
-
-interface SharedFile {
-  name: string
-  size: number
-  modified: number
-}
+import { groupFilesByTime, type SharedFile, type TimeGroup } from '../utils/sharedFileGroups'
 
 interface Props {
   sessionName?: string
@@ -26,37 +21,6 @@ interface Props {
 }
 
 const SHARED_DIR = '~/.config/lumbergh/shared'
-
-type TimeGroup = 'Today' | 'Yesterday' | '2 Days Ago' | 'This Week' | 'Older'
-
-function getTimeGroup(modifiedTimestamp: number): TimeGroup {
-  const now = new Date()
-  const modified = new Date(modifiedTimestamp * 1000)
-
-  // Normalize to start of day
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const yesterdayStart = new Date(todayStart.getTime() - 86400000)
-  const twoDaysStart = new Date(todayStart.getTime() - 2 * 86400000)
-  const weekStart = new Date(todayStart.getTime() - 7 * 86400000)
-
-  if (modified >= todayStart) return 'Today'
-  if (modified >= yesterdayStart) return 'Yesterday'
-  if (modified >= twoDaysStart) return '2 Days Ago'
-  if (modified >= weekStart) return 'This Week'
-  return 'Older'
-}
-
-const GROUP_ORDER: TimeGroup[] = ['Today', 'Yesterday', '2 Days Ago', 'This Week', 'Older']
-
-function groupFilesByTime(files: SharedFile[]): { group: TimeGroup; files: SharedFile[] }[] {
-  const groups = new Map<TimeGroup, SharedFile[]>()
-  for (const file of files) {
-    const group = getTimeGroup(file.modified)
-    if (!groups.has(group)) groups.set(group, [])
-    groups.get(group)!.push(file)
-  }
-  return GROUP_ORDER.filter((g) => groups.has(g)).map((g) => ({ group: g, files: groups.get(g)! }))
-}
 
 function SharedFileItem({
   file,
@@ -375,6 +339,27 @@ export default function SharedFiles({ sessionName, onFocusTerminal, refreshTrigg
     }
   }
 
+  const deleteOlderThan = async (group: TimeGroup, cutoff: number) => {
+    const doomed = files.filter((f) => f.modified < cutoff)
+    if (doomed.length === 0) return
+    if (
+      !confirm(
+        `Delete ${doomed.length} shared file${doomed.length === 1 ? '' : 's'} from "${group}" and older? This cannot be undone.`
+      )
+    )
+      return
+
+    try {
+      const res = await fetch(`${getApiBase()}/shared/files?older_than=${cutoff}`, {
+        method: 'DELETE',
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      await fetchFiles()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to delete older files')
+    }
+  }
+
   const deleteFile = async (filename: string) => {
     try {
       const res = await fetch(`${getApiBase()}/shared/files/${encodeURIComponent(filename)}`, {
@@ -569,7 +554,7 @@ export default function SharedFiles({ sessionName, onFocusTerminal, refreshTrigg
                 </button>
               </div>
             )}
-            {groupedFiles.map(({ group, files: groupFiles }) => (
+            {groupedFiles.map(({ group, files: groupFiles, cutoff }) => (
               <div key={group}>
                 {/* Time group separator (skip for Today — assumed) */}
                 {group !== 'Today' && (
@@ -578,6 +563,18 @@ export default function SharedFiles({ sessionName, onFocusTerminal, refreshTrigg
                     <span className="text-[11px] font-medium text-text-tertiary uppercase tracking-wider flex-shrink-0">
                       {group}
                     </span>
+                    <button
+                      onClick={() => deleteOlderThan(group, cutoff)}
+                      className="flex items-center gap-1 flex-shrink-0 text-[11px] text-text-tertiary hover:text-danger px-1.5 py-0.5 rounded hover:bg-control-bg transition-colors"
+                      title={
+                        group === 'Older'
+                          ? 'Delete everything older than a week'
+                          : `Delete everything from ${group} and older`
+                      }
+                    >
+                      <Trash size={11} />
+                      and older
+                    </button>
                     <div className="flex-1 h-px bg-border-subtle" />
                   </div>
                 )}

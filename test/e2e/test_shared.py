@@ -74,3 +74,22 @@ def test_clear_all_shared_files(client):
 
     r2 = client.get("/api/shared/files")
     assert r2.json()["files"] == []
+
+
+def test_delete_older_than_spares_recent_files(client):
+    client.delete("/api/shared/files")
+    r = client.post(
+        "/api/shared/upload",
+        files={"file": ("recent.txt", b"recent", "text/plain")},
+    )
+    filename = r.json()["name"]
+    uploaded_at = client.get("/api/shared/files").json()["files"][0]["modified"]
+
+    r2 = client.delete(f"/api/shared/files?older_than={uploaded_at - 60}")
+    assert r2.status_code == 200
+    assert r2.json()["deleted"] == 0
+    assert client.get(f"/api/shared/files/{filename}").status_code == 200
+
+    r3 = client.delete(f"/api/shared/files?older_than={uploaded_at + 60}")
+    assert r3.json()["deleted"] == 1
+    assert client.get("/api/shared/files").json()["files"] == []
