@@ -220,9 +220,7 @@ export function Item({ item, sessionName }: { item: RenderItem; sessionName: str
     )
   if (item.type === 'agent_message')
     return (
-      // A reading measure: prose that runs the full width of a wide pane is hard
-      // to track line to line, and the machinery beside it is meant to look narrow.
-      <div className="max-w-[72ch] text-text-primary">
+      <div className="text-text-primary">
         <AgentMarkdown text={item.text ?? ''} />
       </div>
     )

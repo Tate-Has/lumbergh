@@ -145,7 +145,7 @@ export default function QuestionCard({
   return (
     <div
       data-testid="question-card"
-      className={`max-w-[72ch] rounded-lg border p-3 ${
+      className={`rounded-lg border p-3 ${
         waiting ? 'border-action bg-action/5' : 'border-border-default bg-bg-surface'
       }`}
     >
