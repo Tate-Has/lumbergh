@@ -129,7 +129,11 @@ async def test_dead_session_clears_question_state(monkeypatch):
     monitor._question_checked.add("dead")
     monitor._question_inflight.add("dead")
 
-    monkeypatch.setattr(im, "discover_live_targets", list)
+    # discover_target_refs, not discover_live_targets: patching the name the poll
+    # no longer calls let this test run a real poll against the developer's own
+    # tmux server and repaint every live session green.
+    monkeypatch.setattr(im, "discover_target_refs", dict)
+    monkeypatch.setattr(im, "_live_session_names", list)
     monkeypatch.setattr(im.session_identity, "prune", lambda _s: None)
 
     await monitor._check_all_sessions()

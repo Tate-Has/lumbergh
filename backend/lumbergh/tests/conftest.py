@@ -88,3 +88,20 @@ def isolated_worktree_registry(tmp_path, monkeypatch):
     monkeypatch.setattr(worktrees, "get_worktrees_db", lambda: db)
     yield db
     db.close()
+
+
+@pytest.fixture(autouse=True)
+def isolated_session_data(tmp_path, monkeypatch):
+    """No test may write into the developer's own session data.
+
+    An IdleMonitor built in a test starts with no state, so its first poll reads
+    every live tmux session as ``unknown -> working`` and persists that. The
+    dashboard reads the persisted row, and the monitor only rewrites it on a
+    transition — so a quiet session shows green long after the suite has exited.
+    """
+    from lumbergh import db_utils
+
+    session_data = tmp_path / "session_data"
+    session_data.mkdir()
+    monkeypatch.setattr(db_utils, "SESSIONS_DATA_DIR", session_data)
+    return session_data

@@ -12,7 +12,7 @@ import subprocess
 import time
 import uuid
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from http import HTTPStatus
 from pathlib import Path
 from typing import TypeVar
@@ -69,6 +69,7 @@ from lumbergh.git_utils import (
     stage_all_and_commit,
 )
 from lumbergh.graph_delta import build_response
+from lumbergh.idle_detector import SessionState
 from lumbergh.models import (
     AmendInput,
     BranchTargetInput,
@@ -424,6 +425,27 @@ def _window_worker_state(name: str) -> tuple[str | None, str | None]:
     return None, None
 
 
+def _live_monitor_state(name: str) -> tuple[str, str] | None:
+    """What the monitor sees right now, for a session it is actually watching.
+
+    The persisted row is written only on a state *transition*, so a single bad
+    write pins a quiet session at whatever it last said — no later poll corrects
+    it, because from the monitor's point of view nothing changed. Ask the monitor
+    itself while it is watching; the row is for sessions it no longer is.
+    """
+    from lumbergh.idle_monitor import idle_monitor
+
+    if name not in idle_monitor.live_targets():
+        return None
+    state = idle_monitor.get_state(name)
+    if state is SessionState.UNKNOWN:
+        # Not judged yet, which is not the same as nothing happening.
+        return None
+    since = idle_monitor.state_since_seconds(name) or 0.0
+    started = datetime.now(tz=UTC) - timedelta(seconds=since)
+    return state.value, started.isoformat()
+
+
 def get_session_status(name: str) -> dict:
     """Get status info for a session from its data DB."""
     from lumbergh.idle_monitor import idle_monitor
@@ -456,6 +478,9 @@ def get_session_status(name: str) -> dict:
             result["idleStateUpdatedAt"] = idle_docs[0].get("updatedAt")
     except Exception:  # noqa: S110 - idle state is optional metadata
         pass
+    live = _live_monitor_state(name)
+    if live is not None:
+        result["idleState"], result["idleStateUpdatedAt"] = live
     if result["idleState"] is None:
         result["idleState"], result["idleStateUpdatedAt"] = _window_worker_state(name)
     return result
