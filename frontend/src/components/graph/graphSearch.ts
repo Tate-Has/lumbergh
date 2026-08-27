@@ -60,3 +60,19 @@ export function findMatches(commits: GraphCommit[], query: SearchQuery): Set<str
   if (isEmptyQuery(query) || query.needsHistory) return new Set()
   return new Set(commits.filter((commit) => matches(commit, query)).map((c) => c.hash))
 }
+
+/** Is any of these rows currently on screen? A row counts when it overlaps the
+ *  viewport at all, so one scrolled half out of view still counts as seen. */
+export function anyRowVisible(
+  rows: number[],
+  rowToY: (row: number) => number,
+  rowHeight: number,
+  viewport: { scrollTop: number; clientHeight: number }
+): boolean {
+  const top = viewport.scrollTop
+  const bottom = top + viewport.clientHeight
+  return rows.some((row) => {
+    const y = rowToY(row)
+    return y + rowHeight > top && y < bottom
+  })
+}

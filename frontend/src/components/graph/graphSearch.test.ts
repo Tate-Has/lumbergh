@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseQuery, findMatches, hashKey } from './graphSearch'
+import { parseQuery, findMatches, hashKey, anyRowVisible } from './graphSearch'
 import type { GraphCommit } from '../diff/types'
 
 function commit(overrides: Partial<GraphCommit> = {}): GraphCommit {
@@ -119,5 +119,34 @@ describe('hashKey', () => {
   it('lets a full hash from history search be found among abbreviated graph hashes', () => {
     const loaded = new Set(['f7e98e9aa856', 'f724a9c12b23'].map(hashKey))
     expect(loaded.has(hashKey('f724a9c12b23aa020f0431c0a57f00f6be756b08'))).toBe(true)
+  })
+})
+
+describe('anyRowVisible', () => {
+  const viewport = { scrollTop: 100, clientHeight: 200 }
+  const rowToY = (row: number) => row * 40
+
+  it('sees a row sitting inside the viewport', () => {
+    expect(anyRowVisible([4], rowToY, 40, viewport)).toBe(true)
+  })
+
+  it('does not see a row above the viewport', () => {
+    expect(anyRowVisible([0], rowToY, 40, viewport)).toBe(false)
+  })
+
+  it('does not see a row below the viewport', () => {
+    expect(anyRowVisible([20], rowToY, 40, viewport)).toBe(false)
+  })
+
+  it('counts a row only partly on screen as visible', () => {
+    expect(anyRowVisible([2], rowToY, 40, viewport)).toBe(true)
+  })
+
+  it('is false when there are no rows at all', () => {
+    expect(anyRowVisible([], rowToY, 40, viewport)).toBe(false)
+  })
+
+  it('is true when any one of several rows is on screen', () => {
+    expect(anyRowVisible([0, 20, 4], rowToY, 40, viewport)).toBe(true)
   })
 })

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 import type { GraphData, GraphNode } from '../diff/types'
-import { parseQuery, findMatches, isEmptyQuery, hashKey } from './graphSearch'
+import { parseQuery, findMatches, isEmptyQuery, hashKey, anyRowVisible } from './graphSearch'
 
 /** How far a non-matching commit fades. Still visible, clearly not a hit. */
 const DIMMED = 0.12
@@ -55,19 +55,40 @@ export function useGraphSearch({
 
   /** Walk to the next/previous match, wrapping, scrolling it into view and
    *  selecting it so the diff pane follows along. */
+  const centreOnRow = useCallback(
+    (row: number) => {
+      const container = containerRef.current
+      if (!container) return
+      container.scrollTop = Math.max(0, rowToY(row) - container.clientHeight / 2 + rowHeight / 2)
+    },
+    [containerRef, rowToY, rowHeight]
+  )
+
   const stepMatch = useCallback(
     (delta: number) => {
-      const container = containerRef.current
-      if (matchRows.length === 0 || !container) return
+      if (matchRows.length === 0 || !containerRef.current) return
       const next =
         (((matchCursor.current + delta) % matchRows.length) + matchRows.length) % matchRows.length
       matchCursor.current = next
       const row = matchRows[next]
-      container.scrollTop = Math.max(0, rowToY(row) - container.clientHeight / 2 + rowHeight / 2)
+      centreOnRow(row)
       onSelectCommit?.(nodes[row].commit.hash)
     },
-    [matchRows, rowToY, rowHeight, nodes, onSelectCommit, containerRef]
+    [matchRows, centreOnRow, nodes, onSelectCommit, containerRef]
   )
+
+  /** Bring the first match into view when the query selects nothing on screen.
+   *
+   * Scroll only, no selection: swapping the diff pane mid-keystroke is more
+   * disruptive than helpful. It runs off the match set, not off scrolling, so
+   * scrolling away afterwards leaves the view where you put it. */
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container || matchRows.length === 0) return
+    if (anyRowVisible(matchRows, rowToY, rowHeight, container)) return
+    centreOnRow(matchRows[0])
+    matchCursor.current = 0
+  }, [matchRows, rowToY, rowHeight, centreOnRow, containerRef])
 
   return {
     search,
