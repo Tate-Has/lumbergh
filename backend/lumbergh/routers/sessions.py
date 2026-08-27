@@ -66,6 +66,7 @@ from lumbergh.git_utils import (
     reset_to_head,
     revert_file,
     reword_commit,
+    search_commits,
     stage_all_and_commit,
 )
 from lumbergh.graph_delta import build_response
@@ -1564,6 +1565,26 @@ async def session_git_log(name: str, limit: int = 20):
 
     try:
         commits = await _run_git(get_commit_log, workdir, limit)
+        return {"commits": commits}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{name}/git/search")
+async def session_git_search(
+    name: str,
+    q: str = "",
+    author: str | None = None,
+    file: str | None = None,
+    limit: int = 100,
+):
+    """Search all of history, for queries the loaded graph window cannot answer."""
+    workdir = get_session_workdir(name)
+
+    try:
+        commits = await _run_git(search_commits, workdir, q, author, file, limit)
         return {"commits": commits}
     except HTTPException:
         raise

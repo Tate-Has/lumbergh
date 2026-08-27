@@ -713,6 +713,55 @@ def get_commit_log(cwd: Path, limit: int = 20) -> list[dict]:
     ]
 
 
+def search_commits(
+    cwd: Path,
+    text: str = "",
+    author: str | None = None,
+    file: str | None = None,
+    limit: int = 100,
+) -> list[dict]:
+    """Search the whole of history, not just the window the graph has loaded.
+
+    Searches every ref, so a commit on a branch the graph is not showing is
+    still findable.  Criteria combine with AND, matching what the client-side
+    filter does over the loaded payload.
+    """
+    if not text and author is None and file is None:
+        return []
+
+    try:
+        repo = get_repo(cwd)
+    except InvalidGitRepositoryError:
+        return []
+
+    if not repo.head.is_valid():
+        return []
+
+    kwargs: dict = {"all": True, "max_count": limit, "regexp_ignore_case": True}
+    if text:
+        kwargs["grep"] = text
+    if author is not None:
+        kwargs["author"] = author
+
+    paths = [file] if file else []
+
+    try:
+        commits = repo.iter_commits(paths=paths, **kwargs)
+        return [
+            {
+                "hash": commit.hexsha,
+                "shortHash": commit.hexsha[:7],
+                "message": commit.summary,
+                "author": commit.author.name,
+                "authorEmail": commit.author.email,
+                "relativeDate": commit.committed_datetime.isoformat(),
+            }
+            for commit in commits
+        ]
+    except GitCommandError:
+        return []
+
+
 def get_commit_info(cwd: Path, commit_hash: str) -> dict | None:
     """
     Get metadata for a specific commit.

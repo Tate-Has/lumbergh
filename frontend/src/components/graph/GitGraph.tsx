@@ -16,6 +16,8 @@ import { applyGraphResponse } from './graphSync'
 import { buildBranchMenuItems } from './branchMenu'
 import { buildTagMenuItems } from './tagMenu'
 import { ReflogOverlay } from './ReflogPanel'
+import { HistorySearchOverlay } from './HistorySearchPanel'
+import { useGraphSearch } from './useGraphSearch'
 import type { ReflogEntry } from './ReflogPanel'
 import { prsByBranch, refBranchName } from './pullRequests'
 import { errorDetail } from '../../utils/apiError'
@@ -1232,6 +1234,27 @@ export default function GitGraph({
     }
   }, [resetTrigger, scrollToActive])
 
+  const {
+    search,
+    setSearch,
+    query,
+    searching,
+    matchCount,
+    loadedHashes,
+    dimOpacity,
+    stepMatch,
+    showHistorySearch,
+    openHistorySearch,
+    closeHistorySearch,
+  } = useGraphSearch({
+    graphData,
+    nodes,
+    rowToY,
+    rowHeight: ROW_HEIGHT,
+    containerRef,
+    onSelectCommit,
+  })
+
   // Compute branch label positions for left panel
   const branchEntries = useMemo(() => {
     const labels: { row: number; refs: RefInfo[] }[] = []
@@ -1368,6 +1391,7 @@ export default function GitGraph({
       const clipId = `clip-${node.commit.hash}`
       const r = NODE_RADIUS
       const opacity = node.onCurrentBranch ? 1 : 0.7
+      const dim = dimOpacity(node.commit.hash)
 
       const avatarGroup = (
         <>
@@ -1414,7 +1438,7 @@ export default function GitGraph({
       if (node.commit.stash) {
         const stashR = r - 2
         return (
-          <g key={node.commit.hash} opacity={0.8}>
+          <g key={node.commit.hash} opacity={0.8 * dim}>
             {/* Rounded rect background */}
             <rect
               x={cx - stashR}
@@ -1461,7 +1485,7 @@ export default function GitGraph({
 
       if (node.isHead) {
         return (
-          <g key={node.commit.hash}>
+          <g key={node.commit.hash} opacity={dim}>
             {/* Outer ring */}
             <circle
               cx={cx}
@@ -1478,7 +1502,7 @@ export default function GitGraph({
         )
       }
       return (
-        <g key={node.commit.hash} opacity={opacity}>
+        <g key={node.commit.hash} opacity={opacity * dim}>
           {avatarGroup}
         </g>
       )
@@ -1503,6 +1527,13 @@ export default function GitGraph({
         mineAvailable={graphData?.mine?.available ?? true}
         onToggleMineOnly={toggleMineOnly}
         onOpenReflog={sessionName ? openReflog : undefined}
+        search={search}
+        onSearchChange={setSearch}
+        matchCount={matchCount}
+        searching={searching}
+        needsHistory={query.needsHistory}
+        onStepMatch={stepMatch}
+        onSearchHistory={openHistorySearch}
       />
 
       <ReflogOverlay
@@ -1511,6 +1542,18 @@ export default function GitGraph({
         onClose={closeReflog}
         onBranchFrom={handleBranchFromReflog}
         onResetTo={handleResetFromReflog}
+      />
+
+      <HistorySearchOverlay
+        open={showHistorySearch}
+        sessionName={sessionName}
+        query={query}
+        loadedHashes={loadedHashes}
+        onClose={closeHistorySearch}
+        onSelectCommit={(hash) => {
+          onSelectCommit?.(hash)
+          closeHistorySearch()
+        }}
       />
 
       {/* Off-screen worktrees — HEADs older than the commit limit */}
@@ -1777,11 +1820,15 @@ export default function GitGraph({
             {/* HTML rows for commit info */}
             {nodes.map((node, row) => {
               const isSelected = selectedCommit === node.commit.hash
+              const dimmed = dimOpacity(node.commit.hash) < 1
               return (
                 <div
                   key={node.commit.hash}
+                  data-testid={dimmed ? 'graph-row-dimmed' : 'graph-row'}
                   onClick={() => onSelectCommit?.(node.commit.hash)}
                   className={`absolute right-0 flex items-center gap-2 px-1 cursor-pointer group ${
+                    dimmed ? 'opacity-25' : ''
+                  } ${
                     isSelected
                       ? 'bg-action/25 border-l-2 border-l-action'
                       : node.isHead
