@@ -4,6 +4,24 @@
 
 cd "$(dirname "$0")"
 
+# Opening a browser is the right default for a human running this by hand, but
+# wrong for an automated start (systemd user unit, login hook) where it would
+# pop a tab on every boot. --no-browser (or LUMBERGH_NO_BROWSER=1) opts out.
+open_browser=true
+for arg in "$@"; do
+    case "$arg" in
+        --no-browser) open_browser=false ;;
+        -h|--help)
+            echo "usage: bootstrap.sh [--no-browser]"
+            echo "  --no-browser   start the session but don't open a browser tab"
+            echo "                 (also honours LUMBERGH_NO_BROWSER=1)"
+            exit 0
+            ;;
+        *) echo "unknown option: $arg (try --help)" >&2; exit 2 ;;
+    esac
+done
+[ -n "${LUMBERGH_NO_BROWSER:-}" ] && open_browser=false
+
 # Check required dependencies
 has_missing=false
 for cmd in tmux git uv node; do
@@ -86,7 +104,9 @@ fi
 tmux select-window -t lumbergh:claude
 
 # Give the frontend a moment to start, then open browser
-sleep 2
-xdg-open http://localhost:5420 2>/dev/null || open http://localhost:5420 2>/dev/null
+if [ "$open_browser" = true ]; then
+    sleep 2
+    xdg-open http://localhost:5420 2>/dev/null || open http://localhost:5420 2>/dev/null
+fi
 
 echo "Lumbergh bootstrapped in tmux session 'lumbergh'"
