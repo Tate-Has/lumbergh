@@ -7,6 +7,8 @@ import TerminalWindow from './pages/TerminalWindow'
 import PWAUpdatePrompt from './components/PWAUpdatePrompt'
 import AttentionNotifier from './components/AttentionNotifier'
 import ErrorBoundary from './components/ErrorBoundary'
+import ToastProvider from './components/ui/ToastProvider'
+import Toaster from './components/ui/Toaster'
 
 function App() {
   const { loading, authenticated } = useAuth()
@@ -15,7 +17,7 @@ function App() {
   if (!authenticated) return <LoginPage />
 
   return (
-    <>
+    <ToastProvider>
       <ErrorBoundary label="Lumbergh">
         <Routes>
           <Route path="/" element={<Dashboard />} />
@@ -25,7 +27,8 @@ function App() {
       </ErrorBoundary>
       <PWAUpdatePrompt />
       <AttentionNotifier />
-    </>
+      <Toaster />
+    </ToastProvider>
   )
 }
 

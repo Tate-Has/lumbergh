@@ -5,7 +5,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from lumbergh import git_utils, land, worktrees
-from lumbergh.routers.sessions import get_stored_sessions
+from lumbergh.routers.sessions import get_session_workdir, get_stored_sessions
 from lumbergh.routers.settings import get_settings
 from lumbergh.targets import parse_target
 from lumbergh.tmux_pty import kill_tmux_session, kill_tmux_window, list_tmux_sessions
@@ -72,6 +72,20 @@ def ls(repo: str | None = None):
     if repo is None:
         return {"worktrees": worktrees.reconcile_all(_live_sessions())}
     return {"worktrees": worktrees.reconcile(Path(repo).expanduser(), _live_sessions())}
+
+
+@router.get("/for-session/{name}")
+def for_session(name: str):
+    """The worktrees sharing this session's repo.
+
+    The Git tab knows a session name and has no way to learn a filesystem path,
+    and when the session is itself a worktree the interesting set belongs to its
+    parent repo — ``parent_repo_of`` resolves both cases through
+    ``--git-common-dir``, returning the main checkout either way.
+    """
+    workdir = get_session_workdir(name)
+    repo = worktrees.parent_repo_of(workdir)
+    return {"repo": str(repo), "worktrees": worktrees.reconcile(repo, _live_sessions())}
 
 
 @router.post("/reap")

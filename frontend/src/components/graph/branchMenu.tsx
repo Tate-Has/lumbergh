@@ -3,6 +3,7 @@ import { Trash2 } from 'lucide-react'
 
 import { confirmHardReset, resetMenuEntries } from './resetMenu'
 import type { ResetMode } from './resetMenu'
+import type { GraphWorktree } from '../diff/types'
 
 export type BranchMenuItem = {
   key: string
@@ -30,10 +31,22 @@ export function buildBranchMenuItems(
   handleBranchPush: () => void,
   handleResetTo: (hash: string, mode: ResetMode) => void,
   setDeleteBranchConfirm: (v: { name: string; local: boolean; remote: boolean } | null) => void,
-  setMenuBranch: (v: MenuBranchInfo | null) => void
+  setMenuBranch: (v: MenuBranchInfo | null) => void,
+  heldByWorktree?: GraphWorktree
 ): BranchMenuItem[] {
   const items: BranchMenuItem[] = []
-  if (!isCurrent) {
+  if (heldByWorktree) {
+    // git refuses to check out a branch another worktree holds, so offering
+    // Checkout here only buys an error. Say who has it instead — the session
+    // name if one is attached, else the directory, which is what you would go
+    // looking for.
+    const holder = heldByWorktree.sessionName ?? heldByWorktree.path.split('/').slice(-2).join('/')
+    items.push({
+      key: 'held-by-worktree',
+      label: `Checked out in ${holder}`,
+      onClick: () => setMenuBranch(null),
+    })
+  } else if (!isCurrent) {
     items.push({ key: 'checkout', label: 'Checkout', onClick: handleBranchCheckout })
   }
   if (hasUnpushed && menuBranch.local) {

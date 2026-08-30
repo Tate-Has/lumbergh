@@ -6,6 +6,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -1184,6 +1185,44 @@ def get_branches(cwd: Path) -> dict:
     }
 
 
+_WORKTREE_CONFLICT = re.compile(r"is already used by worktree at '(?P<path>[^']+)'")
+
+
+def _clean_git_stderr(raw: str) -> str:
+    """Peel GitPython's packaging off git's own message.
+
+    ``GitCommandError.stderr`` is not bare stderr: it arrives as
+    ``"\n  stderr: 'fatal: ...'"``, and ``str(e)`` adds the exit code and command
+    line on top. Strip exactly one layer of that wrapper, then git's own
+    ``fatal:``/``error:`` prefix, and leave the rest alone — the inner quoting is
+    load-bearing, since the branch and the worktree path are quoted inside it.
+    """
+    text = raw.strip()
+    if text.startswith("stderr:"):
+        text = text[len("stderr:") :].strip()
+        if len(text) >= 2 and text.startswith("'") and text.endswith("'"):
+            text = text[1:-1]
+    for prefix in ("fatal: ", "error: "):
+        if text.startswith(prefix):
+            text = text[len(prefix) :]
+            break
+    return text.strip()
+
+
+def _git_error(e: GitCommandError) -> dict:
+    """Turn a GitCommandError into something worth showing a person.
+
+    When git reports the branch is held by a worktree, return that path as its
+    own field: it names where the branch actually is, which is the only thing
+    that lets someone act on the failure.
+    """
+    message = _clean_git_stderr(e.stderr or str(e))
+    match = _WORKTREE_CONFLICT.search(message)
+    if match:
+        return {"error": message, "worktree_path": match.group("path")}
+    return {"error": message}
+
+
 def checkout_branch(cwd: Path, branch: str, reset_to: str | None = None) -> dict:
     """
     Checkout a branch if the working directory is clean.
@@ -1213,7 +1252,7 @@ def checkout_branch(cwd: Path, branch: str, reset_to: str | None = None) -> dict
             + (f" and reset to {reset_to[:7]}" if reset_to else ""),
         }
     except GitCommandError as e:
-        return {"error": str(e)}
+        return _git_error(e)
 
 
 def delete_branch(

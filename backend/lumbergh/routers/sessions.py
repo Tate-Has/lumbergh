@@ -1706,6 +1706,19 @@ async def session_git_checkout(name: str, body: CheckoutInput):
             checkout_branch, workdir, body.branch, body.reset_to, timeout=GIT_WRITE_TIMEOUT
         )
         if "error" in result:
+            held_by = result.get("worktree_path")
+            if held_by:
+                # The branch exists but another worktree has it checked out. 409,
+                # and the path travels as a field so the UI can point at it rather
+                # than making the user parse it out of the sentence.
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "error": result["error"],
+                        "branch": body.branch,
+                        "worktree_path": held_by,
+                    },
+                )
             status_code = 409 if "pending changes" in result["error"] else 400
             raise HTTPException(status_code=status_code, detail=result["error"])
         from lumbergh.diff_cache import diff_cache

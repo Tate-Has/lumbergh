@@ -10,6 +10,8 @@ import {
   GitPullRequest,
 } from 'lucide-react'
 import { getApiBase } from '../../config'
+import { useToast } from '../../hooks/toastContext'
+import { describeGitFailure } from '../../utils/gitFailure'
 import type { GraphData, GraphWorktree } from '../diff/types'
 import GraphToolbar from './GraphToolbar'
 import { applyGraphResponse } from './graphSync'
@@ -65,7 +67,10 @@ function WorktreeBadge({
     >
       <span className={`w-2 h-2 rounded-full shrink-0 ${dot} ${pulse ? 'animate-pulse' : ''}`} />
       <GitBranch size={11} className="opacity-60 shrink-0" />
-      <span className="truncate max-w-[120px]">{worktree.sessionName ?? worktree.branch}</span>
+      <span className="truncate max-w-[160px]">
+        {worktree.branch}
+        {worktree.sessionName && <span className="text-text-muted"> · {worktree.sessionName}</span>}
+      </span>
     </span>
   )
 }
@@ -662,7 +667,8 @@ function BranchContextMenu({
     handleBranchPush,
     handleResetTo,
     setDeleteBranchConfirm,
-    setMenuBranch
+    setMenuBranch,
+    graphData?.worktrees?.find((w) => w.branch === menuBranch.name && !w.isCurrent)
   )
 
   return (
@@ -904,20 +910,25 @@ export default function GitGraph({
     onGitAction?.()
   }, [fetchGraph, onGitAction])
 
-  const gitAction = useCallback(async (url: string, options?: RequestInit) => {
-    try {
-      const res = await fetch(url, options)
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        alert(data.detail || `Failed (HTTP ${res.status})`)
+  const toast = useToast()
+  const gitAction = useCallback(
+    async (url: string, options?: RequestInit) => {
+      try {
+        const res = await fetch(url, options)
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          const { message, detail } = describeGitFailure(data.detail, res.status)
+          toast.error(message, detail)
+          return false
+        }
+        return true
+      } catch {
+        toast.error('Could not reach the server')
         return false
       }
-      return true
-    } catch {
-      alert('Operation failed')
-      return false
-    }
-  }, [])
+    },
+    [toast]
+  )
 
   const handleCreateBranch = useCallback(async () => {
     if (!menuCommit || !sessionName) return

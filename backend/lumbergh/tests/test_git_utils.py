@@ -8,6 +8,7 @@ from lumbergh.git_utils import (
     _build_raw_refs,
     _classify_ref,
     _enrich_ref_entry,
+    checkout_branch,
     generate_untracked_file_diff,
     get_branches,
     get_commit_diff,
@@ -347,3 +348,47 @@ class TestGetRangeDiff:
         result = get_range_diff(mock_git_repo, trunk, side)
 
         assert {f["path"] for f in result["files"]} == {"trunk.txt", "side.txt"}
+
+
+class TestCheckoutBranchHeldByAWorktree:
+    """A branch checked out in a worktree cannot be checked out again.
+
+    git says so clearly, but GitPython's ``str(GitCommandError)`` wraps the
+    message in the exit code and the command line, and that whole blob used to
+    reach the user verbatim. The path is the useful part — it names which
+    worktree to go look at — so it has to survive as a field, not be buried in
+    prose.
+    """
+
+    def _repo_with_worktree(self, tmp_path):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        run = lambda *a, **kw: subprocess.run(a, cwd=kw.pop("cwd", repo), capture_output=True)  # noqa: E731
+        run("git", "init")
+        run("git", "config", "user.email", "t@example.com")
+        run("git", "config", "user.name", "T")
+        run("git", "commit", "--allow-empty", "-m", "init")
+        run("git", "branch", "feature")
+        worktree = tmp_path / "wt"
+        run("git", "worktree", "add", str(worktree), "feature")
+        return repo, worktree
+
+    def test_names_the_worktree_instead_of_the_command_line(self, temp_dir):
+        repo, worktree = self._repo_with_worktree(temp_dir)
+
+        result = checkout_branch(repo, "feature")
+
+        assert "error" in result
+        assert "exit code" not in result["error"]
+        assert "cmdline" not in result["error"]
+        assert "feature" in result["error"]
+        assert result["worktree_path"] == str(worktree)
+
+    def test_an_ordinary_failure_keeps_its_message_and_names_no_worktree(self, temp_dir):
+        repo, _ = self._repo_with_worktree(temp_dir)
+
+        result = checkout_branch(repo, "no-such-branch")
+
+        assert "error" in result
+        assert "exit code" not in result["error"]
+        assert result.get("worktree_path") is None

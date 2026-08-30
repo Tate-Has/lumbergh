@@ -199,3 +199,29 @@ def test_link_then_unlink_promotes_symlink_to_copy(client, tmp_path):
     linked = client.post("/api/worktrees/link", json={"path": str(wt)})
     assert linked.status_code == 200
     assert linked.json() == {"linked": []}  # already present post-unlink -> plan_links skips it
+
+
+def test_for_session_lists_the_siblings_of_the_repo_the_session_sits_in(
+    client, tmp_path, monkeypatch
+):
+    """The Git tab knows a session name and nothing else.
+
+    It has no way to learn a filesystem path, and the worktrees worth showing are
+    the ones sharing this session's repo — which, when the session is itself a
+    worktree, is its parent rather than its own directory.
+    """
+    from lumbergh.tests.test_worktrees import _init_repo
+
+    repo = _init_repo(tmp_path / "app")
+    made = client.post(
+        "/api/worktrees", json={"repo": str(repo), "branch": "feat/x", "create_branch": True}
+    ).json()
+
+    from lumbergh.routers import worktrees as wt_router
+
+    monkeypatch.setattr(wt_router, "get_session_workdir", lambda _name: Path(made["path"]))
+
+    body = client.get("/api/worktrees/for-session/whatever").json()
+
+    assert body["repo"] == str(repo)
+    assert [w["path"] for w in body["worktrees"]] == [str(Path(made["path"]).resolve())]
