@@ -17,6 +17,8 @@ interface Props {
   defaultAgent: string
   onDefaultAgentChange: (value: string) => void
   agentProviders: Record<string, { label: string }>
+  ctrlVPastes: boolean
+  onCtrlVPastesChange: (v: boolean) => void
   tabVisibility: Record<string, boolean>
   onTabVisibilityChange: (value: Record<string, boolean>) => void
   showSessionDots: boolean
@@ -125,6 +127,8 @@ export default function GeneralSettings({
   tabVisibility,
   onTabVisibilityChange,
   showSessionDots,
+  ctrlVPastes,
+  onCtrlVPastesChange,
   onShowSessionDotsChange,
   questionDetectionEnabled,
   onQuestionDetectionEnabledChange,
@@ -335,6 +339,18 @@ export default function GeneralSettings({
           <p className="text-xs text-text-muted mt-1">
             Tabs shown in the session detail view by default
           </p>
+        </div>
+        <div className="flex items-center justify-between">
+          <div>
+            <label className="block text-sm text-text-tertiary">
+              Ctrl+V pastes in the terminal
+            </label>
+            <p className="text-xs text-text-muted mt-0.5">
+              On, so dictation and clipboard tools that simulate Ctrl+V work. Turn it off to send a
+              literal ^V instead — vim's visual-block key. Ctrl+Shift+V always pastes either way.
+            </p>
+          </div>
+          <Toggle on={ctrlVPastes} onChange={onCtrlVPastesChange} />
         </div>
         <div className="flex items-center justify-between">
           <div>

@@ -23,6 +23,19 @@ Two send modes:
     - **Shift + click/drag** -- select text in the browser (for copying)
     - **Shift + right-click** -- open the browser's context menu (for paste)
 
+## Pasting
+
+`Ctrl+V` (`Cmd+V` on macOS) pastes into the terminal, as does `Ctrl+Shift+V`.
+
+This differs from a bare xterm.js, which sends a literal `^V` and reserves paste for
+`Ctrl+Shift+V`. That default silently breaks dictation and clipboard-injection tools —
+Wispr Flow and anything else that types by writing the clipboard and simulating
+`Ctrl+V` — because the text never arrives and nothing reports an error.
+
+If you use `^V` inside the terminal (vim's visual-block mode is the usual reason), turn
+**Settings → General → Ctrl+V pastes in the terminal** off to restore it. `Ctrl+Alt+V`
+sends a literal `^V` whether the setting is on or off, and `Ctrl+Shift+V` always pastes.
+
 ## Resizing
 
 The terminal automatically resizes when you resize the browser window or drag the pane divider. The PTY dimensions update in real time so command output wraps correctly.

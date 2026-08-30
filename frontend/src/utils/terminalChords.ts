@@ -23,3 +23,27 @@ export function exitsScrollMode(event: KeyboardEvent): boolean {
   if (event.ctrlKey || event.metaKey || event.altKey) return false
   return event.key.length === 1 || event.key === 'Escape'
 }
+
+/** Ctrl+V (Cmd+V on macOS) as a paste rather than a literal `^V` byte.
+ *
+ * xterm.js sends `^V` by default and reserves paste for Ctrl+Shift+V, which keeps
+ * vim's visual-block binding intact. That default also breaks every dictation and
+ * clipboard-injection tool (Wispr Flow and friends): they paste by writing the OS
+ * clipboard and simulating Ctrl+V, so the text silently never arrives.
+ *
+ * Declining the key here is what makes it work. A custom key handler that returns
+ * false leaves `preventDefault()` uncalled, so the browser's own paste proceeds and
+ * xterm's native `paste` listener inserts the text — with bracketed paste handled
+ * for us, no clipboard-read permission, and no secure context needed (Lumbergh is
+ * routinely served over plain http on a LAN).
+ *
+ * Alt is excluded so Ctrl+Alt+V still sends a literal `^V`, and Shift is excluded
+ * because Ctrl+Shift+V is already xterm's own paste. */
+export function isPasteChord(event: KeyboardEvent): boolean {
+  if (event.type !== 'keydown') return false
+  if (event.shiftKey || event.altKey) return false
+  // Physical key position: on a non-QWERTY layout the key labelled V is not the
+  // one the OS paste shortcut uses, and the OS shortcut is what we are matching.
+  if (event.code !== 'KeyV') return false
+  return event.ctrlKey !== event.metaKey
+}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isSessionCycleChord, exitsScrollMode } from './terminalChords'
+import { isSessionCycleChord, exitsScrollMode, isPasteChord } from './terminalChords'
 
 const chord = (over: Partial<KeyboardEvent>) =>
   ({
@@ -82,5 +82,35 @@ describe('exitsScrollMode', () => {
   it('leaves modified keys alone', () => {
     expect(exitsScrollMode(chord({ type: 'keydown', key: 'a', ctrlKey: true }))).toBe(false)
     expect(exitsScrollMode(chord({ type: 'keydown', key: 'Escape', altKey: true }))).toBe(false)
+  })
+})
+
+describe('Ctrl+V as paste', () => {
+  const key = (over: Partial<KeyboardEvent> = {}) => chord({ code: 'KeyV', key: 'v', ...over })
+
+  it('claims Ctrl+V and Cmd+V so the browser pastes instead of sending ^V', () => {
+    expect(isPasteChord(key({ ctrlKey: true }))).toBe(true)
+    expect(isPasteChord(key({ metaKey: true }))).toBe(true)
+  })
+
+  it('leaves Ctrl+Shift+V to xterm, which already pastes on it', () => {
+    expect(isPasteChord(key({ ctrlKey: true, shiftKey: true }))).toBe(false)
+  })
+
+  it('leaves Ctrl+Alt+V alone as the escape hatch for a literal ^V', () => {
+    expect(isPasteChord(key({ ctrlKey: true, altKey: true }))).toBe(false)
+  })
+
+  it('ignores a bare V, and Ctrl+Cmd+V', () => {
+    expect(isPasteChord(key())).toBe(false)
+    expect(isPasteChord(key({ ctrlKey: true, metaKey: true }))).toBe(false)
+  })
+
+  it('only claims keydown, so keypress and keyup still pass through', () => {
+    expect(isPasteChord(key({ ctrlKey: true, type: 'keyup' }))).toBe(false)
+  })
+
+  it('matches the physical V key, not the produced character', () => {
+    expect(isPasteChord(chord({ code: 'KeyB', key: 'v', ctrlKey: true }))).toBe(false)
   })
 })

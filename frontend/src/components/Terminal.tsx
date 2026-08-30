@@ -7,7 +7,7 @@ import '@xterm/xterm/css/xterm.css'
 import { useTerminalSocket } from '../hooks/useTerminalSocket'
 import type { PaneState } from '../hooks/useTerminalSocket'
 import { createWheelPager } from '../utils/wheelScroll'
-import { exitsScrollMode, isSessionCycleChord } from '../utils/terminalChords'
+import { exitsScrollMode, isPasteChord, isSessionCycleChord } from '../utils/terminalChords'
 import { getApiBase } from '../config'
 import { useTheme } from '../hooks/useTheme'
 import TerminalHeader from './TerminalHeader'
@@ -143,6 +143,27 @@ export default memo(function Terminal({
   // flush it on release, keeping the screen stable long enough to select.
   const suppressWritesRef = useRef(false)
   const writeQueueRef = useRef<string[]>([])
+
+  // Whether Ctrl+V pastes instead of sending a literal ^V. Server-side rather than
+  // localStorage because it is a per-user choice (do you use vim's visual-block?),
+  // not a per-device one, and it has to be discoverable in Settings.
+  const ctrlVPastesRef = useRef(true)
+  useEffect(() => {
+    let cancelled = false
+    fetch(`${getApiBase()}/settings`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!cancelled && data && typeof data.ctrlVPastes === 'boolean') {
+          ctrlVPastesRef.current = data.ctrlVPastes
+        }
+      })
+      .catch(() => {
+        // Keep the default: a failed settings read must not make paste stop working.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // Font size state with localStorage persistence
   const [fontSize, setFontSize] = useState(() => {
@@ -595,6 +616,12 @@ export default memo(function Terminal({
     // so the browser fires keypress which leaks through and sends \r to the terminal.
     term.attachCustomKeyEventHandler((event) => {
       if (isSessionCycleChord(event)) {
+        return false
+      }
+      // Decline Ctrl+V so xterm neither sends ^V nor calls preventDefault(). The
+      // browser's own paste then fires and xterm's native paste listener inserts
+      // the text, which is what makes OS-level clipboard injection work.
+      if (ctrlVPastesRef.current && isPasteChord(event)) {
         return false
       }
       if (event.key === 'Enter' && event.shiftKey) {

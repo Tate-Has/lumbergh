@@ -34,6 +34,7 @@ interface Settings {
   cloudUsername?: string
   tabVisibility?: Record<string, boolean>
   showSessionDots?: boolean
+  ctrlVPastes?: boolean
   scratchMaxAgeDays?: number
   questionDetectionEnabled?: boolean
   bill?: { harness?: string; personality?: string; customPersonality?: string }
@@ -70,6 +71,7 @@ export default function SettingsModal({ onClose }: Props) {
     shared: true,
   })
   const [showSessionDots, setShowSessionDots] = useState(true)
+  const [ctrlVPastes, setCtrlVPastes] = useState(true)
   const [questionDetectionEnabled, setQuestionDetectionEnabled] = useState(false)
   const [scratchMaxAgeDays, setScratchMaxAgeDays] = useState('7')
   const [cloudUsername, setCloudUsername] = useState<string | null>(null)
@@ -124,6 +126,7 @@ export default function SettingsModal({ onClose }: Props) {
       applyBillSettings(data.bill)
       if (data.tabVisibility) setTabVisibility(data.tabVisibility)
       if (data.showSessionDots != null) setShowSessionDots(data.showSessionDots)
+      if (data.ctrlVPastes != null) setCtrlVPastes(data.ctrlVPastes)
       if (data.questionDetectionEnabled != null)
         setQuestionDetectionEnabled(data.questionDetectionEnabled)
       if (data.scratchMaxAgeDays != null) setScratchMaxAgeDays(String(data.scratchMaxAgeDays))
@@ -177,6 +180,7 @@ export default function SettingsModal({ onClose }: Props) {
       }
       payload.tabVisibility = tabVisibility
       payload.showSessionDots = showSessionDots
+      payload.ctrlVPastes = ctrlVPastes
       payload.questionDetectionEnabled = questionDetectionEnabled
       payload.scratchMaxAgeDays = Math.max(0, parseInt(scratchMaxAgeDays) || 7)
       payload.ai = {
@@ -273,6 +277,8 @@ export default function SettingsModal({ onClose }: Props) {
                 tabVisibility={tabVisibility}
                 onTabVisibilityChange={setTabVisibility}
                 showSessionDots={showSessionDots}
+                ctrlVPastes={ctrlVPastes}
+                onCtrlVPastesChange={setCtrlVPastes}
                 onShowSessionDotsChange={setShowSessionDots}
                 questionDetectionEnabled={questionDetectionEnabled}
                 onQuestionDetectionEnabledChange={setQuestionDetectionEnabled}

@@ -49,6 +49,10 @@ def _get_defaults() -> dict:
         "showSessionDots": True,
         "scratchMaxAgeDays": 7,
         "questionDetectionEnabled": False,
+        # Ctrl+V pastes rather than sending a literal ^V. xterm's default reserves
+        # paste for Ctrl+Shift+V, which silently breaks dictation and clipboard
+        # injection tools. Turn this off to get ^V back for vim's visual-block.
+        "ctrlVPastes": True,
         "cloudUrl": "https://app.lumbergh.dev",
         "ai": {
             # The claude CLI is the out-of-the-box default: anyone running Lumbergh
@@ -136,6 +140,7 @@ class SettingsUpdate(BaseModel):
     showSessionDots: bool | None = None  # noqa: N815 - API field name
     scratchMaxAgeDays: int | None = None  # noqa: N815 - API field name
     questionDetectionEnabled: bool | None = None  # noqa: N815 - API field name
+    ctrlVPastes: bool | None = None  # noqa: N815 - API field name
     bill: BillSettings | None = None
 
 
@@ -285,6 +290,7 @@ _OPTIONAL_FIELDS = (
     "backupPassphrase",
     "showSessionDots",
     "questionDetectionEnabled",
+    "ctrlVPastes",
 )
 
 
