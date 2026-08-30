@@ -60,6 +60,9 @@ backend/lumbergh/frontend_dist/
 .claude/skills/
 skills-lock.json
 
+# Per-machine Claude Code permission grants (.claude/settings.json stays shared)
+.claude/settings.local.json
+
 # git worktrees for isolated feature work
 .worktrees/
 

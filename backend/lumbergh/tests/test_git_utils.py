@@ -2,6 +2,8 @@
 Tests for git_utils module.
 """
 
+import subprocess
+
 from lumbergh.git_utils import (
     _build_raw_refs,
     _classify_ref,
@@ -238,3 +240,44 @@ class TestEnrichRefEntry:
     def test_head_skipped(self):
         result = _enrich_ref_entry("HEAD", "local", "abc123", set(), {}, {})
         assert result is None
+
+
+class TestDiffPrefixConfiguration:
+    """Paths must survive whatever prefix style the user's git config asks for.
+
+    `diff.mnemonicPrefix` renders headers as `diff --git c/README.md w/README.md`
+    and `diff.noprefix` drops the prefixes altogether, so a parser that looks for
+    a literal " b/" reports every tracked file as "unknown".
+    """
+
+    @staticmethod
+    def _tracked_paths(repo_path):
+        result = get_full_diff_with_untracked(repo_path)
+        return {f["path"] for f in result["files"]}
+
+    def test_reads_paths_under_mnemonic_prefixes(self, mock_git_repo_with_changes):
+        subprocess.run(
+            ["git", "config", "diff.mnemonicPrefix", "true"],
+            cwd=mock_git_repo_with_changes,
+            capture_output=True,
+        )
+
+        assert "README.md" in self._tracked_paths(mock_git_repo_with_changes)
+
+    def test_reads_paths_under_noprefix(self, mock_git_repo_with_changes):
+        subprocess.run(
+            ["git", "config", "diff.noprefix", "true"],
+            cwd=mock_git_repo_with_changes,
+            capture_output=True,
+        )
+
+        assert "README.md" in self._tracked_paths(mock_git_repo_with_changes)
+
+    def test_reads_paths_under_default_prefixes(self, mock_git_repo_with_changes):
+        subprocess.run(
+            ["git", "config", "diff.mnemonicPrefix", "false"],
+            cwd=mock_git_repo_with_changes,
+            capture_output=True,
+        )
+
+        assert "README.md" in self._tracked_paths(mock_git_repo_with_changes)

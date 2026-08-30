@@ -140,6 +140,17 @@ def get_porcelain_status(cwd: Path) -> list[dict]:
     return files
 
 
+def _parseable_diff(repo: Repo, *revs: str) -> str:
+    """Diff text this module can parse, whatever the user has configured.
+
+    `diff.mnemonicPrefix` renames the header prefixes to c/ and w/, `diff.noprefix`
+    removes them, and `diff.external` replaces the diff wholesale — each of which
+    hides the path parse_diff_output reads out of `diff --git a/... b/...`.
+    """
+    git = repo.git(c=["diff.mnemonicPrefix=false", "diff.noprefix=false"])
+    return git.diff(*revs, no_ext_diff=True)
+
+
 def parse_diff_output(diff_text: str) -> tuple[list[FileDiff], DiffStats]:
     """
     Parse git diff output into per-file chunks with stats.
@@ -238,7 +249,7 @@ def get_full_diff_with_untracked(cwd: Path) -> dict:
     # Get diff of working tree against HEAD
     if repo.head.is_valid():
         try:
-            diff_text = _sanitize(repo.git.diff("HEAD"))
+            diff_text = _sanitize(_parseable_diff(repo, "HEAD"))
             if diff_text:
                 parsed_files, stats = parse_diff_output(diff_text)
                 for f in parsed_files:
@@ -808,7 +819,7 @@ def get_commit_diff(cwd: Path, commit_hash: str) -> dict | None:
     # Get the diff
     try:
         if commit.parents:
-            diff_text = _sanitize(repo.git.diff(f"{commit_hash}^..{commit_hash}"))
+            diff_text = _sanitize(_parseable_diff(repo, f"{commit_hash}^..{commit_hash}"))
         else:
             # First commit - show all files as added
             diff_text = repo.git.show(commit_hash, format="")
