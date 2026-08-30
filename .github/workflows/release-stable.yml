@@ -73,8 +73,14 @@ jobs:
               )
               with urllib.request.urlopen(req, timeout=30) as resp:
                   payload = json.loads(resp.read())
-              notes = payload['choices'][0]['message']['content'].strip() or None
-          except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError, KeyError, ValueError) as e:
+              choices = payload.get('choices') or []
+              content = (choices[0].get('message') or {}).get('content') if choices else payload.get('content')
+              # Reasoning models answer with content=None beside a reasoning_content,
+              # and some gateways answer with a list of typed blocks instead of a string.
+              if isinstance(content, list):
+                  content = ''.join(b.get('text', '') for b in content if isinstance(b, dict))
+              notes = (content or '').strip() or None
+          except Exception as e:
               print(f"::warning::AI release notes unavailable ({e!r}); using commit-log fallback", file=sys.stderr)
 
           with open('RELEASE_NOTES.md', 'w') as fh:
