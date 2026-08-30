@@ -46,13 +46,34 @@ function haystack(commit: GraphCommit): string {
   return `${commit.message} ${commit.author} ${commit.hash} ${refs}`.toLowerCase()
 }
 
+/** Git's own minimum abbreviation. Below it, a hex string is far more likely to
+ * be a word ("cafe", "beef", "added") than an id worth resolving. */
+const MIN_SHA_LENGTH = 4
+
+const HEX = /^[0-9a-f]+$/
+
+/** Does this query name that commit by id?
+ *
+ * Both directions matter. The graph payload abbreviates to 12 characters, so a
+ * pasted 40-character sha is longer than anything it can be a prefix of — the
+ * commit's hash is a prefix of the query, not the other way round. Checking only
+ * one direction is why a full sha found nothing. */
+function matchesHash(commit: GraphCommit, text: string): boolean {
+  if (text.length < MIN_SHA_LENGTH || !HEX.test(text)) return false
+  const hash = commit.hash.toLowerCase()
+  return hash.startsWith(text) || text.startsWith(hash)
+}
+
 function matches(commit: GraphCommit, query: SearchQuery): boolean {
   if (query.author !== undefined) {
     const author = `${commit.author} ${commit.authorEmail ?? ''}`.toLowerCase()
     if (!author.includes(query.author.toLowerCase())) return false
   }
   if (query.text === '') return true
-  return haystack(commit).includes(query.text.toLowerCase())
+  const text = query.text.toLowerCase()
+  // Hash first, then the ordinary haystack: a hex query should find both the
+  // commit it names and any commit whose message mentions it.
+  return matchesHash(commit, text) || haystack(commit).includes(text)
 }
 
 /** Hashes of the commits a query selects. Empty when nothing local can answer it. */

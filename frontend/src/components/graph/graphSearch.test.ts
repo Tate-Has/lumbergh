@@ -150,3 +150,45 @@ describe('anyRowVisible', () => {
     expect(anyRowVisible([0, 20, 4], rowToY, 40, viewport)).toBe(true)
   })
 })
+
+describe('finding a commit by its sha', () => {
+  const commit = (over: Partial<GraphCommit> = {}): GraphCommit =>
+    ({
+      hash: 'a1b2c3d4e5f6',
+      message: 'feat: a thing',
+      author: 'Jim',
+      authorEmail: 'jim@example.com',
+      refs: [],
+      ...over,
+    }) as GraphCommit
+
+  const hashesFor = (raw: string, commits: GraphCommit[]) => [
+    ...findMatches(commits, parseQuery(raw)),
+  ]
+
+  it('matches a short sha, the form actually typed', () => {
+    expect(hashesFor('a1b2c3d', [commit()])).toEqual(['a1b2c3d4e5f6'])
+  })
+
+  it('matches a full 40-char sha against the 12 chars the payload carries', () => {
+    const full = 'a1b2c3d4e5f6' + '9'.repeat(28)
+    expect(hashesFor(full, [commit()])).toEqual(['a1b2c3d4e5f6'])
+  })
+
+  it('does not match a full sha that merely shares a prefix elsewhere', () => {
+    const other = 'ffffffffffff' + '9'.repeat(28)
+    expect(hashesFor(other, [commit()])).toEqual([])
+  })
+
+  it('is case-insensitive, since a pasted sha may be upper case', () => {
+    expect(hashesFor('A1B2C3D', [commit()])).toEqual(['a1b2c3d4e5f6'])
+  })
+
+  it('still finds a hex word in a message, not only the commit that is it', () => {
+    const mentions = commit({ hash: 'ffffffffffff', message: 'revert deadbeef' })
+    const isIt = commit({ hash: 'deadbeef0000', message: 'unrelated' })
+    expect(new Set(hashesFor('deadbeef', [mentions, isIt]))).toEqual(
+      new Set(['ffffffffffff', 'deadbeef0000'])
+    )
+  })
+})

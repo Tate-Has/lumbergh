@@ -18,6 +18,7 @@ from lumbergh.git_utils import (
     get_porcelain_status,
     get_range_diff,
     parse_diff_output,
+    search_commits,
     stage_all_and_commit,
 )
 
@@ -392,3 +393,66 @@ class TestCheckoutBranchHeldByAWorktree:
         assert "error" in result
         assert "exit code" not in result["error"]
         assert result.get("worktree_path") is None
+
+
+class TestSearchCommitsBySha:
+    """`--grep` searches commit messages, so it can never find a commit by its id.
+
+    A sha is the one thing you can hold that is guaranteed not to appear in the
+    text being searched, which made "All history" structurally unable to answer
+    the most precise question a user can ask.
+    """
+
+    def _repo_with_history(self, tmp_path):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+
+        def run(*args):
+            return subprocess.run(args, cwd=repo, capture_output=True, text=True)
+
+        run("git", "init")
+        run("git", "config", "user.email", "t@example.com")
+        run("git", "config", "user.name", "T")
+        hashes = []
+        for i in range(3):
+            run("git", "commit", "--allow-empty", "-m", f"commit number {i}")
+            hashes.append(run("git", "rev-parse", "HEAD").stdout.strip())
+        return repo, hashes
+
+    def test_finds_a_commit_by_its_full_sha(self, temp_dir):
+        repo, hashes = self._repo_with_history(temp_dir)
+
+        found = search_commits(repo, hashes[0])
+
+        assert [c["hash"] for c in found] == [hashes[0]]
+
+    def test_finds_a_commit_by_its_short_sha(self, temp_dir):
+        repo, hashes = self._repo_with_history(temp_dir)
+
+        found = search_commits(repo, hashes[1][:7])
+
+        assert [c["hash"] for c in found] == [hashes[1]]
+
+    def test_a_sha_that_names_nothing_finds_nothing(self, temp_dir):
+        repo, _ = self._repo_with_history(temp_dir)
+
+        assert search_commits(repo, "abcdef1234567890") == []
+
+    def test_a_message_search_still_works_and_is_not_swallowed(self, temp_dir):
+        repo, _ = self._repo_with_history(temp_dir)
+
+        assert len(search_commits(repo, "commit number")) == 3
+
+    def test_a_hex_word_finds_both_the_commit_it_names_and_the_ones_mentioning_it(self, temp_dir):
+        repo, hashes = self._repo_with_history(temp_dir)
+        short = hashes[2][:8]
+        subprocess.run(
+            ["git", "commit", "--allow-empty", "-m", f"revert {short}"],
+            cwd=repo,
+            capture_output=True,
+        )
+
+        found = {c["hash"] for c in search_commits(repo, short)}
+
+        assert hashes[2] in found
+        assert len(found) == 2

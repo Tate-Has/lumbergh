@@ -18,7 +18,7 @@ from typing import Any
 os.environ.setdefault("GIT_TERMINAL_PROMPT", "0")
 
 from git import InvalidGitRepositoryError, Repo
-from git.exc import GitCommandError, NoSuchPathError
+from git.exc import BadName, GitCommandError, NoSuchPathError
 
 from lumbergh.git_identity import Identity, owns_ref
 
@@ -725,6 +725,26 @@ def get_commit_log(cwd: Path, limit: int = 20) -> list[dict]:
     ]
 
 
+_SHA_RE = re.compile(r"^[0-9a-fA-F]{4,40}$")
+
+
+def _commit_named_by(repo, text: str):
+    """The commit this text names, if it names one.
+
+    ``git log --grep`` searches messages, and a sha is precisely the thing that
+    does not appear in the message of the commit it identifies — so searching by
+    id found nothing at all without this. Four characters is git's own minimum
+    abbreviation; below it a hex string ("cafe", "beef") is almost certainly a
+    word, and resolving it would hijack an ordinary text search.
+    """
+    if not _SHA_RE.match(text):
+        return None
+    try:
+        return repo.commit(repo.git.rev_parse("--verify", f"{text}^{{commit}}"))
+    except (GitCommandError, BadName, ValueError):
+        return None
+
+
 def search_commits(
     cwd: Path,
     text: str = "",
@@ -757,9 +777,24 @@ def search_commits(
 
     paths = [file] if file else []
 
+    def described(commit) -> dict:
+        return {
+            "hash": commit.hexsha,
+            "shortHash": commit.hexsha[:7],
+            "message": commit.summary,
+            "author": commit.author.name,
+            "authorEmail": commit.author.email,
+            "relativeDate": commit.committed_datetime.isoformat(),
+        }
+
+    # A sha names one commit directly. Keep the grep results alongside it, so
+    # searching a short sha still turns up the commits whose messages cite it
+    # (a revert, a "fixes" line) as well as the commit it identifies.
+    named = _commit_named_by(repo, text) if text and author is None and file is None else None
+
     try:
         commits = repo.iter_commits(paths=paths, **kwargs)
-        return [
+        found = [
             {
                 "hash": commit.hexsha,
                 "shortHash": commit.hexsha[:7],
@@ -771,7 +806,11 @@ def search_commits(
             for commit in commits
         ]
     except GitCommandError:
-        return []
+        found = []
+
+    if named and all(c["hash"] != named.hexsha for c in found):
+        found.insert(0, described(named))
+    return found
 
 
 def get_commit_info(cwd: Path, commit_hash: str) -> dict | None:
