@@ -1,8 +1,16 @@
 import { describe, it, expect } from 'vitest'
-import { isSessionCycleChord } from './terminalChords'
+import { isSessionCycleChord, exitsScrollMode } from './terminalChords'
 
 const chord = (over: Partial<KeyboardEvent>) =>
-  ({ altKey: false, ctrlKey: false, metaKey: false, key: '', code: '', ...over }) as KeyboardEvent
+  ({
+    altKey: false,
+    ctrlKey: false,
+    metaKey: false,
+    key: '',
+    code: '',
+    type: 'keydown',
+    ...over,
+  }) as KeyboardEvent
 
 describe('isSessionCycleChord', () => {
   it('claims Alt+Z so zen mode toggles instead of tmux seeing \\x1bz', () => {
@@ -49,5 +57,30 @@ describe('isSessionCycleChord', () => {
   it('lets a bare v and Ctrl+V through to the shell', () => {
     expect(isSessionCycleChord(chord({ key: 'v', code: 'KeyV' }))).toBe(false)
     expect(isSessionCycleChord(chord({ ctrlKey: true, key: 'v', code: 'KeyV' }))).toBe(false)
+  })
+})
+
+describe('exitsScrollMode', () => {
+  it('exits on a plain character, so typing lands in the shell', () => {
+    expect(exitsScrollMode(chord({ type: 'keydown', key: 'a' }))).toBe(true)
+  })
+
+  it('exits on Escape, which tmux would otherwise spend on the copy-mode selection', () => {
+    expect(exitsScrollMode(chord({ type: 'keydown', key: 'Escape' }))).toBe(true)
+  })
+
+  it('ignores keyup and keypress, so one press does not send two q', () => {
+    expect(exitsScrollMode(chord({ type: 'keyup', key: 'Escape' }))).toBe(false)
+    expect(exitsScrollMode(chord({ type: 'keypress', key: 'a' }))).toBe(false)
+  })
+
+  it('leaves the copy-mode navigation keys alone', () => {
+    expect(exitsScrollMode(chord({ type: 'keydown', key: 'ArrowUp' }))).toBe(false)
+    expect(exitsScrollMode(chord({ type: 'keydown', key: 'PageUp' }))).toBe(false)
+  })
+
+  it('leaves modified keys alone', () => {
+    expect(exitsScrollMode(chord({ type: 'keydown', key: 'a', ctrlKey: true }))).toBe(false)
+    expect(exitsScrollMode(chord({ type: 'keydown', key: 'Escape', altKey: true }))).toBe(false)
   })
 })

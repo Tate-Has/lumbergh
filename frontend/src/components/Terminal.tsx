@@ -7,7 +7,7 @@ import '@xterm/xterm/css/xterm.css'
 import { useTerminalSocket } from '../hooks/useTerminalSocket'
 import type { PaneState } from '../hooks/useTerminalSocket'
 import { createWheelPager } from '../utils/wheelScroll'
-import { isSessionCycleChord } from '../utils/terminalChords'
+import { exitsScrollMode, isSessionCycleChord } from '../utils/terminalChords'
 import { getApiBase } from '../config'
 import { useTheme } from '../hooks/useTheme'
 import TerminalHeader from './TerminalHeader'
@@ -606,15 +606,8 @@ export default memo(function Terminal({
       }
       // Auto-exit scroll mode on typing (desktop only)
       // Send 'q' via WebSocket (same path as the keystroke) so tmux processes them
-      // in order: 'q' exits copy-mode, then the actual character reaches the shell.
-      if (
-        scrollModeRef.current &&
-        event.type === 'keydown' &&
-        !event.ctrlKey &&
-        !event.metaKey &&
-        !event.altKey &&
-        event.key.length === 1
-      ) {
+      // in order: 'q' exits copy-mode, then the actual key reaches the agent.
+      if (scrollModeRef.current && exitsScrollMode(event)) {
         sendRef.current('q')
         setScrollMode(false)
       }

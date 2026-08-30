@@ -11,3 +11,15 @@ export function isSessionCycleChord(event: KeyboardEvent): boolean {
   const altOnly = event.altKey && !event.ctrlKey && !event.metaKey
   return altOnly && (event.code === 'KeyZ' || event.code === 'KeyV')
 }
+
+/** Keys that should first take the pane out of tmux copy-mode, because copy-mode
+ * would otherwise spend them on itself instead of passing them to the agent.
+ *
+ * Escape is the one that matters: with `mode-keys vi` tmux binds it to
+ * clear-selection, so pressing it to stop a runaway agent only drops the
+ * copy-mode selection and stays in the mode — the agent never sees it. */
+export function exitsScrollMode(event: KeyboardEvent): boolean {
+  if (event.type !== 'keydown') return false
+  if (event.ctrlKey || event.metaKey || event.altKey) return false
+  return event.key.length === 1 || event.key === 'Escape'
+}
