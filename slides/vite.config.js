@@ -1,5 +1,5 @@
 export default {
   server: {
-    allowedHosts: ['jv-desktop'],
+    allowedHosts: ['desktop', '.tail1a4967.ts.net'],
   },
 }
