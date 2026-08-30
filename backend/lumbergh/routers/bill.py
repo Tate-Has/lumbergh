@@ -72,6 +72,16 @@ BILL_SESSION = "bill"
 BILL_PROVIDER = "pi"
 BILL_ORIGIN = "bill"
 
+# Bill runs under his own harness rather than the user's coding agent on purpose:
+# he supervises in a loop, all day, and that is only affordable on a cheap local
+# model. Nothing else in Lumbergh needs `pi`, so a first summon is the only place
+# a user meets it — and "binary not installed" alone reads like a broken install.
+PI_INSTALL_URL = "https://github.com/badlogic/pi-mono"
+PI_WHY = (
+    "Bill polls the fleet continuously, so he runs on a separate harness driving a "
+    "cheap local model instead of your main coding agent."
+)
+
 
 def _direct_reports(rows: list[dict], viewer: str) -> list[dict]:
     """The rows ``viewer`` is responsible for. Bill's direct reports are the overseers the
@@ -463,10 +473,20 @@ def summon():
 
     binary = _harness_binary(launch_command)
     if binary and shutil.which(binary) is None:
+        fallback = _settings().get("defaultAgent") or None
         raise _fail(
             "harness",
             f"the `{harness}` harness binary `{binary}` is not installed",
-            f"install `{binary}`, then summon Bill again",
+            (
+                f"install `{binary}`, or run Bill under `{fallback}` instead"
+                if fallback
+                else f"install `{binary}`, then summon Bill again"
+            ),
+            harness=harness,
+            binary=binary,
+            install_url=PI_INSTALL_URL if harness == BILL_PROVIDER else "",
+            why=PI_WHY,
+            fallback_agent=fallback,
             # Bill's home is already materialized by this point, and a caller that
             # only wanted to find it (the e2e suite, a UI showing his briefs) must not
             # be denied the path just because the session can't start.
@@ -627,7 +647,7 @@ _DEP_SYNC_HELP = (
 )
 
 
-def _fail(stage: str, error: str, help_text: str, **extra: str) -> HTTPException:
+def _fail(stage: str, error: str, help_text: str, **extra: str | None) -> HTTPException:
     """Build the 400 every failure stage raises.
 
     ``extra`` lets a specific stage attach fields a client might need to recover —

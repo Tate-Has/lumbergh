@@ -1445,6 +1445,43 @@ def test_summon_refuses_when_the_harness_binary_is_missing(client, tmp_path, mon
     assert detail["workdir"] == str(tmp_path / "bill")
 
 
+def test_missing_harness_says_what_pi_is_and_offers_the_default_agent(
+    client, tmp_path, monkeypatch
+):
+    """The failure must be recoverable without reading the source.
+
+    A first summon on a fresh install hits this, and 'the `pi` harness binary
+    `pi` is not installed' reads like a broken install rather than an optional
+    extra. The client needs enough to fix it in place: what pi is, where to get
+    it, and the agent already configured that Bill could run under instead.
+    """
+    monkeypatch.setattr("lumbergh.routers.sessions.get_live_sessions", dict)
+    monkeypatch.setattr(bill.bill_bundle, "home", lambda: tmp_path / "bill")
+    monkeypatch.setattr(bill.shutil, "which", lambda name: None)  # noqa: ARG005
+    monkeypatch.setattr(bill, "_settings", lambda: {"defaultAgent": "claude-code"})
+
+    detail = client.post("/api/bill/summon").json()["detail"]
+
+    assert detail["stage"] == "harness"
+    assert detail["harness"] == "pi"
+    assert detail["install_url"].startswith("http")
+    assert detail["fallback_agent"] == "claude-code"
+    assert "cheap" in detail["why"].lower() or "local" in detail["why"].lower()
+
+
+def test_missing_harness_offers_no_fallback_when_no_default_agent_is_set(
+    client, tmp_path, monkeypatch
+):
+    monkeypatch.setattr("lumbergh.routers.sessions.get_live_sessions", dict)
+    monkeypatch.setattr(bill.bill_bundle, "home", lambda: tmp_path / "bill")
+    monkeypatch.setattr(bill.shutil, "which", lambda name: None)  # noqa: ARG005
+    monkeypatch.setattr(bill, "_settings", dict)
+
+    detail = client.post("/api/bill/summon").json()["detail"]
+
+    assert detail["fallback_agent"] is None
+
+
 def test_summon_creates_normally_when_the_harness_binary_is_present(client, tmp_path, monkeypatch):
     monkeypatch.setattr("lumbergh.routers.sessions.get_live_sessions", dict)
     monkeypatch.setattr(bill.bill_bundle, "home", lambda: tmp_path / "bill")

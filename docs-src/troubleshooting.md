@@ -213,3 +213,23 @@ Escape to `clear-selection` — so it drops the selection and stays in the mode
 instead of passing an Escape to the agent. Lumbergh handles this by leaving
 copy-mode first (it sends `q` down the same socket) so the Escape lands on the
 agent. If you see this on an older version, upgrade.
+
+---
+
+### Summoning Bill says `pi` is not installed?
+
+Bill runs under a separate harness, not your normal coding agent — by default
+[`pi`](https://github.com/badlogic/pi-mono), which you install yourself. Nothing
+else in Lumbergh needs it, so a first summon is the only place you meet the
+requirement, and the bare error reads like a broken install when it is not.
+
+He is kept off your main agent on purpose: Bill supervises in a loop all day, and
+that is only affordable on a cheap local model.
+
+Two ways forward:
+
+- **Install `pi`** and summon again.
+- **Point Bill at the agent you already have** — Settings → Bill → Harness, set to
+  e.g. `claude-code`. The summon dialog offers this as a one-click switch when it
+  finds the harness missing. Expect it to cost more than `pi` would, since Bill
+  polls continuously.

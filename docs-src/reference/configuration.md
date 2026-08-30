@@ -31,6 +31,26 @@ Connect to [Lumbergh Cloud](#lumbergh-cloud) for backup, prompt sharing, communi
 | Encryption | Encrypt backups with a passphrase (AES-256) |
 | Cloud tunnel | When connected, an outbound WebSocket tunnel allows remote dashboard access. Disable by signing out of cloud. |
 
+### Bill
+
+Bill is the optional orchestrator who supervises your other sessions. He does **not**
+run under your normal coding agent: he polls the fleet continuously, which is only
+affordable on a cheap local model, so he runs under his own harness — by default
+[`pi`](https://github.com/badlogic/pi-mono), a separate tool you install yourself.
+
+Summoning Bill without it fails with ``the `pi` harness binary `pi` is not installed``.
+That is not a broken install — nothing else in Lumbergh needs `pi`. You have two ways
+forward:
+
+| Setting | Description |
+|---------|-------------|
+| Harness | Which agent CLI Bill runs under. Defaults to `pi`. Set it to your own agent (e.g. `claude-code`) to run Bill without installing a second CLI — at that agent's cost, on a loop. |
+| Personality | Which bundled personality Bill adopts, or a custom one |
+
+The summon dialog offers the same switch in place when the harness is missing, so you
+can point Bill at your default agent with one click and try him before deciding whether
+to install `pi`.
+
 ### Telemetry
 
 Lumbergh can send an anonymous startup ping and an hourly heartbeat to help

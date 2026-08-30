@@ -15,6 +15,8 @@ import {
   UserRoundCog,
 } from 'lucide-react'
 import { getApiBase } from '../config'
+import BillHarnessMissing from '../components/BillHarnessMissing'
+import { isHarnessMissing, type HarnessMissingDetail } from '../utils/billHarness'
 import SessionCard from '../components/SessionCard'
 import OverseerCard from '../components/OverseerCard'
 import BillHeroCard from '../components/BillHeroCard'
@@ -401,6 +403,8 @@ export default function Dashboard() {
   const [showSettingsModal, setShowSettingsModal] = useState(false)
   const [creatingScratch, setCreatingScratch] = useState(false)
   const [summoningBill, setSummoningBill] = useState(false)
+  const [harnessMissing, setHarnessMissing] = useState<HarnessMissingDetail | null>(null)
+  const [switchingHarness, setSwitchingHarness] = useState(false)
   const [isFirstRun, setIsFirstRun] = useState<boolean | null>(null)
   const [defaultRepoDir, setDefaultRepoDir] = useState('')
   const [lbSharedInstalled, setLbSharedInstalled] = useState<boolean | null>(null)
@@ -721,6 +725,13 @@ export default function Dashboard() {
       const res = await fetch(`${getApiBase()}/bill/summon`, { method: 'POST' })
       if (!res.ok) {
         const data = await res.json()
+        // A missing harness is the one summon failure the user can fix from here,
+        // so it gets a dialog with the install link and the agent they already
+        // have, rather than an alert() naming a binary they have never heard of.
+        if (isHarnessMissing(data.detail)) {
+          setHarnessMissing(data.detail)
+          return
+        }
         throw new Error(describeErrorDetail(data.detail) || 'Failed to summon Bill')
       }
       const data = await res.json()
@@ -729,6 +740,24 @@ export default function Dashboard() {
       alert(err instanceof Error ? err.message : 'Failed to summon Bill')
     } finally {
       setSummoningBill(false)
+    }
+  }
+
+  const handleUseFallbackHarness = async (agent: string) => {
+    setSwitchingHarness(true)
+    try {
+      const res = await fetch(`${getApiBase()}/settings`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bill: { harness: agent } }),
+      })
+      if (!res.ok) throw new Error('Failed to save the harness setting')
+      setHarnessMissing(null)
+      await handleSummonBill()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to switch harness')
+    } finally {
+      setSwitchingHarness(false)
     }
   }
 
@@ -910,6 +939,13 @@ export default function Dashboard() {
 
       {/* Settings modal */}
       {showSettingsModal && <SettingsModal onClose={() => setShowSettingsModal(false)} />}
+
+      <BillHarnessMissing
+        detail={harnessMissing}
+        onClose={() => setHarnessMissing(null)}
+        onUseFallback={handleUseFallbackHarness}
+        switching={switchingHarness}
+      />
     </div>
   )
 }
