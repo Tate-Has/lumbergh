@@ -1215,6 +1215,23 @@ def _list_pane_children(pane_pid: str) -> list[dict]:
     return children
 
 
+_SHELL_COMMANDS = {"sh", "bash", "zsh", "fish", "dash", "ksh", "csh", "tcsh"}
+
+
+def _is_idle_shell(child: dict) -> bool:
+    """True for an interactive shell sitting at its prompt with nothing running.
+
+    Some shell startups fork a second login shell that parks in the pane for the
+    life of the session, so every pane holds one of these next to the agent.
+    Killing it costs the user nothing, and counting it would make the pause
+    confirmation fire on every session.
+    """
+    command = child["command"].lstrip("-").removesuffix(".exe")
+    if command not in _SHELL_COMMANDS:
+        return False
+    return not _list_pane_children(str(child["pid"]))
+
+
 def _kill_pane_children(pane_pid: str) -> None:
     if not pane_pid:
         return
@@ -1258,7 +1275,7 @@ async def pause_session(name: str, force: bool = False):
         raise HTTPException(status_code=404, detail=f"Session '{name}' is not running")
 
     shell_pid = _get_pane_pid(name)
-    children = _list_pane_children(shell_pid)
+    children = [c for c in _list_pane_children(shell_pid) if not _is_idle_shell(c)]
 
     if not force and len(children) > 1:
         raise HTTPException(
