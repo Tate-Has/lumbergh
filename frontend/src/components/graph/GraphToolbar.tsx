@@ -1,4 +1,5 @@
-import { ChevronDown, ChevronUp, Search, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { ChevronDown, ChevronUp, Search, SlidersHorizontal, X } from 'lucide-react'
 
 interface Props {
   mineOnly: boolean
@@ -16,9 +17,33 @@ interface Props {
   needsHistory: boolean
   onStepMatch: (delta: number) => void
   onSearchHistory: () => void
+  /** Where the toolbar starts out. Full screen has vertical space to spare, so
+   *  it opens expanded; a split pane starts collapsed to a single button and
+   *  keeps its whole height for commits. Flipping it re-applies the default. */
+  expandedByDefault?: boolean
 }
 
-export default function GraphToolbar({
+function CollapsedToolbar({ filtered, onExpand }: { filtered: boolean; onExpand: () => void }) {
+  return (
+    <button
+      data-testid="graph-toolbar-toggle"
+      onClick={onExpand}
+      aria-expanded={false}
+      title="Search and filter commits"
+      className="absolute top-1 right-2 z-30 flex items-center gap-1 px-2 py-1 rounded-sm text-xs ring-1 bg-bg-surface/90 text-text-secondary ring-border-default hover:bg-control-bg-hover backdrop-blur-sm"
+    >
+      <SlidersHorizontal size={12} />
+      {filtered && (
+        <span
+          data-testid="graph-toolbar-active-dot"
+          className="w-1.5 h-1.5 rounded-full bg-action"
+        />
+      )}
+    </button>
+  )
+}
+
+function ExpandedToolbar({
   mineOnly,
   mineAvailable,
   onToggleMineOnly,
@@ -30,7 +55,8 @@ export default function GraphToolbar({
   needsHistory,
   onStepMatch,
   onSearchHistory,
-}: Props) {
+  onCollapse,
+}: Props & { onCollapse: () => void }) {
   const active = mineOnly && mineAvailable
 
   return (
@@ -119,16 +145,45 @@ export default function GraphToolbar({
       {active && !searching && (
         <span className="text-text-muted">trunk + branches you have worked on</span>
       )}
-      {onOpenReflog && (
+      <div className="ml-auto flex items-center gap-2 shrink-0">
+        {onOpenReflog && (
+          <button
+            data-testid="graph-reflog-toggle"
+            onClick={onOpenReflog}
+            title="Where was I? — recent HEAD movements, including commits the graph no longer shows"
+            className="px-2 py-1 rounded-sm ring-1 bg-control-bg text-text-secondary ring-border-default hover:bg-control-bg-hover"
+          >
+            Where was I?
+          </button>
+        )}
         <button
-          data-testid="graph-reflog-toggle"
-          onClick={onOpenReflog}
-          title="Where was I? — recent HEAD movements, including commits the graph no longer shows"
-          className="ml-auto px-2 py-1 rounded-sm ring-1 bg-control-bg text-text-secondary ring-border-default hover:bg-control-bg-hover shrink-0"
+          data-testid="graph-toolbar-collapse"
+          onClick={onCollapse}
+          aria-expanded
+          title="Hide search and filters"
+          className="p-1 rounded-sm text-text-tertiary hover:bg-control-bg-hover hover:text-text-primary"
         >
-          Where was I?
+          <ChevronUp size={12} />
         </button>
-      )}
+      </div>
     </div>
+  )
+}
+
+export default function GraphToolbar(props: Props) {
+  const { expandedByDefault = false, mineOnly, mineAvailable, searching } = props
+  const [expanded, setExpanded] = useState(expandedByDefault)
+
+  useEffect(() => {
+    setExpanded(expandedByDefault)
+  }, [expandedByDefault])
+
+  return expanded ? (
+    <ExpandedToolbar {...props} onCollapse={() => setExpanded(false)} />
+  ) : (
+    <CollapsedToolbar
+      filtered={(mineOnly && mineAvailable) || searching}
+      onExpand={() => setExpanded(true)}
+    />
   )
 }

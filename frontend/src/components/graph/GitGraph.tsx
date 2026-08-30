@@ -325,6 +325,8 @@ interface Props {
   /** Bumped when the git tab is clicked — triggers auto-select of WIP or HEAD */
   resetTrigger?: number
   onGitAction?: () => void
+  /** True when the git panel owns the viewport, so the toolbar can start open. */
+  maximized?: boolean
 }
 
 function WipRow({
@@ -699,6 +701,7 @@ export default function GitGraph({
   refreshTrigger,
   resetTrigger,
   onGitAction,
+  maximized,
 }: Props) {
   const branchPanelStorageKey = storageKeyFor(branchPanelStorageKey_PREFIX, sessionName)
   const graphPanelStorageKey = storageKeyFor(graphPanelStorageKey_PREFIX, sessionName)
@@ -1534,6 +1537,7 @@ export default function GitGraph({
         needsHistory={query.needsHistory}
         onStepMatch={stepMatch}
         onSearchHistory={openHistorySearch}
+        expandedByDefault={maximized}
       />
 
       <ReflogOverlay

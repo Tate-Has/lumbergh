@@ -773,6 +773,7 @@ export default function SessionDetail() {
               onJumpToTodos={handleJumpToTodos}
               onFocusTerminal={handleFocusTerminal}
               resetTrigger={gitTabResetTrigger}
+              maximized={maximized}
             />
           )}
           {rightPanel === 'files' && (

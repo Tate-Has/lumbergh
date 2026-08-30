@@ -16,6 +16,7 @@ interface Props {
   onFocusTerminal?: () => void
   onJumpToTodos?: () => void
   resetTrigger?: number
+  maximized?: boolean
 }
 
 export default function GitTab({
@@ -26,6 +27,7 @@ export default function GitTab({
   onFocusTerminal,
   onJumpToTodos,
   resetTrigger,
+  maximized,
 }: Props) {
   const [selectedCommit, setSelectedCommit] = useState<string | null>(null)
   const [graphRefreshTrigger, setGraphRefreshTrigger] = useState(0)
@@ -51,6 +53,7 @@ export default function GitTab({
             refreshTrigger={graphRefreshTrigger}
             resetTrigger={resetTrigger}
             onGitAction={handleGitAction}
+            maximized={maximized}
           />
         }
         bottom={

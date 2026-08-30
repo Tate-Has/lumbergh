@@ -20,8 +20,16 @@ def see_diff_files(page: Page):
     expect(items.first).to_be_visible(timeout=10000)
 
 
+def _expand_graph_toolbar(page: Page):
+    """The toolbar collapses to a single button in a split pane."""
+    toggle = page.locator('[data-testid="graph-toolbar-toggle"]')
+    if toggle.count():
+        toggle.click()
+
+
 @when(parsers.parse('I search the graph for "{text}"'))
 def search_graph(page: Page, text: str):
+    _expand_graph_toolbar(page)
     box = page.locator('[data-testid="graph-search-input"]')
     expect(box).to_be_visible(timeout=10000)
     box.fill(text)
