@@ -65,3 +65,21 @@ def see_no_dimmed_rows(page: Page):
 @then("I should see the history search panel")
 def see_history_panel(page: Page):
     expect(page.locator('[data-testid="history-search-panel"]')).to_be_visible(timeout=10000)
+
+
+@when("I click the first commit in the graph")
+def click_first_commit(page: Page):
+    rows = page.locator('[data-testid="graph-row"]')
+    expect(rows.first).to_be_visible(timeout=10000)
+    rows.first.click()
+
+
+@when("I shift-click the last commit in the graph")
+def shift_click_last_commit(page: Page):
+    rows = page.locator('[data-testid="graph-row"]')
+    rows.last.click(modifiers=["Shift"])
+
+
+@then("I should see a compare range header in the diff viewer")
+def see_compare_header(page: Page):
+    expect(page.locator('[data-testid="diff-compare-range"]')).to_be_visible(timeout=10000)

@@ -16,6 +16,8 @@ interface Props {
   onJumpToTodos?: () => void
   /** Controlled by parent (GitTab). null = working changes, string = commit hash */
   selectedCommit?: string | null
+  /** The commit shift-clicked against `selectedCommit`, when comparing two of them */
+  compareCommit?: string | null
   /** Increments on every commit click (even re-clicks) to reset file-level view */
   commitSelectVersion?: number
   /** Called after git actions (commit, push, pull, reset) to refresh siblings like the graph */
@@ -32,9 +34,13 @@ interface RemoteStatus {
   fetchFailed?: boolean
 }
 
-type ViewState =
-  | { level: 'changes'; commit: string | null }
-  | { level: 'file'; commit: string | null; file: string }
+/** The commit the diff is for, and — when comparing — the one it is compared against. */
+interface CommitScope {
+  commit: string | null
+  compare: string | null
+}
+
+type ViewState = CommitScope & ({ level: 'changes' } | { level: 'file'; file: string })
 
 /** The viewer's own fetch error, else the one the parent hit handing us data. */
 function firstError(...candidates: (string | null | undefined)[]): string | null {
@@ -63,6 +69,7 @@ const DiffViewer = memo(function DiffViewer({
   onFocusTerminal,
   onJumpToTodos,
   selectedCommit: controlledCommit,
+  compareCommit,
   commitSelectVersion,
   onGitAction,
 }: Props) {
@@ -89,12 +96,17 @@ const DiffViewer = memo(function DiffViewer({
   // Navigation state — commit selection controlled by parent if provided
   const isControlled = controlledCommit !== undefined
   const activeCommit = isControlled ? controlledCommit : null
-  const [view, setView] = useState<ViewState>({ level: 'changes', commit: activeCommit })
+  const activeCompare = isControlled ? (compareCommit ?? null) : null
+  const [view, setView] = useState<ViewState>({
+    level: 'changes',
+    commit: activeCommit,
+    compare: activeCompare,
+  })
 
   // Sync view when parent changes selectedCommit (or re-clicks the same one)
   useEffect(() => {
     if (isControlled) {
-      setView({ level: 'changes', commit: activeCommit })
+      setView({ level: 'changes', commit: activeCommit, compare: activeCompare })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isControlled, commitSelectVersion])
@@ -117,8 +129,11 @@ const DiffViewer = memo(function DiffViewer({
   }, [onRefreshDiff, fetchWorkingChangesInternal])
 
   const fetchCommitDiff = useCallback(
-    async (hash: string) => {
-      const res = await fetch(`${gitBaseUrl}/commit/${hash}`)
+    async (hash: string, compareWith: string | null) => {
+      const url = compareWith
+        ? `${gitBaseUrl}/compare?base=${hash}&head=${compareWith}`
+        : `${gitBaseUrl}/commit/${hash}`
+      const res = await fetch(url)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const json = await res.json()
       setCommitData(json)
@@ -253,7 +268,7 @@ const DiffViewer = memo(function DiffViewer({
     if (view.level === 'changes' && view.commit) {
       setLoading(true)
       setError(null)
-      fetchCommitDiff(view.commit)
+      fetchCommitDiff(view.commit, view.compare)
         .catch((e) => setError(e instanceof Error ? e.message : 'Failed to fetch commit'))
         .finally(() => setLoading(false))
     }
@@ -270,13 +285,13 @@ const DiffViewer = memo(function DiffViewer({
   // Works from the file list and from the picker inside an open file: jumping
   // straight from one file's diff to another must not need a trip via Back.
   const handleSelectFile = (file: string) => {
-    setView((prev) => ({ level: 'file', commit: prev.commit, file }))
+    setView((prev) => ({ level: 'file', commit: prev.commit, compare: prev.compare, file }))
   }
 
   const handleBackToChanges = () => {
     setView((prev) => {
       if (prev.level === 'file') {
-        return { level: 'changes', commit: prev.commit }
+        return { level: 'changes', commit: prev.commit, compare: prev.compare }
       }
       return prev
     })
@@ -286,7 +301,7 @@ const DiffViewer = memo(function DiffViewer({
     if (view.level === 'changes' && view.commit) {
       setLoading(true)
       try {
-        await fetchCommitDiff(view.commit)
+        await fetchCommitDiff(view.commit, view.compare)
       } finally {
         setLoading(false)
       }
@@ -339,7 +354,12 @@ const DiffViewer = memo(function DiffViewer({
       if (idx === -1) return
       const len = data.files.length
       const nextIdx = e.key === 'ArrowRight' ? (idx + 1) % len : (idx - 1 + len) % len
-      setView({ level: 'file', commit: view.commit, file: data.files[nextIdx].path })
+      setView({
+        level: 'file',
+        commit: view.commit,
+        compare: view.compare,
+        file: data.files[nextIdx].path,
+      })
     }
     window.addEventListener('keydown', handleArrow)
     return () => window.removeEventListener('keydown', handleArrow)
@@ -351,7 +371,7 @@ const DiffViewer = memo(function DiffViewer({
     return workingData
   }
 
-  const getCurrentCommitInfo = () => commitHeaderInfo(commitData, view.commit)
+  const getCurrentCommitInfo = () => commitHeaderInfo(commitData, view.commit, view.compare)
 
   const handleSendToTerminal = useCallback(
     async (text: string, sendEnter: boolean) => {
@@ -383,11 +403,11 @@ const DiffViewer = memo(function DiffViewer({
       total: len,
       goPrev: () => {
         const prevIdx = (idx - 1 + len) % len
-        setView({ level: 'file', commit: view.commit, file: data.files[prevIdx].path })
+        setView((prev) => ({ ...prev, level: 'file', file: data.files[prevIdx].path }))
       },
       goNext: () => {
         const nextIdx = (idx + 1) % len
-        setView({ level: 'file', commit: view.commit, file: data.files[nextIdx].path })
+        setView((prev) => ({ ...prev, level: 'file', file: data.files[nextIdx].path }))
       },
     }
   }
@@ -461,10 +481,9 @@ const DiffViewer = memo(function DiffViewer({
           </div>
         )
       }
-      // Commit with no files - shouldn't happen but handle gracefully
       return (
         <div className="flex items-center justify-center h-full text-text-muted">
-          No files in this commit
+          {view.compare ? 'No differences between these commits' : 'No files in this commit'}
         </div>
       )
     }

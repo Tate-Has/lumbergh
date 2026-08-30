@@ -2,6 +2,7 @@ import { useState, memo } from 'react'
 import { Play, RefreshCw, Undo2, Maximize2, ArrowDown, CloudDownload } from 'lucide-react'
 import { relativeDate } from '../../utils/relativeDate'
 import type { DiffData } from './types'
+import type { DiffHeader } from './utils'
 import BranchSelector from './BranchSelector'
 import BranchActions from './BranchActions'
 
@@ -18,13 +19,7 @@ interface RemoteStatus {
 interface Props {
   data: DiffData
   sessionName?: string
-  commit?: {
-    hash: string
-    shortHash: string
-    message: string
-    author?: string
-    relativeDate?: string
-  } | null
+  commit?: DiffHeader | null
   onRefresh: () => void
   onSendToTerminal?: (text: string, sendEnter: boolean) => void
   onExpand?: () => void
@@ -83,6 +78,22 @@ function RemoteButtons({
   return null
 }
 
+/** What the review button types into the terminal for what the header describes. */
+function reviewPrompt(commit: DiffHeader): string {
+  const { compare } = commit
+  if (compare) {
+    return (
+      `Review the changes between ${compare.from.shortHash} and ${compare.to.shortHash}` +
+      ` (${commit.message}).\nRun \`git diff ${compare.from.hash}..${compare.to.hash}\`` +
+      ` to see the full diff.`
+    )
+  }
+  return (
+    `Review commit ${commit.shortHash}: "${commit.message}"\n` +
+    `Run \`git show ${commit.hash}\` to see the full diff.`
+  )
+}
+
 function CommitInfo({
   commit,
   onSendToTerminal,
@@ -91,13 +102,17 @@ function CommitInfo({
   onSendToTerminal?: Props['onSendToTerminal']
 }) {
   const [copiedSha, setCopiedSha] = useState(false)
+  const isRange = Boolean(commit.compare)
 
   return (
     <>
-      <span className="text-sm text-text-secondary truncate">
+      <span
+        className="text-sm text-text-secondary truncate"
+        data-testid={isRange ? 'diff-compare-range' : 'diff-commit-header'}
+      >
         <span
           className="text-action font-mono cursor-pointer hover:underline"
-          title="Click to copy SHA"
+          title={isRange ? 'Click to copy the range' : 'Click to copy SHA'}
           onClick={(e) => {
             e.stopPropagation()
             navigator.clipboard.writeText(commit.hash)
@@ -113,14 +128,9 @@ function CommitInfo({
       </span>
       {onSendToTerminal && (
         <button
-          onClick={() =>
-            onSendToTerminal(
-              `Review commit ${commit.shortHash}: "${commit.message}"\nRun \`git show ${commit.hash}\` to see the full diff.`,
-              false
-            )
-          }
+          onClick={() => onSendToTerminal(reviewPrompt(commit), false)}
           className="text-sm text-text-muted hover:text-warning transition-colors shrink-0"
-          title="Send commit info to terminal"
+          title={isRange ? 'Send the range to terminal' : 'Send commit info to terminal'}
         >
           <Play size={16} />
         </button>

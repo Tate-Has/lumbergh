@@ -13,12 +13,21 @@ export interface Commit {
   relativeDate: string
 }
 
+/** Two commits and the span of history between them. */
+export interface CommitRange {
+  from: Commit
+  to: Commit
+  commitCount: number
+}
+
 export interface CommitDiff extends Commit {
   files: DiffFile[]
   stats: {
     additions: number
     deletions: number
   }
+  /** Set when the payload compares two commits rather than showing one. */
+  range?: CommitRange
 }
 
 export interface DiffData {

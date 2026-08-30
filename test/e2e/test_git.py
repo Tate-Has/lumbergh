@@ -143,3 +143,36 @@ def test_git_commit_diff(client, git_session):
     r2 = client.get(f"/api/sessions/{git_session}/git/commit/{commit_hash}")
     assert r2.status_code == 200
     assert "files" in r2.json()
+
+
+def test_git_compare_two_commits(client, git_session):
+    """Two commits compare to their cumulative diff, in either click order."""
+    r = client.get(f"/api/sessions/{git_session}/git/log?limit=10")
+    assert r.status_code == 200
+    commits = r.json()["commits"]
+    if len(commits) < 2:
+        return
+
+    newer, older = commits[0]["hash"], commits[-1]["hash"]
+    forward = client.get(
+        f"/api/sessions/{git_session}/git/compare", params={"base": older, "head": newer}
+    )
+    assert forward.status_code == 200
+    data = forward.json()
+    assert data["range"]["from"]["hash"].startswith(older[:7])
+    assert data["range"]["to"]["hash"].startswith(newer[:7])
+    assert data["range"]["commitCount"] >= 1
+
+    backward = client.get(
+        f"/api/sessions/{git_session}/git/compare", params={"base": newer, "head": older}
+    )
+    assert backward.status_code == 200
+    assert backward.json()["files"] == data["files"]
+
+
+def test_git_compare_unknown_commit_404s(client, git_session):
+    r = client.get(
+        f"/api/sessions/{git_session}/git/compare",
+        params={"base": "HEAD", "head": "deadbeef" * 5},
+    )
+    assert r.status_code == 404

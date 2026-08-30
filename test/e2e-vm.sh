@@ -184,6 +184,9 @@ runcmd:
         sudo -u test bash -c "echo '# \$repo' > README.md"
         sudo -u test git add README.md
         sudo -u test git commit -m "Initial commit"
+        sudo -u test bash -c "echo 'notes' > NOTES.md"
+        sudo -u test git add NOTES.md
+        sudo -u test git commit -m "Add notes"
         sudo -u test bash -c "echo 'uncommitted change' >> README.md"
       done
 

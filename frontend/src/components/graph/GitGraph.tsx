@@ -319,8 +319,11 @@ function getInitials(author: string, email?: string): string {
 
 interface Props {
   sessionName?: string
-  onSelectCommit?: (hash: string | null) => void
+  /** `extend` is a shift-click: compare the clicked commit against the selected one. */
+  onSelectCommit?: (hash: string | null, extend?: boolean) => void
   selectedCommit?: string | null
+  /** The other end of a two-commit comparison, when one is active. */
+  compareCommit?: string | null
   refreshTrigger?: number
   /** Bumped when the git tab is clicked — triggers auto-select of WIP or HEAD */
   resetTrigger?: number
@@ -698,6 +701,7 @@ export default function GitGraph({
   sessionName,
   onSelectCommit,
   selectedCommit,
+  compareCommit,
   refreshTrigger,
   resetTrigger,
   onGitAction,
@@ -1168,6 +1172,16 @@ export default function GitGraph({
     if (!graphData) return []
     return computeGraphLayout(graphData.commits, graphData.head?.hash ?? null)
   }, [graphData])
+
+  // The block of rows a two-commit comparison spans, so the diff below has a
+  // visible extent in the graph rather than two disconnected highlights.
+  const comparedRows = useMemo(() => {
+    if (!selectedCommit || !compareCommit) return null
+    const anchor = nodes.findIndex((n) => n.commit.hash === selectedCommit)
+    const other = nodes.findIndex((n) => n.commit.hash === compareCommit)
+    if (anchor === -1 || other === -1) return null
+    return { first: Math.min(anchor, other), last: Math.max(anchor, other) }
+  }, [nodes, selectedCommit, compareCommit])
 
   // Worktrees whose HEAD is older than the commit limit aren't drawn on the graph —
   // surface them in a strip so they don't silently vanish.
@@ -1823,23 +1837,33 @@ export default function GitGraph({
 
             {/* HTML rows for commit info */}
             {nodes.map((node, row) => {
-              const isSelected = selectedCommit === node.commit.hash
+              const isSelected =
+                selectedCommit === node.commit.hash || compareCommit === node.commit.hash
+              const inComparedRange =
+                comparedRows != null && row >= comparedRows.first && row <= comparedRows.last
               const dimmed = dimOpacity(node.commit.hash) < 1
               return (
                 <div
                   key={node.commit.hash}
                   data-testid={dimmed ? 'graph-row-dimmed' : 'graph-row'}
-                  onClick={() => onSelectCommit?.(node.commit.hash)}
+                  // Shift-drag would otherwise select the row text instead of the range.
+                  onMouseDown={(e) => {
+                    if (e.shiftKey) e.preventDefault()
+                  }}
+                  onClick={(e) => onSelectCommit?.(node.commit.hash, e.shiftKey)}
+                  title="Shift-click another commit to diff the two"
                   className={`absolute right-0 flex items-center gap-2 px-1 cursor-pointer group ${
                     dimmed ? 'opacity-25' : ''
                   } ${
                     isSelected
                       ? 'bg-action/25 border-l-2 border-l-action'
-                      : node.isHead
-                        ? 'bg-action/[0.14] hover:bg-action/20'
-                        : node.onCurrentBranch
-                          ? 'bg-action/[0.06] hover:bg-action/[0.12]'
-                          : 'hover:bg-bg-surface/50 opacity-60'
+                      : inComparedRange
+                        ? 'bg-action/15 border-l-2 border-l-action/40'
+                        : node.isHead
+                          ? 'bg-action/[0.14] hover:bg-action/20'
+                          : node.onCurrentBranch
+                            ? 'bg-action/[0.06] hover:bg-action/[0.12]'
+                            : 'hover:bg-bg-surface/50 opacity-60'
                   }`}
                   style={{
                     top: rowToY(row),

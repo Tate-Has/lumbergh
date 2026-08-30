@@ -8,6 +8,12 @@ interface DiffData {
   stats: { additions: number; deletions: number }
 }
 
+/** What the graph has selected: one commit, or two being compared. */
+interface Selection {
+  commit: string | null
+  compare: string | null
+}
+
 interface Props {
   sessionName?: string
   diffData: DiffData | null
@@ -29,12 +35,18 @@ export default function GitTab({
   resetTrigger,
   maximized,
 }: Props) {
-  const [selectedCommit, setSelectedCommit] = useState<string | null>(null)
+  const [selection, setSelection] = useState<Selection>({ commit: null, compare: null })
   const [graphRefreshTrigger, setGraphRefreshTrigger] = useState(0)
   const [commitSelectVersion, setCommitSelectVersion] = useState(0)
 
-  const handleSelectCommit = useCallback((hash: string | null) => {
-    setSelectedCommit((prev) => (prev === hash ? null : hash))
+  const handleSelectCommit = useCallback((hash: string | null, extend?: boolean) => {
+    setSelection((prev) => {
+      if (extend && hash && prev.commit && prev.commit !== hash) {
+        return { commit: prev.commit, compare: hash }
+      }
+      const collapses = prev.commit === hash && prev.compare === null
+      return { commit: collapses ? null : hash, compare: null }
+    })
     setCommitSelectVersion((n) => n + 1)
   }, [])
 
@@ -49,7 +61,8 @@ export default function GitTab({
           <GitGraph
             sessionName={sessionName}
             onSelectCommit={handleSelectCommit}
-            selectedCommit={selectedCommit}
+            selectedCommit={selection.commit}
+            compareCommit={selection.compare}
             refreshTrigger={graphRefreshTrigger}
             resetTrigger={resetTrigger}
             onGitAction={handleGitAction}
@@ -64,7 +77,8 @@ export default function GitTab({
             onRefreshDiff={onRefreshDiff}
             onFocusTerminal={onFocusTerminal}
             onJumpToTodos={onJumpToTodos}
-            selectedCommit={selectedCommit}
+            selectedCommit={selection.commit}
+            compareCommit={selection.compare}
             commitSelectVersion={commitSelectVersion}
             onGitAction={handleGitAction}
           />

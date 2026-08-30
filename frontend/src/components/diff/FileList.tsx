@@ -2,6 +2,7 @@ import { useMemo, memo } from 'react'
 import { Undo2, ChevronRight, Play } from 'lucide-react'
 import type { DiffData } from './types'
 import { getFileStats, reviewFilePrompt } from './utils'
+import type { DiffHeader } from './utils'
 import { useGitActions } from './useGitActions'
 import FileListHeader from './FileListHeader'
 import CommitForm from './CommitForm'
@@ -21,13 +22,7 @@ interface Props {
   sessionName?: string
   onSelectFile: (path: string) => void
   onRefresh: () => void
-  commit?: {
-    hash: string
-    shortHash: string
-    message: string
-    author?: string
-    relativeDate?: string
-  } | null
+  commit?: DiffHeader | null
   onSendToTerminal?: (text: string, sendEnter: boolean) => void
   onGitAction?: () => void
   onExpand?: () => void

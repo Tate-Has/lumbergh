@@ -15,6 +15,7 @@ from lumbergh.git_utils import (
     get_current_branch,
     get_full_diff_with_untracked,
     get_porcelain_status,
+    get_range_diff,
     parse_diff_output,
     stage_all_and_commit,
 )
@@ -281,3 +282,68 @@ class TestDiffPrefixConfiguration:
         )
 
         assert "README.md" in self._tracked_paths(mock_git_repo_with_changes)
+
+
+class TestGetRangeDiff:
+    @staticmethod
+    def _commit(repo_path, name, body):
+        (repo_path / name).write_text(body)
+        subprocess.run(["git", "add", "."], cwd=repo_path, capture_output=True)
+        subprocess.run(["git", "commit", "-m", f"add {name}"], cwd=repo_path, capture_output=True)
+        return subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=repo_path, capture_output=True, text=True
+        ).stdout.strip()
+
+    def test_accumulates_every_commit_after_the_base(self, mock_git_repo):
+        base = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=mock_git_repo, capture_output=True, text=True
+        ).stdout.strip()
+        self._commit(mock_git_repo, "one.txt", "one\n")
+        head = self._commit(mock_git_repo, "two.txt", "two\n")
+
+        result = get_range_diff(mock_git_repo, base, head)
+
+        assert {f["path"] for f in result["files"]} == {"one.txt", "two.txt"}
+        assert result["range"]["commitCount"] == 2
+        assert result["range"]["from"]["hash"] == base
+        assert result["range"]["to"]["hash"] == head
+
+    def test_orders_the_pair_by_ancestry_whichever_way_it_is_asked(self, mock_git_repo):
+        base = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=mock_git_repo, capture_output=True, text=True
+        ).stdout.strip()
+        head = self._commit(mock_git_repo, "one.txt", "one\n")
+
+        forward = get_range_diff(mock_git_repo, base, head)
+        backward = get_range_diff(mock_git_repo, head, base)
+
+        assert backward["files"] == forward["files"]
+        assert backward["range"]["from"]["hash"] == base
+        assert backward["stats"]["additions"] == forward["stats"]["additions"]
+
+    def test_same_commit_twice_is_an_empty_diff(self, mock_git_repo):
+        head = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=mock_git_repo, capture_output=True, text=True
+        ).stdout.strip()
+
+        result = get_range_diff(mock_git_repo, head, head)
+
+        assert result["files"] == []
+        assert result["range"]["commitCount"] == 0
+
+    def test_unknown_commit_is_not_found(self, mock_git_repo):
+        head = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=mock_git_repo, capture_output=True, text=True
+        ).stdout.strip()
+
+        assert get_range_diff(mock_git_repo, head, "deadbeef" * 5) is None
+
+    def test_divergent_branches_diff_tip_to_tip(self, mock_git_repo):
+        trunk = self._commit(mock_git_repo, "trunk.txt", "trunk\n")
+        subprocess.run(["git", "checkout", "-b", "side"], cwd=mock_git_repo, capture_output=True)
+        subprocess.run(["git", "reset", "--hard", "HEAD~1"], cwd=mock_git_repo, capture_output=True)
+        side = self._commit(mock_git_repo, "side.txt", "side\n")
+
+        result = get_range_diff(mock_git_repo, trunk, side)
+
+        assert {f["path"] for f in result["files"]} == {"trunk.txt", "side.txt"}

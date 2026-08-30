@@ -1,16 +1,48 @@
-import type { Commit, CommitDiff, FileStats } from './types'
+import type { Commit, CommitDiff, CommitRange, FileStats } from './types'
 
-/** The header for the commit the graph has selected, or null while there is none.
+/** What the diff viewer's header describes: one commit, or a comparison of two. */
+export interface DiffHeader extends Commit {
+  /** Set when the header describes a range, and the labels should say so. */
+  compare?: CommitRange
+}
+
+/** Does an abbreviated hash from the graph name this commit?
  *
  * The graph abbreviates hashes to 12 chars on the wire but the commit endpoint
  * answers with the full 40, so the two are compared by prefix: an equality check
  * silently hid the whole commit header, send-to-terminal button included.
  */
+function namesCommit(fullHash: string, abbreviated: string): boolean {
+  return fullHash.startsWith(abbreviated)
+}
+
+/** The header for what the graph has selected, or null while there is none. */
 export function commitHeaderInfo(
   commitData: CommitDiff | null,
-  selectedHash: string | null
-): Commit | null {
-  if (!selectedHash || !commitData?.hash.startsWith(selectedHash)) return null
+  selectedHash: string | null,
+  compareHash?: string | null
+): DiffHeader | null {
+  if (!selectedHash || !commitData) return null
+
+  if (compareHash) {
+    const range = commitData.range
+    if (!range) return null
+    const endpoints = [range.from.hash, range.to.hash]
+    const named = [selectedHash, compareHash].every((h) =>
+      endpoints.some((endpoint) => namesCommit(endpoint, h))
+    )
+    if (!named) return null
+    return {
+      hash: `${range.from.hash}..${range.to.hash}`,
+      shortHash: `${range.from.shortHash}..${range.to.shortHash}`,
+      message: `${range.commitCount} commit${range.commitCount === 1 ? '' : 's'}`,
+      author: range.to.author,
+      relativeDate: range.to.relativeDate,
+      compare: range,
+    }
+  }
+
+  if (!namesCommit(commitData.hash, selectedHash)) return null
   return {
     hash: commitData.hash,
     shortHash: commitData.hash.slice(0, 7),

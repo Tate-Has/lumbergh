@@ -853,6 +853,79 @@ def get_commit_diff(cwd: Path, commit_hash: str) -> dict | None:
     }
 
 
+def _commit_summary(commit) -> dict:
+    return {
+        "hash": commit.hexsha,
+        "shortHash": commit.hexsha[:7],
+        "message": commit.summary,
+        "author": commit.author.name,
+        "relativeDate": commit.committed_datetime.isoformat(),
+    }
+
+
+def _order_by_ancestry(repo: Repo, first, second) -> tuple:
+    """The pair as (older, newer), so click order never flips the diff's sign."""
+    if repo.is_ancestor(first, second):
+        return first, second
+    if repo.is_ancestor(second, first):
+        return second, first
+    return tuple(sorted((first, second), key=lambda c: c.committed_datetime))
+
+
+def get_range_diff(cwd: Path, from_hash: str, to_hash: str) -> dict | None:
+    """
+    Get the cumulative diff between two commits.
+
+    The pair is ordered by ancestry (falling back to commit date for commits on
+    divergent branches), so selecting them in either order gives the same answer.
+
+    Returns:
+        Dict shaped like get_commit_diff plus a `range` block, or None if either
+        commit is unknown.
+    """
+    try:
+        repo = get_repo(cwd)
+        base, head = _order_by_ancestry(repo, repo.commit(from_hash), repo.commit(to_hash))
+    except Exception:
+        return None
+
+    try:
+        diff_text = _sanitize(_parseable_diff(repo, f"{base.hexsha}..{head.hexsha}"))
+    except GitCommandError:
+        diff_text = ""
+
+    try:
+        commit_count = sum(1 for _ in repo.iter_commits(f"{base.hexsha}..{head.hexsha}"))
+    except GitCommandError:
+        commit_count = 0
+
+    files = []
+    stats = DiffStats()
+
+    if diff_text:
+        parsed_files, stats = parse_diff_output(diff_text)
+        files = [
+            {
+                "path": f.path,
+                "diff": f.diff,
+                "oldContent": get_file_content_at_ref(repo, base.hexsha, f.path),
+                "newContent": get_file_content_at_ref(repo, head.hexsha, f.path),
+            }
+            for f in parsed_files
+        ]
+
+    return {
+        **_commit_summary(head),
+        "range": {
+            "from": _commit_summary(base),
+            "to": _commit_summary(head),
+            "commitCount": commit_count,
+        },
+        "files": files,
+        "stats": {"additions": stats.additions, "deletions": stats.deletions},
+    }
+
+
 def stage_all_and_commit(cwd: Path, message: str) -> dict:
     """
     Stage all changes and create a commit.

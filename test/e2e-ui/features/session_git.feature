@@ -27,3 +27,10 @@ Feature: Session Git
     And I search the graph for "Initial"
     And I click the all-history search button
     Then I should see the history search panel
+
+  Scenario: Shift-selecting two commits shows the diff between them
+    Given I am on the session page for "e2e-ui-session"
+    When I click the "git" tab
+    And I click the first commit in the graph
+    And I shift-click the last commit in the graph
+    Then I should see a compare range header in the diff viewer

@@ -29,6 +29,7 @@ from lumbergh.git_utils import (
     get_current_branch,
     get_full_diff_with_untracked,
     get_porcelain_status,
+    get_range_diff,
     git_push,
     reset_to_head,
     revert_file,
@@ -273,6 +274,22 @@ async def git_commit_diff(commit_hash: str):
 
     try:
         result = await _run_git(get_commit_diff, PROJECT_ROOT, commit_hash)
+        if result is None:
+            raise HTTPException(status_code=404, detail="Commit not found")
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/git/compare")
+async def git_compare(base: str, head: str):
+    """Get the cumulative diff between two commits."""
+    from lumbergh.routers.sessions import _run_git
+
+    try:
+        result = await _run_git(get_range_diff, PROJECT_ROOT, base, head)
         if result is None:
             raise HTTPException(status_code=404, detail="Commit not found")
         return result

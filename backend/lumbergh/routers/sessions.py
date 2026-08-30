@@ -50,6 +50,7 @@ from lumbergh.git_utils import (
     get_full_diff_with_untracked,
     get_graph_log,
     get_porcelain_status,
+    get_range_diff,
     get_reflog,
     get_remote_status,
     git_cherry_pick,
@@ -1616,6 +1617,22 @@ async def session_git_commit_diff(name: str, commit_hash: str):
 
     try:
         result = await _run_git(get_commit_diff, workdir, commit_hash)
+        if result is None:
+            raise HTTPException(status_code=404, detail="Commit not found")
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{name}/git/compare")
+async def session_git_compare(name: str, base: str, head: str):
+    """Get the cumulative diff between two commits in a session's workdir."""
+    workdir = get_session_workdir(name)
+
+    try:
+        result = await _run_git(get_range_diff, workdir, base, head)
         if result is None:
             raise HTTPException(status_code=404, detail="Commit not found")
         return result
