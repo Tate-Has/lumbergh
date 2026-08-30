@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { X } from 'lucide-react'
 import Button from './ui/Button'
@@ -92,6 +92,16 @@ function openingState(initialMode?: SessionMode, initialParentRepo?: string) {
 
 function modalTitle(forkFrom?: string): string {
   return forkFrom ? 'Fork Session' : 'New Session'
+}
+
+/** Enter outside a field — a keyboard user whose focus fell to the body after
+ * picking a repo — should still create the session. Fields keep the browser's
+ * own implicit submission, so handling those here would submit twice. */
+function isBareEnter(e: KeyboardEvent): boolean {
+  if (e.key !== 'Enter' || e.defaultPrevented) return false
+  if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return false
+  const target = e.target as HTMLElement | null
+  return !target?.closest?.('input, textarea, select, button, a, [contenteditable]')
 }
 
 function errorMessage(err: unknown): string {
@@ -204,6 +214,7 @@ export default function CreateSessionModal({
   const [error, setError] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false)
   const [manualEntry, setManualEntry] = useState(false)
+  const formRef = useRef<HTMLFormElement>(null)
 
   const [dirStatus, setDirStatus] = useState<DirStatus>('unchecked')
 
@@ -239,6 +250,16 @@ export default function CreateSessionModal({
     prompts: true,
     shared: true,
   })
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!isBareEnter(e)) return
+      e.preventDefault()
+      formRef.current?.requestSubmit()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [])
 
   // Fetch settings (repoSearchDir + agent providers)
   useEffect(() => {
@@ -351,7 +372,7 @@ export default function CreateSessionModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-4 space-y-4">
+        <form ref={formRef} onSubmit={handleSubmit} className="p-4 space-y-4">
           <ForkNotice forkFrom={forkFrom} />
           <ModeToggle mode={mode} onModeChange={setMode} />
 
