@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { getApiBase } from '../config'
+import type { GraphData } from '../components/diff/types'
 
 export interface Worktree {
   path: string
@@ -51,4 +52,13 @@ export function claimedBranches(worktrees: Worktree[]): Map<string, Worktree> {
     if (wt.branch) byBranch.set(wt.branch, wt)
   }
   return byBranch
+}
+
+/** How many worktrees are worth offering to manage.
+ *
+ * The main checkout is a worktree to git but not a thing you remove here. Lives
+ * outside the component that uses it because GitGraph sits at the eslint
+ * complexity ceiling, where an optional chain costs a branch. */
+export function manageableWorktreeCount(graphData: GraphData | null | undefined): number {
+  return (graphData?.worktrees ?? []).filter((w) => !w.isMain).length
 }

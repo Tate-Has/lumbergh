@@ -18,6 +18,8 @@ import { applyGraphResponse } from './graphSync'
 import { buildBranchMenuItems } from './branchMenu'
 import { buildTagMenuItems } from './tagMenu'
 import { ReflogOverlay } from './ReflogPanel'
+import WorktreeOverlay from './WorktreeOverlay'
+import { manageableWorktreeCount } from '../../hooks/useWorktrees'
 import { HistorySearchOverlay } from './HistorySearchPanel'
 import { useGraphSearch } from './useGraphSearch'
 import type { ReflogEntry } from './ReflogPanel'
@@ -741,6 +743,7 @@ export default function GitGraph({
   const [menuTag, setMenuTag] = useState<{ name: string; x: number; y: number } | null>(null)
   const [remoteTags, setRemoteTags] = useState<Set<string> | null>(null)
   const [showReflog, setShowReflog] = useState(false)
+  const [showWorktrees, setShowWorktrees] = useState(false)
   const [pullRequests, setPullRequests] = useState<Map<string, PullRequest>>(new Map())
   const [deleteBranchConfirm, setDeleteBranchConfirm] = useState<{
     name: string
@@ -1115,6 +1118,9 @@ export default function GitGraph({
   }, [sessionName, remoteTags])
 
   const openReflog = useCallback(() => setShowReflog(true), [])
+  const openWorktrees = useCallback(() => setShowWorktrees(true), [])
+  const closeWorktrees = useCallback(() => setShowWorktrees(false), [])
+  const worktreeCount = manageableWorktreeCount(graphData)
   const closeReflog = useCallback(() => setShowReflog(false), [])
 
   const handleBranchFromReflog = useCallback(
@@ -1555,6 +1561,8 @@ export default function GitGraph({
         mineAvailable={graphData?.mine?.available ?? true}
         onToggleMineOnly={toggleMineOnly}
         onOpenReflog={sessionName ? openReflog : undefined}
+        onOpenWorktrees={openWorktrees}
+        worktreeCount={worktreeCount}
         search={search}
         onSearchChange={setSearch}
         matchCount={matchCount}
@@ -1564,6 +1572,8 @@ export default function GitGraph({
         onSearchHistory={openHistorySearch}
         expandedByDefault={maximized}
       />
+
+      <WorktreeOverlay open={showWorktrees} sessionName={sessionName} onClose={closeWorktrees} />
 
       <ReflogOverlay
         open={showReflog}

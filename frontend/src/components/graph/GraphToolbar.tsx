@@ -7,6 +7,10 @@ interface Props {
   mineAvailable: boolean
   onToggleMineOnly: () => void
   onOpenReflog?: () => void
+  onOpenWorktrees?: () => void
+  /** Worktrees of this repo, excluding the main checkout. Zero hides the button
+   * entirely rather than showing an empty one — the row is scarce space. */
+  worktreeCount?: number
   search: string
   onSearchChange: (value: string) => void
   /** How many loaded commits the query selects. */
@@ -48,6 +52,8 @@ function ExpandedToolbar({
   mineAvailable,
   onToggleMineOnly,
   onOpenReflog,
+  onOpenWorktrees,
+  worktreeCount = 0,
   search,
   onSearchChange,
   matchCount,
@@ -146,6 +152,16 @@ function ExpandedToolbar({
         <span className="text-text-muted">trunk + branches you have worked on</span>
       )}
       <div className="ml-auto flex items-center gap-2 shrink-0">
+        {onOpenWorktrees && worktreeCount > 0 && (
+          <button
+            data-testid="graph-worktrees-toggle"
+            onClick={onOpenWorktrees}
+            title="Worktrees of this repo — which branches they hold, and removing them"
+            className="px-2 py-1 rounded-sm ring-1 bg-control-bg text-text-secondary ring-border-default hover:bg-control-bg-hover"
+          >
+            Worktrees ({worktreeCount})
+          </button>
+        )}
         {onOpenReflog && (
           <button
             data-testid="graph-reflog-toggle"

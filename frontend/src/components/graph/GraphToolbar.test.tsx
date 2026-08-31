@@ -64,3 +64,41 @@ describe('GraphToolbar', () => {
     expect(screen.getByTestId('graph-toolbar-active-dot')).toBeTruthy()
   })
 })
+
+describe('the worktrees button', () => {
+  const open = { ...props, onOpenWorktrees: vi.fn() }
+
+  it('takes no space at all when the repo has no worktrees', () => {
+    render(<GraphToolbar {...open} worktreeCount={0} expandedByDefault />)
+
+    expect(screen.queryByTestId('graph-worktrees-toggle')).toBeNull()
+  })
+
+  it('appears with a count once there are worktrees to manage', () => {
+    render(<GraphToolbar {...open} worktreeCount={3} expandedByDefault />)
+
+    expect(screen.getByTestId('graph-worktrees-toggle').textContent).toContain('3')
+  })
+
+  it('stays hidden when there is no handler to open it', () => {
+    render(<GraphToolbar {...props} worktreeCount={3} expandedByDefault />)
+
+    expect(screen.queryByTestId('graph-worktrees-toggle')).toBeNull()
+  })
+
+  it('opens the overlay when clicked', () => {
+    const onOpenWorktrees = vi.fn()
+    render(
+      <GraphToolbar
+        {...props}
+        onOpenWorktrees={onOpenWorktrees}
+        worktreeCount={1}
+        expandedByDefault
+      />
+    )
+
+    fireEvent.click(screen.getByTestId('graph-worktrees-toggle'))
+
+    expect(onOpenWorktrees).toHaveBeenCalled()
+  })
+})
