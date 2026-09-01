@@ -623,22 +623,44 @@ export default memo(function Terminal({
       // the text, which is what makes OS-level clipboard injection work.
       if (ctrlVPastesRef.current && isPasteChord(event)) {
         // TEMPORARY diagnostic for the Wispr Flow stale-clipboard investigation.
-        // Does not change behavior - only observes it. Remove once we've captured
-        // a real dictation event.
-        console.log('[wispr-diag] Ctrl+V keydown', {
-          isTrusted: event.isTrusted,
-          documentHasFocus: document.hasFocus(),
-        })
+        // Does not change behavior - only observes it (no preventDefault, no
+        // injection) - and logs plain strings instead of objects so a plain-text
+        // copy of the console captures everything without needing to expand
+        // anything. Remove once we've captured a real dictation event.
+        const t0 = performance.now()
+        const elapsed = () => `${(performance.now() - t0).toFixed(1)}ms`
+        console.log(
+          `[wispr-diag] Ctrl+V keydown: isTrusted=${event.isTrusted} documentHasFocus=${document.hasFocus()}`
+        )
         if (navigator.permissions?.query) {
           navigator.permissions
             .query({ name: 'clipboard-read' as PermissionName })
-            .then((status) =>
-              console.log('[wispr-diag] clipboard-read permission state:', status.state)
-            )
-            .catch((err) => console.log('[wispr-diag] permissions.query failed:', err))
+            .then((status) => console.log(`[wispr-diag] permission state: ${status.state}`))
+            .catch((err) => console.log(`[wispr-diag] permissions.query failed: ${err}`))
         } else {
           console.log('[wispr-diag] navigator.permissions.query unavailable')
         }
+        if (navigator.clipboard?.readText) {
+          navigator.clipboard
+            .readText()
+            .then((text) =>
+              console.log(`[wispr-diag] readText() resolved at ${elapsed()}: "${text}"`)
+            )
+            .catch((err) => console.log(`[wispr-diag] readText() rejected at ${elapsed()}: ${err}`))
+        } else {
+          console.log('[wispr-diag] navigator.clipboard.readText unavailable')
+        }
+        // Passive - does not preventDefault or stopPropagation, so it does not
+        // interfere with xterm's own paste listener. Just observes what the
+        // browser's native paste actually delivers, and when.
+        document.addEventListener(
+          'paste',
+          (pasteEvent) => {
+            const text = pasteEvent.clipboardData?.getData('text/plain') ?? ''
+            console.log(`[wispr-diag] native paste event observed at ${elapsed()}: "${text}"`)
+          },
+          { once: true }
+        )
         return false
       }
       if (event.key === 'Enter' && event.shiftKey) {
