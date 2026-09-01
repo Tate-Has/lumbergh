@@ -618,10 +618,30 @@ export default memo(function Terminal({
       if (isSessionCycleChord(event)) {
         return false
       }
-      // Decline Ctrl+V so xterm neither sends ^V nor calls preventDefault(). The
-      // browser's own paste then fires and xterm's native paste listener inserts
-      // the text, which is what makes OS-level clipboard injection work.
       if (ctrlVPastesRef.current && isPasteChord(event)) {
+        // Dictation/injection tools (Wispr Flow and similar) write the clipboard,
+        // simulate Ctrl+V, then restore the clipboard's prior contents on a timer.
+        // Waiting for the browser's native paste event to round-trip through this
+        // page's own rendering/WebSocket-heavy main thread can lose that race,
+        // landing the restored (stale) clipboard entry instead of the dictated
+        // text. Where the Clipboard API is available, read it right here in the
+        // keydown handler instead — as fast as this thread can go — and inject it
+        // ourselves, taking over the event with preventDefault() so the native
+        // paste doesn't also fire and double-insert.
+        if (window.isSecureContext && navigator.clipboard?.readText) {
+          event.preventDefault()
+          navigator.clipboard
+            .readText()
+            .then((text) => term.paste(text))
+            .catch(() => {
+              // Permission denied or clipboard empty - nothing to paste.
+            })
+          return false
+        }
+        // Non-secure context (e.g. plain http on a LAN, where navigator.clipboard
+        // is undefined): decline the key without calling preventDefault() so the
+        // browser's own paste fires and xterm's native paste listener inserts the
+        // text from the paste event's clipboardData.
         return false
       }
       if (event.key === 'Enter' && event.shiftKey) {
