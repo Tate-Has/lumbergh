@@ -622,6 +622,23 @@ export default memo(function Terminal({
       // browser's own paste then fires and xterm's native paste listener inserts
       // the text, which is what makes OS-level clipboard injection work.
       if (ctrlVPastesRef.current && isPasteChord(event)) {
+        // TEMPORARY diagnostic for the Wispr Flow stale-clipboard investigation.
+        // Does not change behavior - only observes it. Remove once we've captured
+        // a real dictation event.
+        console.log('[wispr-diag] Ctrl+V keydown', {
+          isTrusted: event.isTrusted,
+          documentHasFocus: document.hasFocus(),
+        })
+        if (navigator.permissions?.query) {
+          navigator.permissions
+            .query({ name: 'clipboard-read' as PermissionName })
+            .then((status) =>
+              console.log('[wispr-diag] clipboard-read permission state:', status.state)
+            )
+            .catch((err) => console.log('[wispr-diag] permissions.query failed:', err))
+        } else {
+          console.log('[wispr-diag] navigator.permissions.query unavailable')
+        }
         return false
       }
       if (event.key === 'Enter' && event.shiftKey) {
