@@ -614,7 +614,20 @@ export default memo(function Terminal({
     // xterm.js's _keyPress handler from also sending \r (carriage return/submit).
     // When the custom handler blocks only keydown, xterm.js doesn't call preventDefault(),
     // so the browser fires keypress which leaks through and sends \r to the terminal.
+    // TEMPORARY diagnostic for the Wispr Flow investigation: log every
+    // Ctrl/Cmd-modified keydown, whether or not it matches our paste-chord
+    // check, so we can see exactly what a dictation tool's synthetic Ctrl+V
+    // actually looks like in this browser/OS. Does not change behavior.
+    // Remove once we've captured a real dictation event.
+    const logCtrlKeydownDiag = (event: KeyboardEvent) => {
+      if (event.type !== 'keydown' || (!event.ctrlKey && !event.metaKey)) return
+      console.log(
+        `[wispr-diag] keydown key="${event.key}" code="${event.code}" ctrlKey=${event.ctrlKey} metaKey=${event.metaKey} shiftKey=${event.shiftKey} altKey=${event.altKey} isTrusted=${event.isTrusted}`
+      )
+    }
+
     term.attachCustomKeyEventHandler((event) => {
+      logCtrlKeydownDiag(event)
       if (isSessionCycleChord(event)) {
         return false
       }
